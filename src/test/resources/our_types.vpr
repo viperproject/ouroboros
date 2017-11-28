@@ -1,0 +1,118 @@
+
+//method test_types(g0:Graph, n0:Node, g1:Graph, l0:List) returns (g_res:Graph, n_res:Node)
+
+/*
+method test_link(g0:Graph, x1:Node, x2:Node, x3:Node, g1:Graph)
+    requires x1 in g0
+    //requires
+{
+    x1.left := x1
+    x1.right := null
+}*/
+
+/*
+method test_link_1(g0:Graph, g1:Graph, g2:Graph, x:Node, y:Node)
+    requires x in g0
+{
+    x.left := x.right
+    x.right := null
+}*/
+
+/*
+method test_link_1(g0:Graph, g1:Graph, g2:Graph, g3:Graph, x:Node, y:Node)
+    requires x in g0
+{
+    x.left := x.right
+    x.right := null
+}*/
+
+
+field left:Ref
+field right:Ref
+
+method connect_DAGs(g0:Graph, g1:Graph, x0:Node, x1:Node, x:Node)
+    requires ACYCLIC(g0)
+    requires x0 in g0
+    requires x in g0
+
+    requires ACYCLIC(g1)
+    requires x1 in g1
+
+    requires forall n:Ref :: { EXISTS_PATH(g0,x,n) }  n in g0 ==> EXISTS_PATH(g0,x,n)
+    requires forall n:Ref :: { EXISTS_PATH(g0,n,x0) } n in g0 ==> EXISTS_PATH(g0,n,x0)
+
+    requires forall m:Ref :: { EXISTS_PATH(g1,x1,m) } m in g1 ==> EXISTS_PATH(g1,x1,m)
+
+    requires x0.left == null || x0.right == null
+
+    //ensures GRAPH(g0 union g1)
+    ensures forall n:Ref :: { EXISTS_PATH(g0 union g1,x,n) } n in (g0 union g1) ==> EXISTS_PATH(g0 union g1,x,n)
+
+    ensures ACYCLIC(g0 union g1)
+
+{
+    if ( x0.left == null ) {
+        //link_left(g0 union g1,x0,x1)
+        x0.right := x1
+    } else {
+        //link_right(g0 union g1,x0,x1)
+        x0.left := x1
+    }
+}
+
+/*
+field next:Ref
+method join(g0:Graph, g1:Graph, x0:Node, x1:Node) returns (x:Ref, last:Ref)
+    requires x0 in g0
+    requires x1 in g1
+    requires ACYCLIC_LIST_SEGMENT(g0)
+    requires ACYCLIC_LIST_SEGMENT(g1)
+    requires IS_GLOBAL_ROOT(g0,x0)
+    requires IS_GLOBAL_ROOT(g1,x1)
+
+    ensures forall u:Ref :: EXISTS_PATH(g0 union g1,x,u) <==> old( EXISTS_PATH(g0,x0,u) ) || old( EXISTS_PATH(g1,x1,u) )
+    ensures forall u:Ref, v:Ref :: EDGE(g0 union g1,u,v) <==> old( EDGE(g0,u,v) ) || old( EDGE(g1,u,v) ) || (u==last && v==x1)
+    ensures ACYCLIC_LIST_SEGMENT(g0 union g1)
+{
+    last := x0
+    if ( last == null ) {
+        x := x1
+    } else {
+        while ( last.next != null )
+            // Preserving the info from the precondition:
+
+            //invariant GRAPH(g0)
+            invariant !(null in g0)
+                          && ( forall n:Ref :: {n.next} n in g0 ==> acc(n.next) )
+                          && ( forall n:Ref ::
+                              {n.next in g0}
+                              {n in g0, n.next}
+                                  n in g0 && n.next != null ==> n.next in g0 )
+
+            invariant x0 in g0
+            invariant GRAPH(g1)
+            invariant x1 in g1
+
+            //invariant disjoint_sets(g0,g1)
+            invariant ( forall r:Ref :: { r in g0, r in g1 } r in g0 ==> !(r in g1) ) && ( forall r:Ref :: { r in g0, r in g1 } r in g1 ==> !(r in g0) )
+
+            invariant ACYCLIC_LIST_SEGMENT(g0)
+            invariant ACYCLIC_LIST_SEGMENT(g1)
+            invariant IS_GLOBAL_ROOT(g0,x0)
+            invariant IS_GLOBAL_ROOT(g1,x1)
+
+            // Counter variable:
+            invariant last in g0
+
+            // The loop does not mutate the graph's edges
+            invariant $$(g0) == old($$(g0))
+            invariant $$(g1) == old($$(g1))
+        {
+            last := last.next
+        }
+
+        last.next := x1
+    }
+    x := x0
+}
+*/

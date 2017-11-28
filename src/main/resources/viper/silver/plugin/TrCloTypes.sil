@@ -1,0 +1,31 @@
+/*
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ */
+
+domain Node {}
+
+domain Graph {}
+
+domain List {}
+
+/*
+define $$(nodes) true
+
+define GRAPH(nodes)
+    !(null in nodes)
+    && ( forall n:Ref :: {n.next} n in nodes ==> acc(n.next) )
+    && ( forall n:Ref ::
+        {n.next in nodes}
+        {n in nodes, n.next}
+            n in nodes && n.next != null ==> n.next in nodes )
+
+define EDGE(nodes,x,y) edge($$(nodes),x,y)
+define EXISTS_PATH(nodes,x,y) exists_path($$(nodes),x,y)
+define IS_GLOBAL_ROOT(nodes,x) (forall n:Ref :: n in g ==> exists_path($$(g),root,n))
+define ACYCLIC(nodes) acyclic_graph($$(nodes))
+define UNSHARED(nodes) unshared_graph($$(nodes))
+define FUNCTIONAL(nodes) func_graph($$(nodes))
+define ACYCLIC_LIST_SEGMENT(nodes) (acyclic_graph($$(g)) && func_graph($$(g)) && unshared_graph($$(g)))
+*/
