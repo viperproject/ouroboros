@@ -53,32 +53,77 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
     case Nil => TrueLit()(pos, info, errT)
   }
 
-  private def getQPsForRefFields(fields:Seq[PField], graph_exp: PExp): Seq[PExp] = {
-    // forall n:Ref :: {n.field_i} n in nodes ==> acc(n.field_i)
-    fields.map(f => PForall(
-      Seq(PFormalArgDecl(PIdnDef("n"), TypeHelper.Ref)),
-      Seq(PTrigger( Seq( PFieldAccess(PIdnUse("n"),PIdnUse(f.idndef.name)) ) )),
-      PBinExp( PBinExp(PIdnUse("n"), "in", graph_exp.deepCopyAll[PExp]), "==>", PAccPred(PFieldAccess(PIdnUse("n"), PIdnUse(f.idndef.name)), PFullPerm()))))
-  }
+  // forall n:Ref :: {n.field_i} n in nodes ==> acc(n.field_i,perm_exp)
+  private def getQPForGraphNodes(graph_exp: PExp, field: String, perm_exp: PExp = PFullPerm()): PExp = PForall(
+    Seq(PFormalArgDecl(PIdnDef("n"), TypeHelper.Ref)),
+    Seq(PTrigger( Seq( PFieldAccess(PIdnUse("n"),PIdnUse(field))))),
+    PBinExp( PBinExp(PIdnUse("n"), "in", graph_exp.deepCopyAll[PExp]), "==>", PAccPred(PFieldAccess(PIdnUse("n"), PIdnUse(field)), perm_exp.deepCopyAll[PExp])))
 
-  private def concatInGraphForallsForRefFields(fields:Seq[PField], graph_exp: PExp): PExp = {
-    // forall n:Ref ::{n.field_i in nodes}{n in nodes, n.field_i} n in nodes && n.field_i != null ==> n.field_i in nodes
-    val foralls: Seq[PForall] = fields.map(f => PForall(
-      Seq(PFormalArgDecl(PIdnDef("n"), TypeHelper.Ref)),
-      Seq(
-        PTrigger( Seq(PBinExp(PFieldAccess(PIdnUse("n"), PIdnUse(f.idndef.name)), "in", graph_exp.deepCopyAll[PExp])) ),
-        PTrigger( Seq(PBinExp(PIdnUse("n"), "in", graph_exp.deepCopyAll[PExp]), PFieldAccess(PIdnUse("n"), PIdnUse(f.idndef.name))))),
-      PBinExp( PBinExp(PBinExp(PIdnUse("n"), "in", graph_exp.deepCopyAll[PExp]), "&&", PBinExp(PFieldAccess(PIdnUse("n"), PIdnUse(f.idndef.name)), "!=", PNullLit())), "==>", PBinExp(PFieldAccess(PIdnUse("n"), PIdnUse(f.idndef.name)), "in", graph_exp.deepCopyAll[PExp]))))
+  // ( forall n:Ref :: {n.field_i} n in nodes && n != mutable_node ==> acc(n.field_i,1/2) )
+  private def getQPForGraphNodesExcept(graph_exp: PExp, field: String, perm_exp: PExp = PFullPerm(), except_node: PExp): PExp = PForall(
+    Seq(PFormalArgDecl(PIdnDef("n"), TypeHelper.Ref)),
+    Seq(PTrigger( Seq( PFieldAccess(PIdnUse("n"),PIdnUse(field))))),
+    PBinExp( PBinExp( PBinExp(PIdnUse("n"), "in", graph_exp.deepCopyAll[PExp]), "&&", PBinExp(PIdnUse("n"), "!=", except_node.deepCopyAll[PExp])), "==>", PAccPred(PFieldAccess(PIdnUse("n"), PIdnUse(field)), perm_exp.deepCopyAll[PExp])))
 
-    seqOfPExpToPExp(foralls, "&&")
-  }
+  // forall n:Ref ::{n.field_i in nodes}{n in nodes, n.field_i} n in nodes && n.field_i != null ==> n.field_i in nodes
+  private def getInGraphForallForField(graph_exp: PExp, field: String): PExp = PForall(
+    Seq(PFormalArgDecl(PIdnDef("n"), TypeHelper.Ref)),
+    Seq(
+      PTrigger( Seq(PBinExp(PFieldAccess(PIdnUse("n"), PIdnUse(field)), "in", graph_exp.deepCopyAll[PExp])) ),
+      PTrigger( Seq(PBinExp(PIdnUse("n"), "in", graph_exp.deepCopyAll[PExp]), PFieldAccess(PIdnUse("n"), PIdnUse(field))))),
+    PBinExp( PBinExp(PBinExp(PIdnUse("n"), "in", graph_exp.deepCopyAll[PExp]), "&&", PBinExp(PFieldAccess(PIdnUse("n"), PIdnUse(field)), "!=", PNullLit())), "==>", PBinExp(PFieldAccess(PIdnUse("n"), PIdnUse(field)), "in", graph_exp.deepCopyAll[PExp])))
 
+
+  private def collectQPsForRefFields(fields: Seq[String], graph_exp: PExp, perm_exp: PExp = PFullPerm()): Seq[PExp] =
+    fields.map(f => getQPForGraphNodes(graph_exp, f, perm_exp))
+
+  private def collectQPsForRefFieldsProtected(fields: Seq[String], mutable_node_exp: PExp, graph_exp: PExp): Seq[PExp] =
+    fields.map(f => getQPForGraphNodesExcept(graph_exp, f, PBinExp(PIntLit(1), "/", PIntLit(2)), mutable_node_exp))
+
+  private def collectInGraphForallsForRefFields(fields: Seq[String], graph_exp: PExp): Seq[PExp] =
+    fields.map(f => getInGraphForallForField(graph_exp, f))
+
+
+  /*
   private def GRAPH(prog: PProgram, graph_exp: PExp) = PBinExp(
     // !(null in nodes)
     PUnExp("!", PBinExp(PNullLit(), "in", graph_exp.deepCopyAll[PExp])),
     "&&", PBinExp(
       seqOfPExpToPExp(getQPsForRefFields(prog.fields, graph_exp.deepCopyAll[PExp]), "&&"), "&&",
       concatInGraphForallsForRefFields(prog.fields, graph_exp.deepCopyAll[PExp])))
+  */
+
+  private def GRAPH(prog: PProgram, graph_exp: PExp, fields: Seq[String]) = seqOfPExpToPExp(
+    (PUnExp("!", PBinExp(PNullLit(), "in", graph_exp.deepCopyAll[PExp])) +:
+    collectQPsForRefFields(fields, graph_exp, PFullPerm())) ++
+    collectInGraphForallsForRefFields(fields, graph_exp), "&&")
+
+  private def PROTECTED_GRAPH(prog: PProgram, graph_exp: PExp, fields: Seq[String], mutable_node_exp: PExp, mutable_field: String) = seqOfPExpToPExp(Seq(
+    PUnExp("!", PBinExp(PNullLit(), "in", graph_exp.deepCopyAll[PExp])),
+    PBinExp(mutable_node_exp.deepCopyAll[PExp], "in", graph_exp.deepCopyAll[PExp])
+  ) ++ fields.map(f =>
+      if (f == mutable_field)
+        PAccPred(PFieldAccess(mutable_node_exp.deepCopyAll[PExp], PIdnUse(f)), PFullPerm())
+      else
+        PAccPred(PFieldAccess(mutable_node_exp.deepCopyAll[PExp], PIdnUse(f)), PBinExp(PIntLit(1), "/", PIntLit(2)))) ++
+    collectQPsForRefFieldsProtected(fields, mutable_node_exp, graph_exp) ++
+    collectInGraphForallsForRefFields(fields, graph_exp), "&&")
+
+
+   /*
+    PBinExp(
+    PUnExp("!", PBinExp(PNullLit(), "in", graph_exp.deepCopyAll[PExp])),
+    "&&", PBinExp( PBinExp(mutable_node_exp.deepCopyAll[PExp], "in", graph_exp.deepCopyAll[PExp]),
+      "&&", PBinExp(
+
+
+            PAccPred(PFieldAccess(mutable_node_exp.deepCopyAll[PExp], PIdnUse(f_name)), PFullPerm()),
+            PAccPred(PFieldAccess(mutable_node_exp.deepCopyAll[PExp], PIdnUse(f_name)), PBinExp(PIntLit(1), "/", PIntLit(2)))
+
+        "&&", PBinExp(
+          seqOfPExpToPExp(getQPsForRefFieldsProtected(prog.fields, mutable_node_exp, graph_exp.deepCopyAll[PExp]), "&&"), "&&",
+          concatInGraphForallsForRefFields(prog.fields, graph_exp.deepCopyAll[PExp])))))
+  */
 
   /* FIXME decided to use old(EXISTS_PATH(...)) for now.
   private def evalEdgeRelationInCorrectState(prog: PProgram, graph_exp: PExp): PExp = {
@@ -111,7 +156,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
 
   private def IS_GLOBAL_ROOT(prog: PProgram, graph_exp: PExp, root_node: PExp) = PForall(
     Seq(PFormalArgDecl(PIdnDef("n"), TypeHelper.Ref)),
-    Seq(), /** FIXME: add the right trigger(s). */
+    Seq( PTrigger(Seq(EXISTS_PATH(prog, graph_exp, root_node.deepCopyAll[PExp], PIdnUse("n")))) ),
     PBinExp(PBinExp(PIdnUse("n"), "in", graph_exp.deepCopyAll[PExp]), "==>", EXISTS_PATH(prog, graph_exp, root_node.deepCopyAll[PExp], PIdnUse("n")))
   )
 
@@ -155,6 +200,10 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
         PUnExp("!",
           PBinExp(PIdnUse("n"), "in", g0)))))
 
+  def ref_fields(prog: PProgram): Seq[String] = prog.fields.collect {
+    case PField(f, t) if t == TypeHelper.Ref => f.name
+  }
+
   def handlePMethod(input: PProgram, m: PMethod): PNode = {
 
     def collect_objects(collection: Seq[PFormalArgDecl], typename: String): Seq[OurObject] = collection.collect {
@@ -172,7 +221,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
 
     def map_graphs_to_contracts(objects: Seq[OurObject]): Seq[PExp] = objects.collect {
       case o => { o.typ match {
-        case n@ OurGraph => GRAPH(input, PIdnUse(o.name))
+        case n@ OurGraph => GRAPH(input, PIdnUse(o.name), ref_fields(input))
       }}
     }
 
@@ -206,7 +255,9 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
       if (output_graphs.nonEmpty)
         map_graphs_to_contracts(output_graphs)
       else if (input_graphs.nonEmpty)
-        Seq(GRAPH(input, seqOfPExpToPExp(input_graphs.collect{ case o => { o.typ match { case g@ OurGraph => PIdnUse(o.name) } } }, "union")))
+        Seq(GRAPH(input, seqOfPExpToPExp(input_graphs.collect {
+          case o => { o.typ match { case g@ OurGraph => PIdnUse(o.name) } }
+        }, "union"), ref_fields(input)))
       else
         Seq()
 
@@ -226,7 +277,12 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
   def handlePCall(input: PProgram, m: PCall): PNode = {
 
     m.func.name match {
-      case "GRAPH" if m.args.length == 1 => GRAPH(input, m.args(0))
+      case "GRAPH" if m.args.length == 1 => GRAPH(input, m.args(0), ref_fields(input))
+      case "PROTECTED_GRAPH" if m.args.length == 3 => m.args(2) match {
+        case PIdnUse(f_name) =>
+          PROTECTED_GRAPH(input, m.args(0), ref_fields(input), m.args(1), f_name)
+        case _ => m
+      }
 
       case "EDGE" if m.args.length == 3 => EDGE(input, m.args(0), m.args(1), m.args(2))
       case "EXISTS_PATH" if m.args.length == 3 => EXISTS_PATH(input, m.args(0), m.args(1), m.args(2))
@@ -241,26 +297,35 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
 
   }
 
-  private def synthesizeLinkMethods(input: PProgram): Seq[PMethod] = input.methods.collect {
-      case m: PMethod if m.idndef.name == "link_$field$" =>
-          input.fields.collect {
-            case f: PField  =>
-              val new_m = m.deepCopy(
-                idndef = PIdnDef(s"link_${f.idndef.name}"),
-                posts = m.posts ++ Seq(PBinExp(
-                  PFieldAccess(
-                    PIdnUse("x"), PIdnUse(f.idndef.name)),
-                    "==",
-                    PIdnUse("y"))))
-              new_m
-          }
-      case m: PMethod => Seq(m)
+  private def synthesizeFieldParametricMethods(input: PProgram): Seq[PMethod] = input.methods.collect {
+    case m: PMethod if m.idndef.name == "link_$field$" =>
+      input.fields.collect {
+        case f: PField =>
+          val new_m = m.deepCopyWithNameSubstitution(
+            idndef = PIdnDef(s"link_${f.idndef.name}"))(
+            "$field$", f.idndef.name)
+          new_m
+      }
+    case m: PMethod if m.idndef.name == "unlink_$field$" =>
+      input.fields.collect {
+        case f: PField =>
+          val new_m = m.deepCopyWithNameSubstitution(
+            idndef = PIdnDef(s"unlink_${f.idndef.name}"))(
+            "$field$", f.idndef.name)
+          new_m
+      }
+    case m: PMethod => Seq(m)
 
-    } flatten
+  } flatten
+
+  private def read = PBinExp(PIntLit(1), "/", PIntLit(2)).deepCopyAll[PExp]
 
   private def synthesizeApplyTCFramingHDF(input: PProgram): Seq[PFunction] = input.functions.collect {
     case proto_f: PFunction if proto_f.idndef.name == "apply_TCFraming" =>
-      proto_f.deepCopy(pres = getQPsForRefFields(input.fields, PIdnUse("g0")) ++ getQPsForRefFields(input.fields, PIdnUse("g1")) ++ proto_f.pres)
+      proto_f.deepCopy(pres =
+        collectQPsForRefFields(ref_fields(input), PIdnUse("g0"), this.read) ++
+          collectQPsForRefFields(ref_fields(input), PIdnUse("g1"), this.read) ++
+          proto_f.pres)
     case f: PFunction => f
   }
 
@@ -271,7 +336,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
         PIdnDef("nodes"),
         PSetType(TypeHelper.Ref)) ),
     PSetType(PDomainType(PIdnUse("Edge"), Seq())),
-    getQPsForRefFields(input.fields, PIdnUse("nodes")),
+    collectQPsForRefFields(ref_fields(input), PIdnUse("nodes"), this.read),
     Seq(
       PForall(
         Seq(
@@ -335,7 +400,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
     input.fields,
     synthesizeApplyTCFramingHDF(input) :+ $$(input),
     input.predicates,
-    synthesizeLinkMethods(input),
+    synthesizeFieldParametricMethods(input),
     input.errors)
 
   private def getNoExitWisdom(input: Program, g0:Exp, g1:Exp)(pos: Position = NoPosition, info: Info = NoInfo, errT: ErrorTrafo = NoTrafos): Stmt = {
@@ -435,6 +500,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
           Seqn(
             Seq(
               getOperationalWisdoms(input, m, ctx)(fa.pos, fa.info, fa.errT),
+              MethodCall(s"unlink_${fa.lhs.field.name}", Seq(local_g, fa.lhs.rcv), Seq())(fa.pos, fa.info, fa.errT),
               MethodCall(s"link_${fa.lhs.field.name}", Seq(local_g, fa.lhs.rcv, fa.rhs), Seq())(fa.pos, fa.info, fa.errT)),
             Seq())(fa.pos, fa.info, fa.errT)
       })

@@ -7,9 +7,9 @@
 method link_$field$(g:Set[Ref], x:Ref, y:Ref)
     requires x in g
     requires y != null ==> y in g
-    requires GRAPH(g)
-    ensures GRAPH(g)
-    //ensures x.next == y
+    requires PROTECTED_GRAPH(g,x,$field$)
+    ensures PROTECTED_GRAPH(g,x,$field$)
+    ensures x.$field$ == y
     ensures y == null ==> $$(g) == old($$(g))
     ensures y != null ==> forall v1:Ref, v2:Ref ::
         { edge(old($$(g)),v1,v2) }
@@ -17,6 +17,22 @@ method link_$field$(g:Set[Ref], x:Ref, y:Ref)
     ensures y != null ==> forall v1:Ref, v2:Ref ::
         { exists_path($$(g),v1,v2) }
             exists_path($$(g),v1,v2) <==> exists_path(old($$(g)),v1,v2) || (exists_path(old($$(g)),v1,x) && exists_path(old($$(g)),y,v2))
+
+
+method unlink_$field$(g:Set[Ref], x:Ref)
+    requires x in g
+    requires PROTECTED_GRAPH(g,x,$field$)
+    ensures PROTECTED_GRAPH(g,x,$field$)
+    ensures x.$field$ == null
+    ensures old(x.$field$) == null ==> $$(g) == old($$(g))
+    ensures old(x.$field$) != null ==> forall v1:Ref, v2:Ref ::
+        { edge($$(g),v1,v2) }
+            edge($$(g),v1,v2) <==> edge(old($$(g)),v1,v2) && !(v1==x && v2==old(x.$field$))
+    ensures old(x.$field$) != null ==> (forall v1:Ref, v2:Ref ::
+        { exists_path($$(g),v1,v2) }
+            (v1 != v2) ==> (
+                exists_path($$(g),v1,v2) <==>
+                    exists_path(old($$(g)),v1,v2) && !(exists_path(old($$(g)),v1,x) && exists_path(old($$(g)),old(x.$field$),v2))))
 
 
 function apply_TCFraming(g0:Set[Ref], g1:Set[Ref]): Bool

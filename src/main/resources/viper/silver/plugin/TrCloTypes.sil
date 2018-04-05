@@ -21,9 +21,19 @@ define GRAPH(nodes)
         {n in nodes, n.next}
             n in nodes && n.next != null ==> n.next in nodes )
 
+define PROTECTED_GRAPH(nodes, mutable_node)
+    !(null in nodes)
+    && ( mutable_node in nodes )
+    && acc(mutable_node.next, write)
+    && ( forall n:Ref :: {n.next} n in nodes && n != mutable_node ==> acc(n.next,1/2) )
+    && ( forall n:Ref ::
+        {n.next in nodes}
+        {n in nodes, n.next}
+            n in nodes && n.next != null ==> n.next in nodes )
+
 define EDGE(nodes,x,y) edge($$(nodes),x,y)
 define EXISTS_PATH(nodes,x,y) exists_path($$(nodes),x,y)
-define IS_GLOBAL_ROOT(nodes,x) (forall n:Ref :: n in g ==> exists_path($$(g),root,n))
+define IS_GLOBAL_ROOT(nodes,x) (forall n:Ref :: { exists_path($$(g),,n) } n in g ==> exists_path($$(g),root,n))
 define ACYCLIC(nodes) acyclic_graph($$(nodes))
 define UNSHARED(nodes) unshared_graph($$(nodes))
 define FUNCTIONAL(nodes) func_graph($$(nodes))

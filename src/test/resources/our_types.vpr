@@ -1,3 +1,5 @@
+field left:Ref
+field right:Ref
 
 //method test_types(g0:Graph, n0:Node, g1:Graph, l0:List) returns (g_res:Graph, n_res:Node)
 
@@ -10,8 +12,32 @@ method test_link(g0:Graph, x1:Node, x2:Node, x3:Node, g1:Graph)
     x1.right := null
 }*/
 
+
+
+
+
+
+
+
+
+method test_link_1(g0:Graph, x:Node)
+    requires x in g0
+{
+    x.left := x.right
+    x.right := null
+}
+
 /*
-method test_link_1(g0:Graph, g1:Graph, g2:Graph, x:Node, y:Node)
+method test_link_2(g0:Graph, g1:Graph, x:Node)
+    requires x in g0
+{
+    x.left := x.right
+    x.right := null
+}*/
+
+
+/*
+method test_link_3(g0:Graph, g1:Graph, g2:Graph, x:Node)
     requires x in g0
 {
     x.left := x.right
@@ -19,7 +45,23 @@ method test_link_1(g0:Graph, g1:Graph, g2:Graph, x:Node, y:Node)
 }*/
 
 /*
-method test_link_1(g0:Graph, g1:Graph, g2:Graph, g3:Graph, x:Node, y:Node)
+method test_link_4(g0:Graph, g1:Graph, g2:Graph, g3: Graph, x:Node)
+    requires x in g0
+{
+    x.left := x.right
+    x.right := null
+}*/
+
+/*
+method test_link_3(g0:Graph, g1:Graph, g2:Graph, x:Node, y:Node)
+    requires x in g0
+{
+    x.left := x.right
+    x.right := null
+}*/
+
+/*
+method test_link_4(g0:Graph, g1:Graph, g2:Graph, g3:Graph, x:Node, y:Node)
     requires x in g0
 {
     x.left := x.right
@@ -27,9 +69,8 @@ method test_link_1(g0:Graph, g1:Graph, g2:Graph, g3:Graph, x:Node, y:Node)
 }*/
 
 
-field left:Ref
-field right:Ref
 
+/*
 method connect_DAGs(g0:Graph, g1:Graph, x0:Node, x1:Node, x:Node)
     requires ACYCLIC(g0)
     requires x0 in g0
@@ -58,7 +99,7 @@ method connect_DAGs(g0:Graph, g1:Graph, x0:Node, x1:Node, x:Node)
         //link_right(g0 union g1,x0,x1)
         x0.left := x1
     }
-}
+}*/
 
 /*
 field next:Ref

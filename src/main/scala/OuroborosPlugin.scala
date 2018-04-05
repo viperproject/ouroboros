@@ -27,6 +27,9 @@ class OuroborosPlugin extends SilverPlugin {
 
     println(">>> beforeResolve")
 
+
+    //val pprog = addPreamble(input, "/viper/silver/plugin/TrCloDomain.sil")
+
     val pprog: PProgram =
       addPreamble(
         addPreamble(
@@ -55,7 +58,7 @@ class OuroborosPlugin extends SilverPlugin {
     // Construct the parent relation for the overall PAST:
     newProg.initProperties()
 
-    //println(newProg)
+    println(newProg)
 
     newProg
   }
