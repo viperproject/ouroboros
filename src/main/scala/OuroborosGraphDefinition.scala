@@ -44,7 +44,9 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
   private def seqOfPExpToPExp(exp_seq: Seq[PExp], binary_oper: String): PExp = exp_seq.toList match {
     case e :: Nil => e
     case e :: tail => PBinExp(e, binary_oper, seqOfPExpToPExp(tail, binary_oper))
-    case Nil => PBoolLit(true)
+    case Nil =>
+      sys.error(s"In seqOfPExpToPExp we have reached Nil, but that should never happen.")
+      PBoolLit(true)
   }
 
   private def seqOfExpToUnionExp(exp_seq: Seq[Exp])(pos: Position = NoPosition, info: Info = NoInfo, errT: ErrorTrafo = NoTrafos): Exp = exp_seq.toList match {
@@ -348,12 +350,15 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
         PBinExp(
           PBinExp(
             PBinExp(
-              PBinExp(PIdnUse("p"), "in", PIdnUse("nodes")),
+              PBinExp(
+                PBinExp(PIdnUse("p"), "in", PIdnUse("nodes")),
+                "&&",
+                PBinExp(PIdnUse("s"), "in", PIdnUse("nodes"))),
               "&&",
-              PBinExp(PIdnUse("s"), "in", PIdnUse("nodes"))),
+              seqOfPExpToPExp(input.fields.map( f => PBinExp(
+                PFieldAccess(PIdnUse("p"),PIdnUse(f.idndef.name) ), "==", PIdnUse("s"))), "||")),
             "&&",
-            seqOfPExpToPExp(input.fields.map( f => PBinExp(
-              PFieldAccess(PIdnUse("p"),PIdnUse(f.idndef.name) ), "==", PIdnUse("s"))), "||")),
+            PBinExp(PIdnUse("p"), "!=", PIdnUse("s"))),
           "<==>",
           PBinExp(
             PCall(PIdnUse("create_edge"),Seq(PIdnUse("p"),PIdnUse("s"))),
