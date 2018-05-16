@@ -1,0 +1,113 @@
+
+/*
+define UNSHARED_CONNECTED(g)
+    ( forall v1:Ref, v2:Ref, v:Ref :: { v in g, v1.next, v2.next } v1 in g && v2 in g && v in g ==> ( v1.next == v && v2.next == v ==> v1 == v2 ) )
+    && ( forall v:Ref :: { v.next } v in g ==> ( v == v.next <==> g == Set(v) ) )
+
+define RING(nodes)
+    !(null in nodes)
+    && ( forall n:Ref :: {n.next} n in nodes ==> acc(n.next) )
+    && ( forall n:Ref ::
+        {n.next in nodes}
+        {n in nodes, n.next}
+            n in nodes ==> n.next in nodes )
+
+
+
+
+
+
+
+
+*/
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+field next:Ref
+//field val:Int
+
+
+/*
+method ringInsert(g:Graph, start:Node, x:Int)
+    returns (new_g:Graph, new_node:Node, new_start:Node)
+
+    requires RING(g)
+    requires UNSHARED_CONNECTED(g)
+    requires start in g
+
+    requires forall n:Node, m:Node ::
+        { EXISTS_PATH(g,n,m) }
+            n in g && m in g ==> EXISTS_PATH(g,n,m) && EXISTS_PATH(g,m,n)
+
+    requires forall n:Ref :: { n.val } n in g ==> acc(n.val)
+
+    ensures RING(new_g)
+    ensures UNSHARED_CONNECTED(new_g)
+    ensures new_start in new_g
+    ensures !(new_node in g) && new_node in new_g
+
+    // ensures forall n:Ref, m:Ref ::
+    //     { exists_path($$(new_g),n,m) }
+    //         n in new_g && m in new_g
+    //             ==> exists_path($$(new_g),n,m) && exists_path($$(new_g),m,n)
+{
+    new_g, new_node := create_node(g, x)
+
+    var node:Ref := start
+
+    while ( !( node.val <= x && x < node.next.val
+               || node.next == start && ( node.val <= x || x < start.val ) ) )
+
+        invariant RING(g)
+        invariant UNSHARED_CONNECTED(g)
+        invariant node in g
+
+        invariant forall n:Node, m:Node ::
+            { EXISTS_PATH(g,n,m) }
+                n in g && m in g ==> EXISTS_PATH(g,n,m) && EXISTS_PATH(g,m,n)
+    {
+        node := node.next
+    }
+
+    if ( node.next == start && x < start.val ) {
+        new_start := new_node
+    } else {
+        new_start := start
+    }
+
+    new_node.next := node.next
+    node.next := new_node
+*/

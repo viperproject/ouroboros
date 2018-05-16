@@ -1,0 +1,91 @@
+field next:Ref
+//field boohoo: Ref
+
+method swap(g:Graph, x:Node, i:Int, j:Int)
+    // value parameters
+    requires 0 <= i && i < j
+
+    // node-graph relations
+    requires x in g
+
+    // reachability
+    requires ACYCLIC_LIST_SEGMENT(g)
+    requires IS_GLOBAL_ROOT(g,x)
+{
+    var count:Int := 0
+
+    var prev_node:Ref := x
+    var node:Ref := x.next
+
+    var prev_i:Ref := null
+    var node_i:Ref := null
+
+    while ( node != null && count <= j )
+        // TODO: value parameter constraints must be preserved (?)
+        invariant 0 <= i && i < j
+
+        // TODO: memory safety should come from GraphTypes and node-graph relations
+        invariant x in g
+        // TODO: generate automatically
+        invariant GRAPH(g)
+
+        // TODO[handwritten specs]
+        // counter variables
+        invariant 0 <= count
+
+        // TODO[handwritten specs]
+        // nodes
+        invariant node != null ==> node in g
+        invariant count <= j ==> prev_node in g
+        invariant i < count ==> node_i in g && prev_i in g
+        invariant count <= j ==> prev_node.next == node
+
+
+        // TODO[handwritten specs with reachability]
+        // reachability
+        invariant ACYCLIC_LIST_SEGMENT(g)
+        invariant IS_GLOBAL_ROOT(g,x)
+
+        // TODO: reachability wisdoms mush be injected automatically.
+        invariant node_i != null ==> EXISTS_PATH(g,prev_i,node_i)
+        invariant node_i != null ==> EXISTS_PATH(g,node_i,prev_node)
+        invariant node != null ==> EXISTS_PATH(g,prev_node,node)
+    {
+        // phase i: count < i
+        if ( count == i )
+        {
+            // phase ii: count == i
+            node_i := node
+            prev_i := prev_node
+        }
+        // phase iii: i < count < j
+        if ( count == j )
+        {
+            // phase iv: count == j
+            var node_j:Ref := node
+            var prev_j:Ref := prev_node
+            var exit:Ref := node_j.next
+
+            // -- swap node_i and node_j --
+
+            prev_i.next := node_j
+
+            if ( node_i.next != node_j ) {
+                node_j.next := node_i.next
+                prev_j.next := node_i
+
+            } else { // node_i == prev_j
+                node_j.next := node_i
+            }
+            node_i.next := exit
+        }
+
+        prev_node := node
+        node := node.next
+        count := count + 1
+
+        // why can this not be moved to the invariant? :-(
+        // or it can be moved, but with 3x perf drop
+        assert node != null ==> exists_path($$(g),node,node) && exists_path($$(g),prev_node,node)
+    }
+}

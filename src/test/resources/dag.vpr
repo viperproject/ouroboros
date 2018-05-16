@@ -1,0 +1,11 @@
+field left: Ref
+field right: Ref
+
+method join_dag( g0:Graph, g1:Graph, x: Node, y: Node ) returns ( g: Graph )
+    requires x in g0
+    requires y in g1
+    ensures g == g0 union g1
+{
+    x.left := y
+    // ...
+}
