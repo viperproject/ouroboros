@@ -1,0 +1,9 @@
+//Assume TC_Framing does not work
+field next:Ref //Node
+method join(g1 : Graph, g2 : Graph) returns (g:Graph)
+ensures forall n:Ref, n2:Ref :: n in g1 && n2 in g1 && exists_path($$(old(g1)), n, n2) ==> exists_path($$(g), n, n2)
+{
+    //assume apply_TCFraming(g1, g2)
+    g := g1 union g2
+    assert forall n:Ref, n2:Ref :: n in g1 && n2 in g1 && exists_path($$(old(g1)), n, n2) ==> exists_path($$(g), n, n2)
+}

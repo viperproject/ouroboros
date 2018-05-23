@@ -1,0 +1,16 @@
+//postcondition "ensures g1 union g2 == g" is always inserted, if two graphs are taken as arguments,
+ // and one graph is returned.
+ /*field next:Node
+ graph_method test(...)(g0, g1: Inputs): (g: Output) returns (...)
+ {
+ assert true
+ }*/
+
+
+//postcondition "ensures g1 union g2 == g" is always inserted, if two graphs are taken as arguments,
+// and one graph is returned.
+field next:Node
+method test(g0: Graph, g1: Graph) returns  (g: Graph)
+{
+assert true
+}

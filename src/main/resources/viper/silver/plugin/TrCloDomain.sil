@@ -160,4 +160,11 @@ domain TrClo {
                         { edge(EG,v,v1), edge(EG,v,v2) }
                             edge(EG,v,v1) && edge(EG,v,v2) ==> v1 == v2
     }
+
+    axiom ax_ExistsSetPath {
+        forall EG:Set[Edge], from:Set[Ref], to:Ref ::
+            { exists_spath(EG,from,to) }
+                exists_spath(EG,from,to) <==>
+                    exists f:Ref :: f in from && exists_path(EG,f,to)
+        }
 }

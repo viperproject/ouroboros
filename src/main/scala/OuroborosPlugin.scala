@@ -8,7 +8,8 @@ package viper.silver.plugin
 
 import java.io.{File, FileOutputStream, InputStream}
 import java.net.URL
-import java.nio.file.{Path, Paths}
+import java.nio.charset.StandardCharsets
+import java.nio.file.{Files, Path, Paths}
 
 import viper.silver.ast._
 import viper.silver.ast.utility.Rewriter.{Strategy, StrategyBuilder, Traverse}
@@ -23,9 +24,11 @@ class OuroborosPlugin extends SilverPlugin {
 
   val graph_handler = new OuroborosGraphDefinition(this)
 
+  var translatedCode = ""
+
   override def beforeResolve(input: PProgram): PProgram = {
 
-    println(">>> beforeResolve")
+    println(">>> beforeResolve " + Thread.currentThread().getId)
 
 
     //val pprog = addPreamble(input, "/viper/silver/plugin/TrCloDomain.sil")
@@ -50,6 +53,7 @@ class OuroborosPlugin extends SilverPlugin {
         case p: PProgram => graph_handler.synthesizeParametricEntities(pprog)
         case m: PMethod => graph_handler.handlePMethod(pprog, m)
         case m: PCall => graph_handler.handlePCall(pprog, m)
+        case m: PField => graph_handler.handlePField(pprog, m) //TODO Fields, Domains
       }
     )
 
@@ -79,7 +83,7 @@ class OuroborosPlugin extends SilverPlugin {
 
     val inputPrime = ourRewriter.execute[Program](input)
 
-    println(inputPrime)
+    translatedCode = inputPrime.toString()
     inputPrime
   }
 

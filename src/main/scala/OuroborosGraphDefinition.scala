@@ -7,7 +7,7 @@
 package viper.silver.plugin
 
 import scala.collection.{immutable, mutable}
-import viper.silver.ast
+import viper.silver.{ast, parser}
 import viper.silver.ast.utility.Rewriter.{ContextC, Rewritable}
 import viper.silver.ast._
 import viper.silver.parser.{PFormalArgDecl, _}
@@ -38,6 +38,8 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
         case "List" => PFormalArgDecl(decl.idndef, PSetType(TypeHelper.Ref))
         case _ => decl
       }
+    case d: PSetType =>
+      PFormalArgDecl(decl.idndef, PSetType(handlePFormalArgDecl(input, PFormalArgDecl(decl.idndef, d.elementType)).typ))
     case _ => decl
   }
 
@@ -204,6 +206,9 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
 
   def ref_fields(prog: PProgram): Seq[String] = prog.fields.collect {
     case PField(f, t) if t == TypeHelper.Ref => f.name
+    case x:PField => x.typ match {
+      case d: PDomainType if d.domain.name == "Node" => x.idndef.name
+    }
   }
 
   def handlePMethod(input: PProgram, m: PMethod): PNode = {
@@ -211,7 +216,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
     def collect_objects(collection: Seq[PFormalArgDecl], typename: String): Seq[OurObject] = collection.collect {
       case x:PFormalArgDecl if (x.typ match {
         case d: PDomainType if d.domain.name == typename => true
-        case _ => false
+        case _ => false//TODO set of Graphs
       }) => OurObject(x.idndef.name, OurGraph)
     }
 
@@ -271,10 +276,90 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
       m.formalReturns.map(x => {
         handlePFormalArgDecl(input, x)
       }),
-      map_graphs_to_contracts(input_graphs) ++ disjoint_graph_specs(input_graphs) ++ m.pres,
-      output_graphs_footprint ++ union_graph_specs(input_graphs, output_graphs) ++ m.posts,
-      m.body)
+      map_graphs_to_contracts(input_graphs) ++ disjoint_graph_specs(input_graphs) ++ m.pres/*.map(x => {
+        handlePExp(input, x)
+      })*/,
+      output_graphs_footprint ++ union_graph_specs(input_graphs, output_graphs) ++ m.posts/*.map(x => { TODO remove union_graph_specs
+        handlePExp(input, x)
+      })*/,
+      handlePMethodBody(m.body,  input_graphs, output_graphs))
   }
+
+  //add Framing Axioms and later Coloring Axioms
+  def handlePMethodBody(body: Option[PStmt], input_graphs: Seq[OurObject], output_graphs: Seq[OurObject]): Option[PStmt] =
+    input_graphs.size match {
+      case a if a > 1 && output_graphs.size == 1 => Some(PSeqn((Seq(assignUnionGraphWithFraming(input_graphs, output_graphs)) /: body.map(handlePStmt(_, input_graphs)))(_ :+ _)))
+      case _ => body.map(handlePStmt(_, input_graphs))
+  }
+
+  def assignUnionGraphWithFraming(input_graphs: Seq[OurObject], output_graph: Seq[OurObject]): PStmt = {
+    PSeqn(Seq(getFramingAxioms(input_graphs.map(a => PIdnUse(a.name))) /*++ output_graph.map(a => PIdnUse(a.name))*/,//TODO we don't have access to the output graph yet, if we don't know what the output graph is
+      PVarAssign(
+        PIdnUse(
+          output_graph.last.name
+        ),
+        seqOfPExpToPExp(
+          input_graphs.map{ case o => PIdnUse(o.name) },
+          "union")
+      )
+    ))
+
+  }
+
+  def handlePStmt(stmt: PStmt, graphs: Seq[OurObject]): PStmt = {//TODO insert the coloring axioms
+    stmt
+    /*stmt match {
+      case PSeqn(_)  => PSeqn(stmt.childStmts.map(handlePStmt(_, graphs))) //TODO probably need also to visit the conditions
+      case PIf(a, b, c)  => PIf(a, PSeqn(b.childStmts.map(handlePStmt(_, graphs))), PSeqn(c.childStmts.map(handlePStmt(_, graphs))))
+      case PWhile(a, b, c)  => PWhile(a, b, PSeqn(c.childStmts.map(handlePStmt(_, graphs))))
+      case _ => stmt
+    }*/
+  }
+
+  def handlePField(input: PProgram, m: PField): PField = {
+    m.typ match {//TODO If fields of type Graph are used in a method, do we need to put requires Graph and ensures Graph?
+      case d: PDomainType =>
+        d.domain.name match {
+          case "Node" => PField(m.idndef, TypeHelper.Ref)
+          case "Graph" => PField(m.idndef, PSetType(TypeHelper.Ref))
+          case "List" => PField(m.idndef, PSetType(TypeHelper.Ref))
+          case _ => m
+        }
+      case d: PSetType =>
+        PField(m.idndef, PSetType(handlePField(input, PField(m.idndef, d.elementType)).typ))
+      case _ => m
+    }
+  }
+
+  def handlePExp(input: PProgram, m: PExp): PExp = {
+    m match {
+      case m: PQuantifier => handlePQuantifier(input, m)
+      case _ => m//TODO
+    }
+  }
+
+  def handlePQuantifier(input: PProgram, m: PQuantifier): PQuantifier = {
+    m match{
+      case m: PForall => PForall(m.vars.map(x => handlePFormalArgDecl(input, x)), m.triggers/*.map(x => PTrigger(x.exp.map(x => handlePExp(input, x))))*/,
+        handlePExp(input, m.body))
+      case m: PExists => PExists(m.vars.map(x => handlePFormalArgDecl(input, x)), m.body)//TODO handle PTrigger, PBody?
+    }
+  }
+
+  def getFramingAxioms(graphNames : Seq[PIdnUse]): PStmt = {
+    graphNames.size match {
+      case a: Int if a <= 1 => PSkip()
+      case _ => PSeqn(graphNames.flatMap(a =>
+        graphNames.filter(b => !b.name.equals(a.name) && graphNames.indexOf(b) > graphNames.indexOf(a))
+          .map(b => assumeApplyTCFraming(a, b))))
+    }
+
+  }
+
+  def assumeApplyTCFraming(exp: PExp, exp1: PExp): PStmt = {
+    PAssume(PCall(PIdnUse("apply_TCFraming"), Seq(exp, exp1)))
+  }
+
 
   def handlePCall(input: PProgram, m: PCall): PNode = {
 
@@ -301,7 +386,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
 
   private def synthesizeFieldParametricMethods(input: PProgram): Seq[PMethod] = input.methods.collect {
     case m: PMethod if m.idndef.name == "link_$field$" =>
-      input.fields.collect {
+      input.fields.collect { // FIXME Ref type?
         case f: PField =>
           val new_m = m.deepCopyWithNameSubstitution(
             idndef = PIdnDef(s"link_${f.idndef.name}"))(
@@ -403,9 +488,9 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
     input.macros,
     input.domains,
     input.fields,
-    synthesizeApplyTCFramingHDF(input) :+ $$(input),
+    synthesizeApplyTCFramingHDF(input) :+ $$(input), //functions
     input.predicates,
-    synthesizeFieldParametricMethods(input),
+    synthesizeFieldParametricMethods(input), //methods
     input.errors)
 
   private def getNoExitWisdom(input: Program, g0:Exp, g1:Exp)(pos: Position = NoPosition, info: Info = NoInfo, errT: ErrorTrafo = NoTrafos): Stmt = {

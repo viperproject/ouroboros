@@ -52,5 +52,6 @@ function apply_TCFraming(g0:Set[Ref], g1:Set[Ref]): Bool
     ensures forall u:Ref, v:Ref :: { exists_path($$(g0),u,v) }{ exists_path($$(g0 union g1),u,v) } u in g0 && v in g0 && exists_path($$(g0),u,v) ==> exists_path($$(g0 union g1),u,v)
     ensures forall u:Ref, v:Ref :: { exists_path($$(g1),u,v) }{ exists_path($$(g1 union g0),u,v) } u in g1 && v in g1 && exists_path($$(g1),u,v) ==> exists_path($$(g1 union g0),u,v)
 
-    ensures forall u:Ref, v:Ref :: { exists_path($$(g0),u,v) }{ exists_path($$(g0 union g1),u,v) } u in g0 && v in g0 && !exists_path($$(g0),u,v) ==> !exists_path($$(g0 union g1),u,v)
-    ensures forall u:Ref, v:Ref :: { exists_path($$(g1),u,v) }{ exists_path($$(g0 union g1),u,v) } u in g1 && v in g1 && !exists_path($$(g1),u,v) ==> !exists_path($$(g1 union g0),u,v)
+    //probably wrong
+    //ensures forall u:Ref, v:Ref :: { exists_path($$(g0),u,v) }{ exists_path($$(g0 union g1),u,v) } u in g0 && v in g0 && !exists_path($$(g0),u,v) ==> !exists_path($$(g0 union g1),u,v)
+    //ensures forall u:Ref, v:Ref :: { exists_path($$(g1),u,v) }{ exists_path($$(g0 union g1),u,v) } u in g1 && v in g1 && !exists_path($$(g1),u,v) ==> !exists_path($$(g1 union g0),u,v)

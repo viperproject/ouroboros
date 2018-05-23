@@ -1,0 +1,64 @@
+field car:Ref
+field cdr:Ref
+define is_null(n)
+    n == vroot
+
+function get(s: Set[Ref]): Ref
+    requires |s| > 0
+    ensures result in s
+
+method mark(g:Graph, roots:Set[Ref]) returns (marked:Set[Ref])
+    requires |roots| > 0
+    requires roots subset g
+    //ensures roots subset marked
+    ensures marked subset g
+    //ensures forall v:Ref :: {v in marked}{exists_spath($$(g),roots,v)} v in g ==> ( v in marked ==> exists_spath($$(g),roots,v) )
+    //ensures forall v:Ref :: {v in marked}{exists_spath($$(g),roots,v)} v in g ==> ( exists_spath($$(g),roots,v) ==> v in marked )
+{
+    var x:Ref := get(roots)
+    var pending:Set[Ref] := roots
+    marked := Set()
+
+    while ( |pending| > 0 )
+//         // Taking care of permissions.
+        invariant GRAPH(g) //TODO Graph needs to be inserted manually.
+
+//         // Maintaining the graph.
+        invariant x in g
+        invariant pending subset g
+        invariant marked subset g
+
+        invariant exists_spath($$(g),roots,x)
+        && ( x.cdr != null ==> edge($$(g),x,x.cdr) && exists_path($$(g),x.cdr,x.cdr) ==> exists_path($$(g),x,x.cdr) )
+        && ( x.car != null ==> edge($$(g),x,x.car) && exists_path($$(g),x.car,x.car) ==> exists_path($$(g),x,x.car) )
+
+        invariant
+        ( forall n:Ref :: {n in pending}{n in roots} n in roots <==> n in pending ) &&                                                                   /// (5.22)
+        ( forall n:Ref :: {n in marked} n in g ==> !(n in marked) )                                                                                      /// (5.23)
+         ||
+         ( forall n:Ref :: {n in pending}{n in marked} n in roots ==> n in marked || n in pending ) &&                                                    /// (5.24)
+         ( forall n:Ref :: {n in pending} n in g ==> !(n in marked && n in pending) ) &&                                                                  /// (5.25)
+         ( forall n:Ref :: {exists_spath($$(g),roots,n)} n in pending || n in marked ==> exists_spath($$(g),roots,n) ) //&&                                 /// (5.26)
+        // ( forall n1:Ref, n2:Ref :: {n1 in marked, n2 in marked} n1 in marked && n2 in g && !(n2 in marked) && !(n2 in pending) ==> !edge($$(g),n1,n2) )  /// (5.27)
+    {
+        // x <- pop(pending)
+        x := get(pending)
+        pending := pending setminus Set(x)
+
+        // mark x
+        marked := marked union Set(x)
+
+        if ( x.car != null && !(x.car in marked) ) {
+            pending := pending union Set(x.car)
+        }
+        if ( x.cdr != null && !(x.cdr in marked) ) {
+            pending := pending union Set(x.cdr)
+        }
+
+    }
+
+
+        //:: ExpectedOutput(assert.failed:assertion.false)
+        assert false
+
+}
