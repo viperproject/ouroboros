@@ -43,18 +43,17 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
     case _ => decl
   }
 
-  private def seqOfPExpToPExp(exp_seq: Seq[PExp], binary_oper: String): PExp = exp_seq.toList match {
+  private def seqOfPExpToPExp(exp_seq: Seq[PExp], binary_oper: String, initial_exp: PExp): PExp = exp_seq.toList match {
     case e :: Nil => e
-    case e :: tail => PBinExp(e, binary_oper, seqOfPExpToPExp(tail, binary_oper))
+    case e :: tail => PBinExp(e, binary_oper, seqOfPExpToPExp(tail, binary_oper, initial_exp))
     case Nil =>
-      sys.error(s"In seqOfPExpToPExp we have reached Nil, but that should never happen.")
-      PBoolLit(true)
+      initial_exp
   }
 
   private def seqOfExpToUnionExp(exp_seq: Seq[Exp])(pos: Position = NoPosition, info: Info = NoInfo, errT: ErrorTrafo = NoTrafos): Exp = exp_seq.toList match {
     case e :: Nil => e
     case e :: tail => AnySetUnion(e, seqOfExpToUnionExp(tail)(pos, info, errT))(pos, info, errT)
-    case Nil => TrueLit()(pos, info, errT)
+    case Nil => EmptySet(Ref)(pos, info, errT)//TrueLit()(pos, info, errT)
   }
 
   // forall n:Ref :: {n.field_i} n in nodes ==> acc(n.field_i,perm_exp)
@@ -100,7 +99,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
   private def GRAPH(prog: PProgram, graph_exp: PExp, fields: Seq[String]) = seqOfPExpToPExp(
     (PUnExp("!", PBinExp(PNullLit(), "in", graph_exp.deepCopyAll[PExp])) +:
     collectQPsForRefFields(fields, graph_exp, PFullPerm())) ++
-    collectInGraphForallsForRefFields(fields, graph_exp), "&&")
+    collectInGraphForallsForRefFields(fields, graph_exp), "&&", PBoolLit(true))
 
   private def PROTECTED_GRAPH(prog: PProgram, graph_exp: PExp, fields: Seq[String], mutable_node_exp: PExp, mutable_field: String) = seqOfPExpToPExp(Seq(
     PUnExp("!", PBinExp(PNullLit(), "in", graph_exp.deepCopyAll[PExp])),
@@ -111,7 +110,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
       else
         PAccPred(PFieldAccess(mutable_node_exp.deepCopyAll[PExp], PIdnUse(f)), PBinExp(PIntLit(1), "/", PIntLit(2)))) ++
     collectQPsForRefFieldsProtected(fields, mutable_node_exp, graph_exp) ++
-    collectInGraphForallsForRefFields(fields, graph_exp), "&&")
+    collectInGraphForallsForRefFields(fields, graph_exp), "&&", PBoolLit(true))
 
 
    /*
@@ -252,7 +251,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
       case x :: Nil => Seq(PBinExp(
         seqOfPExpToPExp(
           objects.map{ case o => PIdnUse(o.name) },
-          "union"),
+          "union", PEmptySet(TypeHelper.Ref)),
         "==",
         PIdnUse(union_graphs.last.name)))
       case Nil => Seq()
@@ -264,7 +263,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
       else if (input_graphs.nonEmpty)
         Seq(GRAPH(input, seqOfPExpToPExp(input_graphs.collect {
           case o => { o.typ match { case g@ OurGraph => PIdnUse(o.name) } }
-        }, "union"), ref_fields(input)))
+        }, "union", PEmptySet(TypeHelper.Ref)), ref_fields(input)))
       else
         Seq()
 
@@ -300,7 +299,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
         ),
         seqOfPExpToPExp(
           input_graphs.map{ case o => PIdnUse(o.name) },
-          "union")
+          "union", PEmptySet(TypeHelper.Ref))
       )
     ))
 
@@ -441,7 +440,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
                 PBinExp(PIdnUse("s"), "in", PIdnUse("nodes"))),
               "&&",
               seqOfPExpToPExp(input.fields.map( f => PBinExp(
-                PFieldAccess(PIdnUse("p"),PIdnUse(f.idndef.name) ), "==", PIdnUse("s"))), "||")),
+                PFieldAccess(PIdnUse("p"),PIdnUse(f.idndef.name) ), "==", PIdnUse("s"))), "||", PBoolLit(false))),
             "&&",
             PBinExp(PIdnUse("p"), "!=", PIdnUse("s"))),
           "<==>",
@@ -585,7 +584,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
             if (graph_defs.outputs.nonEmpty)
               LocalVar(graph_defs.outputs.last.name)(SetType(Ref), fa.pos, fa.info, fa.errT)
             else
-              seqOfExpToUnionExp(graph_defs.inputs.map { in => LocalVar(in.name)(SetType(Ref), fa.pos, fa.info, fa.errT) })(fa.pos, fa.info, fa.errT)
+              seqOfExpToUnionExp(graph_defs.inputs.map { in => LocalVar(in.name)(SetType(Ref), fa.pos, fa.info, fa.errT) })(fa.pos, fa.info, fa.errT) //TODO causes an error, if there is no graph as input
 
           Seqn(
             Seq(
