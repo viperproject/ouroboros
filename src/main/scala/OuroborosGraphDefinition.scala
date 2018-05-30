@@ -43,11 +43,11 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
     case _ => decl
   }
 
-  private def seqOfPExpToPExp(exp_seq: Seq[PExp], binary_oper: String, initial_exp: PExp): PExp = exp_seq.toList match {
+  private def seqOfPExpToPExp(exp_seq: Seq[PExp], binary_oper: String, neutral_element: PExp): PExp = exp_seq.toList match {
     case e :: Nil => e
-    case e :: tail => PBinExp(e, binary_oper, seqOfPExpToPExp(tail, binary_oper, initial_exp))
+    case e :: tail => PBinExp(e, binary_oper, seqOfPExpToPExp(tail, binary_oper, neutral_element))
     case Nil =>
-      initial_exp
+      neutral_element
   }
 
   private def seqOfExpToUnionExp(exp_seq: Seq[Exp])(pos: Position = NoPosition, info: Info = NoInfo, errT: ErrorTrafo = NoTrafos): Exp = exp_seq.toList match {

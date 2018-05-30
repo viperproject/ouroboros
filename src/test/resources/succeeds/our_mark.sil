@@ -21,7 +21,7 @@ method mark(g:Graph, roots:Set[Ref]) returns (marked:Set[Ref])
 
     while ( |pending| > 0 )
 //         // Taking care of permissions.
-        invariant GRAPH(g) //TODO Graph needs to be inserted manually.
+  //      invariant GRAPH(g) //TODO Graph needs to be inserted manually.
 
 //         // Maintaining the graph.
         invariant x in g
