@@ -13,7 +13,14 @@ class OuroborosGraphHandler {
       println("PRES: " + m.pres)*/
       val inputGraphs = m.formalArgs.filter(x => ss.inputs.map(y => y.name).contains(x.name))
       val outputGraphs = m.formalReturns.filter(x => ss.outputs.map(y => y.name).contains(x.name))
-      Method(m.name, m.formalArgs, m.formalReturns, GRAPH(inputGraphs, input.fields) ++ disjointGraphs(inputGraphs) ++ m.pres/*++ GRAPH*/,  GRAPH(outputGraphs, input.fields) ++ m.posts, m.body /* ++ TCFraming*/) (m.pos, m.info, m.errT)
+      Method(
+        m.name,
+        m.formalArgs,
+        m.formalReturns,
+        GRAPH(inputGraphs, input.fields) ++ disjointGraphs(inputGraphs) ++ m.pres,
+        GRAPH(outputGraphs, input.fields) ++ m.posts,
+        handleMethodBody(input, m.body, inputGraphs, outputGraphs) /* ++ TCFraming*/
+      ) (m.pos, m.info, m.errT)
     }
   }
 
@@ -74,7 +81,7 @@ def GRAPH(decls: Seq[LocalVarDecl], fields: Seq[Field]): Seq[Exp] = {
           LocalVar(decl.name)(decl.typ, decl.pos, decl.info, decl.errT)
         )(decl.pos, decl.info, decl.errT)
       )(decl.pos, decl.info, decl.errT)
-    )(decl.pos, decl.info, decl.errT)
+    )(decl.pos, decl.info, decl.errT) //TODO error transform to OuroborosGraphSpecificationError?
   }
 
   private def disjointGraphs(decls: Seq[LocalVarDecl]): Seq[Exp] = {
@@ -114,8 +121,41 @@ def GRAPH(decls: Seq[LocalVarDecl], fields: Seq[Field]): Seq[Exp] = {
           )(g1.pos, g1.info, g1.errT)
         )(g0.pos, g0.info, g0.errT)
       )(g0.pos, g0.info, g0.errT)
-    )(g0.pos, g0.info, g0.errT)
+    )(g0.pos, g0.info, g0.errT) //TODO error transforming to OuroborosDisjointError?
 
+  }
+
+  private def handleMethodBody(input: Program, maybeSeqn: Option[Seqn], inputGraphs: Seq[LocalVarDecl], outputGraphs: Seq[LocalVarDecl]): Option[Seqn] = maybeSeqn match{
+    case None => maybeSeqn
+    case Some(body) => {
+      inputGraphs.size match {
+        case a if a > 1 => Some(Seqn(getFramingAxioms(input, inputGraphs) ++ body.ss, body.scopedDecls)(
+          body.pos, body.info, body.errT
+        ))
+        case _ => Some(body)
+      }
+    }
+  }
+
+  private def getFramingAxioms(input: Program, inputGraphs: Seq[LocalVarDecl]): Seq[Stmt] = {
+    inputGraphs.size match {
+      case a if a <= 1 => Seq()
+      case _ => inputGraphs.flatMap(a =>
+        inputGraphs.filter(b => inputGraphs.indexOf(b) > inputGraphs.indexOf(a)).map(b => assumeApplyTCFraming(input, a,b)))
+    }
+  }
+
+  private def assumeApplyTCFraming(input: Program, decl: LocalVarDecl, decl1: LocalVarDecl): Stmt = {
+    val TCFraming = input.findFunction("apply_TCFraming")
+    Inhale(
+      FuncApp(
+        "apply_TCFraming",
+        Seq(
+          LocalVar(decl.name)(decl.typ, decl.pos, decl.info, decl.errT),
+          LocalVar(decl1.name)(decl1.typ, decl1.pos, decl1.info, decl1.errT)
+        )
+      )(decl.pos, decl.info, TCFraming.typ, TCFraming.formalArgs, decl.errT) //TODO error transfroming to OuroborosFramingError?
+    )(decl.pos, decl.info, decl.errT)
   }
 
 }

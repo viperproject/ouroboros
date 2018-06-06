@@ -122,6 +122,7 @@ method join(g1: Set[Ref], g2: Set[Ref]) returns (g: Set[Ref])
   ensures g1 union g2 == g
 {
   inhale apply_TCFraming(g1, g2)
+  inhale apply_TCFraming(g1, g2)
   g := g1 union g2
   g := g1 union g2
 }
