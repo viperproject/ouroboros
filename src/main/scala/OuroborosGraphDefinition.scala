@@ -24,10 +24,11 @@ trait OurOperation
 //case class OurLink(name: String) extends OurOperation
 //case class OurUnlink(name: String) extends OurOperation
 case class OurOperPair(name: String) extends OurOperation
+case class OurGraphSpec(inputs: Seq[OurObject], outputs: Seq[OurObject])
 
 class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
 
-  case class OurGraphSpec(inputs: Seq[OurObject], outputs: Seq[OurObject])
+/*  case class OurGraphSpec(inputs: Seq[OurObject], outputs: Seq[OurObject])*/
   val graph_definitions: mutable.Map[String, OurGraphSpec] = mutable.Map.empty[String, OurGraphSpec]
 
   def handlePFormalArgDecl(input: PProgram, decl: PFormalArgDecl): PFormalArgDecl = decl.typ match {
@@ -43,11 +44,11 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
     case _ => decl
   }
 
-  private def seqOfPExpToPExp(exp_seq: Seq[PExp], binary_oper: String, initial_exp: PExp): PExp = exp_seq.toList match {
+  private def seqOfPExpToPExp(exp_seq: Seq[PExp], binary_oper: String, neutral_element: PExp): PExp = exp_seq.toList match {
     case e :: Nil => e
-    case e :: tail => PBinExp(e, binary_oper, seqOfPExpToPExp(tail, binary_oper, initial_exp))
+    case e :: tail => PBinExp(e, binary_oper, seqOfPExpToPExp(tail, binary_oper, neutral_element))
     case Nil =>
-      initial_exp
+      neutral_element
   }
 
   private def seqOfExpToUnionExp(exp_seq: Seq[Exp])(pos: Position = NoPosition, info: Info = NoInfo, errT: ErrorTrafo = NoTrafos): Exp = exp_seq.toList match {
@@ -241,7 +242,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
         DISJOINT(
           PIdnUse(g_pair(0).name),
           PIdnUse(g_pair(1).name))
-      }) toSeq
+      }) toList
     }
 
     def union_graph_specs(objects: Seq[OurObject], union_graphs: Seq[OurObject]): Seq[PExp] = union_graphs.toList match {
@@ -275,10 +276,10 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
       m.formalReturns.map(x => {
         handlePFormalArgDecl(input, x)
       }),
-      map_graphs_to_contracts(input_graphs) ++ disjoint_graph_specs(input_graphs) ++ m.pres/*.map(x => {
+      /*map_graphs_to_contracts(input_graphs) ++ disjoint_graph_specs(input_graphs) ++*/ m.pres/*.map(x => {
         handlePExp(input, x)
       })*/,
-      output_graphs_footprint ++ union_graph_specs(input_graphs, output_graphs) ++ m.posts/*.map(x => { TODO remove union_graph_specs
+      /*output_graphs_footprint ++*/ union_graph_specs(input_graphs, output_graphs) ++ m.posts/*.map(x => { TODO remove union_graph_specs
         handlePExp(input, x)
       })*/,
       handlePMethodBody(m.body,  input_graphs, output_graphs))

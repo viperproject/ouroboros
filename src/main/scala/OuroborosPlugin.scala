@@ -23,6 +23,7 @@ class OuroborosPlugin extends SilverPlugin {
   val our_frontend = new OuroborosFrontend
 
   val graph_handler = new OuroborosGraphDefinition(this)
+  val graphAST_handler = new OuroborosGraphHandler()
 
   var translatedCode = ""
 
@@ -71,8 +72,11 @@ class OuroborosPlugin extends SilverPlugin {
 
     println(">>> beforeVerify")
 
+    val graph_defs = graph_handler.graph_definitions
+
     val ourRewriter = StrategyBuilder.Context[Node, String](
       {
+        case (m: Method, ctx) if graph_defs.contains(m.name) => graphAST_handler.handleMethod(input, m, graph_defs.get(m.name), ctx)
         case (fa: FieldAssign, ctx) => graph_handler.handleAssignments(input, fa, ctx)
       },
       "", // default context
@@ -84,6 +88,7 @@ class OuroborosPlugin extends SilverPlugin {
     val inputPrime = ourRewriter.execute[Program](input)
 
     translatedCode = inputPrime.toString()
+    //println(inputPrime)
     inputPrime
   }
 
