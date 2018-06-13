@@ -119,9 +119,7 @@ method join(g1: Set[Ref], g2: Set[Ref]) returns (g: Set[Ref])
   requires !((null in g2)) && ((forall n: Ref :: { n.next } (n in g2) ==> acc(n.next, write)) && ((forall n: Ref :: { (n.next in g2) } { (n in g2),n.next } (n in g2) && n.next != null ==> (n.next in g2)) && true))
   requires (forall n: Ref :: { (n in g1),(n in g2) } (n in g1) ==> !((n in g2))) && (forall n: Ref :: { (n in g1),(n in g2) } (n in g2) ==> !((n in g1)))
   ensures !((null in g)) && ((forall n: Ref :: { n.next } (n in g) ==> acc(n.next, write)) && ((forall n: Ref :: { (n.next in g) } { (n in g),n.next } (n in g) && n.next != null ==> (n.next in g)) && true))
-  ensures g1 union g2 == g
 {
-  inhale apply_TCFraming(g1, g2)
   inhale apply_TCFraming(g1, g2)
   g := g1 union g2
   g := g1 union g2

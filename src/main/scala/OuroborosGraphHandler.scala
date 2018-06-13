@@ -2,15 +2,20 @@ package viper.silver.plugin
 
 import viper.silver.ast._
 import viper.silver.ast.utility.Rewriter.ContextC
-import viper.silver.parser._
+import viper.silver.plugin.errors.{OuroborosGraphSpecificactionError, OuroborosInternalEncodingError}
+import viper.silver.plugin.reasons.{InsufficientGraphPermission, NullInGraphReason, OpenGraphReason}
+import viper.silver.verifier.AbstractVerificationError
+import viper.silver.verifier.reasons.InternalReason
+
+import scala.collection.mutable
 
 class OuroborosGraphHandler {
+
+  var graph_keywords: mutable.Map[String, String] = mutable.Map.empty[String, String]
 
   def handleMethod(input: Program, m: Method, s: Option[OurGraphSpec], ctx: ContextC[Node, String]): Method = s match {
     case None => m
     case Some(ss) => {
-     /* println("handle Method: " + m.name + ",  with GraphSpec: " + s)
-      println("PRES: " + m.pres)*/
       val inputGraphs = m.formalArgs.filter(x => ss.inputs.map(y => y.name).contains(x.name))
       val outputGraphs = m.formalReturns.filter(x => ss.outputs.map(y => y.name).contains(x.name))
       Method(
@@ -24,72 +29,105 @@ class OuroborosGraphHandler {
     }
   }
 
-def GRAPH(decls: Seq[LocalVarDecl], fields: Seq[Field]): Seq[Exp] = {
+  val qpsForRefFieldErrTrafo : ErrTrafo = ErrTrafo({
+    case x => OuroborosGraphSpecificactionError(
+      x.offendingNode,
+      InsufficientGraphPermission(
+        x.offendingNode,
+        s"might have insufficient permissions in the graph"
+      ),
+      x.cached
+    )
+  })
+
+  val closedGraphErrTrafo : ErrTrafo = ErrTrafo({
+    case x => OuroborosGraphSpecificactionError(
+      x.offendingNode,
+      OpenGraphReason(
+        x.offendingNode,
+        s"Graph might not be closed"
+      ),
+      x.cached
+    )
+  })
+
+def GRAPH(graphs: Seq[LocalVarDecl], fields: Seq[Field] /*, errT : ErrorTrafo*/): Seq[Exp] = {
+  val notNullInGraphErrTrafo : ErrTrafo = ErrTrafo({
+    case x => OuroborosGraphSpecificactionError(
+      x.offendingNode,
+      NullInGraphReason(
+        x.offendingNode,
+        s"Null might be in graph $x"
+      ),
+      x.cached
+    )
+  })
+
   var toReturn : Seq[Exp] = Seq()
   var a = 0
   //print("Decls: " + decls + " ")
-  for(a <- decls.indices){
+  for(a <- graphs.indices){
    // print("a: " + a + " ")
-    val decl = decls(a)
-    val unExp : UnExp = Not(AnySetContains(NullLit()(decl.pos, decl.info, decl.errT), LocalVar(decl.name)(decl.typ, decl.pos, decl.info, decl.errT))(decl.pos, decl.info, decl.errT))(decl.pos, decl.info, decl.errT)
-    val QPForRefFields : Seq[Exp] = collectQPsForRefFields(fields, decl, FullPerm()(decl.pos, decl.info, decl.errT))
+    val decl = graphs(a)
+    val unExp : UnExp = Not(AnySetContains(NullLit()(decl.pos, decl.info, notNullInGraphErrTrafo), LocalVar(decl.name)(decl.typ, decl.pos, decl.info, notNullInGraphErrTrafo))(decl.pos, decl.info, notNullInGraphErrTrafo))(decl.pos, decl.info, notNullInGraphErrTrafo)
+    val QPForRefFields : Seq[Exp] = collectQPsForRefFields(fields, decl, FullPerm()(decl.pos, decl.info, qpsForRefFieldErrTrafo))
     val InGraphForallsForRefFields : Seq[Exp] = collectInGraphForallsForRefFields(fields, decl)
     toReturn = toReturn :+ ((unExp +: QPForRefFields) ++ InGraphForallsForRefFields)
       .foldRight[Exp](TrueLit()(decl.pos, decl.info, decl.errT))(
-        (x, y) => And(x, y)(decl.pos, decl.info, decl.errT))
+        (x, y) => And(x, y)(decl.pos, decl.info, decl.errT)) //TODO If there is an error, then there is an error in the encoding => OuroborosInternalEncodingError
   }
   toReturn
 }
 
-  private def collectQPsForRefFields(fields : Seq[Field], graph : LocalVarDecl, perm_exp: Exp = FullPerm()(NoPosition, NoInfo, NoTrafos)): Seq[Exp] =
+  private def collectQPsForRefFields(fields : Seq[Field], graph : LocalVarDecl, perm_exp: Exp = FullPerm()(NoPosition, NoInfo, qpsForRefFieldErrTrafo)): Seq[Exp] =
     fields.map(f => getQPForGraphNodes(graph, f, perm_exp))
 
-  private def getQPForGraphNodes(decl: LocalVarDecl, field: Field, exp: Exp): Exp = {
+  private def getQPForGraphNodes(graph: LocalVarDecl, field: Field, perm: Exp): Exp = {
     Forall(
-      Seq(LocalVarDecl("n", Ref)(decl.pos, decl.info, decl.errT)),
-      Seq(Trigger(Seq(FieldAccess(LocalVar("n")(Ref, decl.pos, decl.info, decl.errT), field)(decl.pos, decl.info, decl.errT)))(decl.pos, decl.info, decl.errT)),
-      Implies(AnySetContains(LocalVar("n")(Ref, decl.pos, decl.info, decl.errT), LocalVar(decl.name)(decl.typ, decl.pos, decl.info, decl.errT))(decl.pos, decl.info, decl.errT), FieldAccessPredicate(FieldAccess(LocalVar("n")(Ref, decl.pos, decl.info, decl.errT), field)(decl.pos, decl.info, decl.errT), exp)(decl.pos, decl.info, decl.errT))(decl.pos, decl.info, decl.errT)
-    )(decl.pos, decl.info, decl.errT)
+      Seq(LocalVarDecl("n", Ref)(graph.pos, graph.info, qpsForRefFieldErrTrafo)),
+      Seq(Trigger(Seq(FieldAccess(LocalVar("n")(Ref, graph.pos, graph.info, qpsForRefFieldErrTrafo), field)(graph.pos, graph.info, qpsForRefFieldErrTrafo)))(graph.pos, graph.info, qpsForRefFieldErrTrafo)),
+      Implies(AnySetContains(LocalVar("n")(Ref, graph.pos, graph.info, qpsForRefFieldErrTrafo), LocalVar(graph.name)(graph.typ, graph.pos, graph.info, qpsForRefFieldErrTrafo))(graph.pos, graph.info, qpsForRefFieldErrTrafo), FieldAccessPredicate(FieldAccess(LocalVar("n")(Ref, graph.pos, graph.info, qpsForRefFieldErrTrafo), field)(graph.pos, graph.info, qpsForRefFieldErrTrafo), perm)(graph.pos, graph.info, qpsForRefFieldErrTrafo))(graph.pos, graph.info, qpsForRefFieldErrTrafo)
+    )(graph.pos, graph.info, qpsForRefFieldErrTrafo)
   }
 
   private def collectInGraphForallsForRefFields(fields: Seq[Field], decl: LocalVarDecl): Seq[Exp] =
     fields.map(f => getInGraphForallForField(decl, f))
 
-  private def getInGraphForallForField(decl: LocalVarDecl, field: Field): Exp = {
+  private def getInGraphForallForField(graph: LocalVarDecl, field: Field): Exp = {
     Forall(
-      Seq(LocalVarDecl("n", Ref)(decl.pos, decl.info, decl.errT)),
+      Seq(LocalVarDecl("n", Ref)(graph.pos, graph.info, closedGraphErrTrafo)),
       Seq(
-        Trigger(Seq(AnySetContains(FieldAccess(LocalVar("n")(Ref, decl.pos, decl.info, decl.errT), field)(decl.pos, decl.info, decl.errT),
-          LocalVar(decl.name)(decl.typ, decl.pos, decl.info, decl.errT))(decl.pos, decl.info, decl.errT))
-        )(decl.pos, decl.info, decl.errT),
-        Trigger(Seq(AnySetContains(LocalVar("n")(Ref, decl.pos, decl.info, decl.errT), LocalVar(decl.name)(decl.typ, decl.pos, decl.info, decl.errT))(decl.pos, decl.info, decl.errT),
-          FieldAccess(LocalVar("n")(Ref, decl.pos, decl.info, decl.errT), field)(decl.pos, decl.info, decl.errT)))(decl.pos, decl.info, decl.errT)
+        Trigger(Seq(AnySetContains(FieldAccess(LocalVar("n")(Ref, graph.pos, graph.info, closedGraphErrTrafo), field)(graph.pos, graph.info, closedGraphErrTrafo),
+          LocalVar(graph.name)(graph.typ, graph.pos, graph.info, closedGraphErrTrafo))(graph.pos, graph.info, closedGraphErrTrafo))
+        )(graph.pos, graph.info, closedGraphErrTrafo),
+        Trigger(Seq(AnySetContains(LocalVar("n")(Ref, graph.pos, graph.info, closedGraphErrTrafo), LocalVar(graph.name)(graph.typ, graph.pos, graph.info, closedGraphErrTrafo))(graph.pos, graph.info, closedGraphErrTrafo),
+          FieldAccess(LocalVar("n")(Ref, graph.pos, graph.info, closedGraphErrTrafo), field)(graph.pos, graph.info, closedGraphErrTrafo)))(graph.pos, graph.info, closedGraphErrTrafo)
       ),
       Implies(
         And(
           AnySetContains(
-            LocalVar("n")(Ref, decl.pos, decl.info, decl.errT),
-            LocalVar(decl.name)(decl.typ, decl.pos, decl.info, decl.errT)
-          )(decl.pos, decl.info, decl.errT),
+            LocalVar("n")(Ref, graph.pos, graph.info, closedGraphErrTrafo),
+            LocalVar(graph.name)(graph.typ, graph.pos, graph.info, closedGraphErrTrafo)
+          )(graph.pos, graph.info, closedGraphErrTrafo),
           NeCmp(
-            FieldAccess(LocalVar("n")(Ref, decl.pos, decl.info, decl.errT), field)(decl.pos, decl.info, decl.errT),
-            NullLit()(decl.pos, decl.info, decl.errT)
-          )(decl.pos, decl.info, decl.errT)
-        )(decl.pos, decl.info, decl.errT),
+            FieldAccess(LocalVar("n")(Ref, graph.pos, graph.info, closedGraphErrTrafo), field)(graph.pos, graph.info, closedGraphErrTrafo),
+            NullLit()(graph.pos, graph.info, closedGraphErrTrafo)
+          )(graph.pos, graph.info, closedGraphErrTrafo)
+        )(graph.pos, graph.info, closedGraphErrTrafo),
         AnySetContains(
-          FieldAccess(LocalVar("n")(Ref, decl.pos, decl.info, decl.errT), field)(decl.pos, decl.info, decl.errT),
-          LocalVar(decl.name)(decl.typ, decl.pos, decl.info, decl.errT)
-        )(decl.pos, decl.info, decl.errT)
-      )(decl.pos, decl.info, decl.errT)
-    )(decl.pos, decl.info, decl.errT) //TODO error transform to OuroborosGraphSpecificationError?
+          FieldAccess(LocalVar("n")(Ref, graph.pos, graph.info, closedGraphErrTrafo), field)(graph.pos, graph.info, closedGraphErrTrafo),
+          LocalVar(graph.name)(graph.typ, graph.pos, graph.info, closedGraphErrTrafo)
+        )(graph.pos, graph.info, closedGraphErrTrafo)
+      )(graph.pos, graph.info, closedGraphErrTrafo)
+    )(graph.pos, graph.info, closedGraphErrTrafo) //TODO If there is an error, then there is an error in the encoding => OuroborosInternalEncodingError
   }
 
-  private def disjointGraphs(decls: Seq[LocalVarDecl]): Seq[Exp] = {
-    decls.flatMap(x => DISJOINT(x, decls.filter(y => decls.indexOf(y) > decls.indexOf(x))))
+  private def disjointGraphs(graphs: Seq[LocalVarDecl]): Seq[Exp] = {
+    graphs.flatMap(x => DISJOINT(x, graphs.filter(y => graphs.indexOf(y) > graphs.indexOf(x))))
   }
 
-  private def DISJOINT(decl : LocalVarDecl, decls: Seq[LocalVarDecl]): Seq[Exp] = {
-    decls.map(x => DISJOINT(decl, x))
+  private def DISJOINT(g0 : LocalVarDecl, g1: Seq[LocalVarDecl]): Seq[Exp] = {
+    g1.map(x => DISJOINT(g0, x))
   }
 
   private def DISJOINT(g0: LocalVarDecl, g1: LocalVarDecl): Exp = {
@@ -121,12 +159,12 @@ def GRAPH(decls: Seq[LocalVarDecl], fields: Seq[Field]): Seq[Exp] = {
           )(g1.pos, g1.info, g1.errT)
         )(g0.pos, g0.info, g0.errT)
       )(g0.pos, g0.info, g0.errT)
-    )(g0.pos, g0.info, g0.errT) //TODO error transforming to OuroborosDisjointError?
+    )(g0.pos, g0.info, g0.errT) //TODO If there is an error, then there is an error in the encoding => OuroborosInternalEncodingError
 
   }
 
-  private def handleMethodBody(input: Program, maybeSeqn: Option[Seqn], inputGraphs: Seq[LocalVarDecl], outputGraphs: Seq[LocalVarDecl]): Option[Seqn] = maybeSeqn match{
-    case None => maybeSeqn
+  private def handleMethodBody(input: Program, maybeBody: Option[Seqn], inputGraphs: Seq[LocalVarDecl], outputGraphs: Seq[LocalVarDecl]): Option[Seqn] = maybeBody match{
+    case None => maybeBody
     case Some(body) => {
       inputGraphs.size match {
         case a if a > 1 => Some(Seqn(getFramingAxioms(input, inputGraphs) ++ body.ss, body.scopedDecls)(
@@ -145,17 +183,29 @@ def GRAPH(decls: Seq[LocalVarDecl], fields: Seq[Field]): Seq[Exp] = {
     }
   }
 
-  private def assumeApplyTCFraming(input: Program, decl: LocalVarDecl, decl1: LocalVarDecl): Stmt = {
-    val TCFraming = input.findFunction("apply_TCFraming")
+  private def assumeApplyTCFraming(input: Program, graph1: LocalVarDecl, graph2: LocalVarDecl): Stmt = {
+    val errTrafo: ErrTrafo = {
+      ErrTrafo({
+        case x => OuroborosInternalEncodingError(x.offendingNode,
+          InternalReason(x.offendingNode, "internal framing error: " + x.reason.readableMessage),
+          x.cached)
+      })
+    }
+    val apply_TCFraming = getIdentifier("apply_TCFraming")
+    val TCFraming = input.findFunction(apply_TCFraming)
     Inhale(
       FuncApp(
-        "apply_TCFraming",
+        apply_TCFraming,
         Seq(
-          LocalVar(decl.name)(decl.typ, decl.pos, decl.info, decl.errT),
-          LocalVar(decl1.name)(decl1.typ, decl1.pos, decl1.info, decl1.errT)
+          LocalVar(graph1.name)(graph1.typ, graph1.pos, graph1.info, errTrafo),
+          LocalVar(graph2.name)(graph2.typ, graph2.pos, graph2.info, errTrafo)
         )
-      )(decl.pos, decl.info, TCFraming.typ, TCFraming.formalArgs, decl.errT) //TODO error transfroming to OuroborosFramingError?
-    )(decl.pos, decl.info, decl.errT)
+      )(graph1.pos, graph1.info, TCFraming.typ, TCFraming.formalArgs, errTrafo)
+    )(graph1.pos, graph1.info, errTrafo)
   }
 
+  def getIdentifier(name : String): String = graph_keywords.get(name) match{
+    case None => name //TODO maybe throw error
+    case Some(newName) => newName
+  }
 }

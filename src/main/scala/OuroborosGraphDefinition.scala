@@ -13,6 +13,10 @@ import viper.silver.{ast, parser}
 import viper.silver.ast.utility.Rewriter.{ContextC, Rewritable}
 import viper.silver.ast._
 import viper.silver.parser.{PFormalArgDecl, _}
+import viper.silver.plugin.errors.{OuroborosAssignmentError}
+import viper.silver.plugin.reasons.{InsufficientGraphPermission, NotInGraphReason}
+import viper.silver.verifier.errors.PreconditionInCallFalse
+import viper.silver.verifier.reasons.{AssertionFalse, InsufficientPermission, InternalReason}
 
 
 trait OurType
@@ -253,7 +257,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
       /*map_graphs_to_contracts(input_graphs) ++ disjoint_graph_specs(input_graphs) ++*/ m.pres/*.map(x => {
         handlePExp(input, x)
       })*/,
-      /*output_graphs_footprint ++*/ union_graph_specs(input_graphs, output_graphs) ++ m.posts/*.map(x => { TODO remove union_graph_specs
+      /*output_graphs_footprint ++ union_graph_specs(input_graphs, output_graphs) ++ */m.posts/*.map(x => { TODO remove union_graph_specs
         handlePExp(input, x)
       })*/,
       handlePMethodBody(m.body,  input_graphs, output_graphs))
@@ -262,12 +266,11 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
   //add Framing Axioms and later Coloring Axioms
   def handlePMethodBody(body: Option[PStmt], input_graphs: Seq[OurObject], output_graphs: Seq[OurObject]): Option[PStmt] =
     input_graphs.size match {
-      case a if a > 1 && output_graphs.size == 1 => Some(PSeqn((Seq(assignUnionGraphWithFraming(input_graphs, output_graphs)) /: body.map(handlePStmt(_, input_graphs)))(_ :+ _)))
-      case _ => body.map(handlePStmt(_, input_graphs))
+      case a if a > 1 && output_graphs.size == 1 => Some(PSeqn((Seq(assignUnionGraphWithFraming(input_graphs, output_graphs)) /: body)(_ :+ _)))
+      case _ => body
   }
 
   def assignUnionGraphWithFraming(input_graphs: Seq[OurObject], output_graph: Seq[OurObject]): PStmt = {
-    PSeqn(Seq(getFramingAxioms(input_graphs.map(a => PIdnUse(a.name))) /*++ output_graph.map(a => PIdnUse(a.name))*/,//TODO we don't have access to the output graph yet, if we don't know what the output graph is
       PVarAssign(
         PIdnUse(
           output_graph.last.name
@@ -275,19 +278,9 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
         seqOfPExpToPExp(
           input_graphs.map{ case o => PIdnUse(o.name) },
           "union", PEmptySet(TypeHelper.Ref))
-      )
-    ))
 
-  }
+    )
 
-  def handlePStmt(stmt: PStmt, graphs: Seq[OurObject]): PStmt = {//TODO insert the coloring axioms
-    stmt
-    /*stmt match {
-      case PSeqn(_)  => PSeqn(stmt.childStmts.map(handlePStmt(_, graphs))) //TODO probably need also to visit the conditions
-      case PIf(a, b, c)  => PIf(a, PSeqn(b.childStmts.map(handlePStmt(_, graphs))), PSeqn(c.childStmts.map(handlePStmt(_, graphs))))
-      case PWhile(a, b, c)  => PWhile(a, b, PSeqn(c.childStmts.map(handlePStmt(_, graphs))))
-      case _ => stmt
-    }*/
   }
 
   def handlePField(input: PProgram, m: PField): PField = {
@@ -320,21 +313,6 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
     }
   }
 
-  def getFramingAxioms(graphNames : Seq[PIdnUse]): PStmt = {
-    graphNames.size match {
-      case a: Int if a <= 1 => PSkip()
-      case _ => PSeqn(graphNames.flatMap(a =>
-        graphNames.filter(b => !b.name.equals(a.name) && graphNames.indexOf(b) > graphNames.indexOf(a))
-          .map(b => assumeApplyTCFraming(a, b))))
-    }
-
-  }
-
-  def assumeApplyTCFraming(exp: PExp, exp1: PExp): PStmt = {
-    PAssume(PCall(PIdnUse(getIdentifier("apply_TCFraming")), Seq(exp, exp1)))
-  }
-
-
   def handlePCall(input: PProgram, m: PCall): PNode = {
 
     m.func.name match {
@@ -359,8 +337,8 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
   }
 
   private def getNoExitWisdom(input: Program, g0:Exp, g1:Exp)(pos: Position = NoPosition, info: Info = NoInfo, errT: ErrorTrafo = NoTrafos): Stmt = {
-    val $$_func = input.findFunction("$$")
-    val exists_path_funbc = input.findDomainFunction("exists_path")
+    val $$_func = input.findFunction(getIdentifier("$$"))
+    val exists_path_funbc = input.findDomainFunction(getIdentifier("exists_path"))
 
     def apply_NoExit_framing_forall(G0: Exp, G1: Exp) = {
       require(G0 == g0 && G1 == g1 || G0 == g1 && G1 == g0)
@@ -441,6 +419,46 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
   }
 
   def handleAssignments(input: Program, fa: FieldAssign, ctx: ContextC[Node, String]): Node = {
+    val unlinkErrTrafo: ErrTrafo = {
+      ErrTrafo({
+        case x: PreconditionInCallFalse => {
+          x.reason match {
+            case r: InsufficientPermission =>  OuroborosAssignmentError(x.offendingNode,
+              InsufficientGraphPermission(x.offendingNode, s"There might be insufficient permissiion to get read access to the ${fa.lhs.field.name} fields of all elements in ${x.offendingNode.args.head}" +
+                s"and write access to the ${fa.lhs.field.name} field of ${x.offendingNode.args(1)}. Original message: " + x.reason.readableMessage),
+              x.cached)
+
+            case r: AssertionFalse =>  OuroborosAssignmentError(x.offendingNode,
+              NotInGraphReason(x.offendingNode, s"${x.offendingNode.args(1)} might not be in ${x.offendingNode.args(0)}" +
+                s" or null might be in ${x.offendingNode.args(0)}. Original message: " + x.reason.readableMessage),
+              x.cached)
+
+            case xy =>  OuroborosAssignmentError(x.offendingNode,
+              InternalReason(x.offendingNode, "internal error in unlink: " + x.reason.readableMessage),
+              x.cached)
+          }
+        }
+        case x => x
+      })
+    }
+
+    val linkErrTrafo: ErrTrafo = {
+      ErrTrafo({
+        case x: PreconditionInCallFalse => {
+          x.reason match {
+            case r: AssertionFalse =>  OuroborosAssignmentError(x.offendingNode,
+              NotInGraphReason(x.offendingNode, s"Assignment Error: ${x.offendingNode.args(2)} might not be in ${x.offendingNode.args.head}. \n" +
+                s"Original Message: ${x.reason.readableMessage}"),
+              x.cached)
+
+            case xy =>  OuroborosAssignmentError(x.offendingNode,
+              InternalReason(x.offendingNode, "internal error in link: " + x.reason.readableMessage),
+              x.cached)
+          }
+        }
+        case x => x
+      })
+    }
 
     Seqn(input.methods.collect { case m: Method =>
       m.deepCollectInBody({
@@ -448,18 +466,18 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
           val graph_defs = graph_definitions(m.name)
           val local_g =
             if (graph_defs.outputs.nonEmpty)
-              LocalVar(graph_defs.outputs.last.name)(SetType(Ref), fa.pos, fa.info, fa.errT)//TODO change for multiple graph_definitions
+              LocalVar(graph_defs.outputs.last.name)(SetType(Ref), fa.pos, fa.info, unlinkErrTrafo)//TODO change for multiple graph_definitions
             else
-              seqOfExpToUnionExp(graph_defs.inputs.map { in => LocalVar(in.name)(SetType(Ref), fa.pos, fa.info, fa.errT) })(fa.pos, fa.info, fa.errT) //TODO causes an error, if there is no graph as input
+              seqOfExpToUnionExp(graph_defs.inputs.map { in => LocalVar(in.name)(SetType(Ref), fa.pos, fa.info, unlinkErrTrafo) })(fa.pos, fa.info, unlinkErrTrafo) //TODO causes an error, if there is no graph as input
 
           Seqn(
             Seq(
-              getOperationalWisdoms(input, m, ctx)(fa.pos, fa.info, fa.errT),
-              MethodCall(getIdentifier(s"unlink_${fa.lhs.field.name}"), Seq(local_g, fa.lhs.rcv), Seq())(fa.pos, fa.info, fa.errT),
-              MethodCall(getIdentifier(s"link_${fa.lhs.field.name}"), Seq(local_g, fa.lhs.rcv, fa.rhs), Seq())(fa.pos, fa.info, fa.errT)),
-            Seq())(fa.pos, fa.info, fa.errT)
+              getOperationalWisdoms(input, m, ctx)(fa.pos, fa.info, unlinkErrTrafo),
+              MethodCall(getIdentifier(s"unlink_${fa.lhs.field.name}"), Seq(local_g, fa.lhs.rcv), Seq())(fa.pos, fa.info, unlinkErrTrafo),
+              MethodCall(getIdentifier(s"link_${fa.lhs.field.name}"), Seq(local_g, fa.lhs.rcv, fa.rhs), Seq())(fa.pos, fa.info, linkErrTrafo)),
+            Seq())(fa.pos, fa.info, unlinkErrTrafo)
       })
-    } flatten, Seq())(fa.pos, fa.info, fa.errT)
+    } flatten, Seq())(fa.pos, fa.info, unlinkErrTrafo)
   }
 
   def handleMethods(input: Program, m: Method, ctx: ContextC[Node, String]): Node = m

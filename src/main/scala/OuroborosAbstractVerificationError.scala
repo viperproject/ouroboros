@@ -2,8 +2,9 @@ package viper.silver.plugin
 
 import viper.silver.ast.utility.Rewriter.Rewritable
 import viper.silver.ast.{Node, Position, Positioned, TransformableErrors}
-import viper.silver.verifier.{AbstractError, AbstractVerificationError, ErrorReason, errors}
+import viper.silver.verifier.{errors, _}
 import viper.silver.verifier.errors.{ErrorNode, Internal}
+import viper.silver.verifier.reasons.{ErrorNode, InternalReason}
 
 abstract class OuroborosAbstractVerificationError extends AbstractVerificationError{
 }
@@ -23,6 +24,44 @@ object errors {
     def withReason(r: ErrorReason) = OuroborosInternalEncodingError(offendingNode, r)
   }
 
+  case class OuroborosAssignmentError(offendingNode: ErrorNode, reason: ErrorReason, override val cached: Boolean = false) extends OuroborosAbstractVerificationError {
+    val id = "Graph"//TODO
+    val text = "Assignment failed."
+    def withNode(offendingNode: errors.ErrorNode = this.offendingNode) = OuroborosAssignmentError(offendingNode, this.reason)
+    def withReason(r: ErrorReason) = OuroborosAssignmentError(offendingNode, r)
+  }
+
+}
+
+object reasons {
+  type ErrorNode = errors.ErrorNode
+  case class NotInGraphReason(offendingNode: ErrorNode, explanation: String) extends AbstractErrorReason {
+    val id = "node.not.in.graph"
+    val readableMessage = explanation
+
+    def withNode(offendingNode: errors.ErrorNode = this.offendingNode) = NotInGraphReason(offendingNode, this.explanation)
+  }
+
+  case class InsufficientGraphPermission(offendingNode: ErrorNode, explanation: String) extends AbstractErrorReason {
+    val id = "insufficient.graph.permissions"
+    val readableMessage = explanation
+
+    def withNode(offendingNode: errors.ErrorNode = this.offendingNode) = InsufficientGraphPermission(offendingNode, this.explanation)
+  }
+
+  case class NullInGraphReason(offendingNode: ErrorNode, explanation: String) extends AbstractErrorReason {
+    val id = "null.in.graph"
+    val readableMessage = explanation
+
+    def withNode(offendingNode: errors.ErrorNode = this.offendingNode) = NullInGraphReason(offendingNode, this.explanation)
+  }
+
+  case class OpenGraphReason(offendingNode: ErrorNode, explanation: String) extends AbstractErrorReason {
+    val id = "graph.not.closed"
+    val readableMessage = explanation
+
+    def withNode(offendingNode: errors.ErrorNode = this.offendingNode) = OpenGraphReason(offendingNode, this.explanation)
+  }
 }
 
 abstract class OuroborosAbstractError extends AbstractError {
@@ -33,6 +72,3 @@ case class OuroborosInvalidIdentifierError(message: String, override val pos: Po
   def readableMessage: String = s"invalid Identifier: $message ($pos)"
 }
 
-/*object errors {
-
-}*/

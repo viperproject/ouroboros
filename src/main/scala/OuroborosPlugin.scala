@@ -106,6 +106,7 @@ class OuroborosPlugin extends SilverPlugin {
     preamble = graph_names_handler.getNewNames(preamble, names, ref_fields)
     keywords = graph_names_handler.graph_keywords
     graph_handler.graph_keywords = keywords
+    graphAST_handler.graph_keywords = keywords
 
     val pprog: PProgram =
       PProgram(
