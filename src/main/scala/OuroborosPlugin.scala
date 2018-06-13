@@ -33,7 +33,7 @@ class OuroborosPlugin extends SilverPlugin {
 
   override def beforeResolve(input: PProgram): PProgram = {
 
-    println(">>> beforeResolve " + Thread.currentThread().getId)
+    println(">>> beforeResolve ")
 
     def getErrors(nodes: Set[PIdnDef]) = {
       var newErrors: Set[AbstractError] = Set()
@@ -99,7 +99,7 @@ class OuroborosPlugin extends SilverPlugin {
     val synthesizeResult = OuroborosSynthesize.synthesize(preamble, ref_fields)
     preamble = synthesizeResult._1
     methodKeyWords = synthesizeResult._2
-    println("MethodKeyWords: " + methodKeyWords)
+    //println("MethodKeyWords: " + methodKeyWords)
 
 
     //Fresh Name Generation
