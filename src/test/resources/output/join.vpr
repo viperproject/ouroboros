@@ -97,19 +97,19 @@ domain List {
 
 field next: Ref
 
-function apply_TCFraming(g0: Set[Ref], g1: Set[Ref]): Bool
+function apply_TCFraming(g0: Set[Ref], g1_0: Set[Ref]): Bool
   requires (forall n: Ref :: { n.next } (n in g0) ==> acc(n.next, 1 / 2))
-  requires (forall n: Ref :: { n.next } (n in g1) ==> acc(n.next, 1 / 2))
-  requires (forall n: Ref :: { (n in g0),(n in g1) } (n in g0) ==> !((n in g1)))
-  requires (forall n: Ref :: { (n in g0),(n in g1) } (n in g1) ==> !((n in g0)))
-  ensures g0 union g1 == g1 union g0
-  ensures (forall u: Ref, v: Ref :: { exists_path($$(g0), u, v) } { exists_path($$(g0 union g1), u, v) } (u in g0) && ((v in g0) && exists_path($$(g0), u, v)) ==> exists_path($$(g0 union g1), u, v))
-  ensures (forall u: Ref, v: Ref :: { exists_path($$(g1), u, v) } { exists_path($$(g1 union g0), u, v) } (u in g1) && ((v in g1) && exists_path($$(g1), u, v)) ==> exists_path($$(g1 union g0), u, v)) 
+  requires (forall n: Ref :: { n.next } (n in g1_0) ==> acc(n.next, 1 / 2))
+  requires (forall n: Ref :: { (n in g0),(n in g1_0) } (n in g0) ==> !((n in g1_0)))
+  requires (forall n: Ref :: { (n in g0),(n in g1_0) } (n in g1_0) ==> !((n in g0)))
+  ensures g0 union g1_0 == g1_0 union g0
+  ensures (forall u: Ref, v: Ref :: { exists_path($$(g0), u, v) } { exists_path($$(g0 union g1_0), u, v) } (u in g0) && ((v in g0) && exists_path($$(g0), u, v)) ==> exists_path($$(g0 union g1_0), u, v))
+  ensures (forall u: Ref, v: Ref :: { exists_path($$(g1_0), u, v) } { exists_path($$(g1_0 union g0), u, v) } (u in g1_0) && ((v in g1_0) && exists_path($$(g1_0), u, v)) ==> exists_path($$(g1_0 union g0), u, v)) 
 
 
 function $$(nodes: Set[Ref]): Set[Edge]
   requires (forall n: Ref :: { n.next } (n in nodes) ==> acc(n.next, 1 / 2))
-  ensures (forall p: Ref, s: Ref :: { create_edge(p, s) } ((p in nodes) && (s in nodes) && p.next == s && p != s) == (create_edge(p, s) in result))
+  ensures (forall p: Ref, s: Ref :: { create_edge(p, s) } ((p in nodes) && (s in nodes) && (p.next == s || true) && p != s) == (create_edge(p, s) in result))
   ensures (forall p: Ref, s: Ref :: { (p in nodes),(s in nodes),exists_path(result, p, s) } (p in nodes) && exists_path(result, p, s) ==> (s in nodes))
   ensures (forall p: Ref, s: Ref :: { (p in nodes),(s in nodes),exists_path(result, p, s) } (s in nodes) && exists_path(result, p, s) ==> (p in nodes)) 
 
@@ -126,23 +126,3 @@ method join(g1: Set[Ref], g2: Set[Ref]) returns (g: Set[Ref])
   g := g1 union g2
   g := g1 union g2
 }
-
-method link_next(g: Set[Ref], x: Ref, y: Ref)
-  requires (x in g)
-  requires y != null ==> (y in g)
-  requires !((null in g)) && ((x in g) && (acc(x.next, write) && ((forall n: Ref :: { n.next } (n in g) && n != x ==> acc(n.next, 1 / 2)) && (forall n: Ref :: { (n.next in g) } { (n in g),n.next } (n in g) && n.next != null ==> (n.next in g)))))
-  ensures !((null in g)) && ((x in g) && (acc(x.next, write) && ((forall n: Ref :: { n.next } (n in g) && n != x ==> acc(n.next, 1 / 2)) && (forall n: Ref :: { (n.next in g) } { (n in g),n.next } (n in g) && n.next != null ==> (n.next in g)))))
-  ensures x.next == y
-  ensures y == null ==> $$(g) == old($$(g))
-  ensures y != null ==> (forall v1: Ref, v2: Ref :: { edge(old($$(g)), v1, v2) } edge($$(g), v1, v2) == (edge(old($$(g)), v1, v2) || v1 == x && v2 == y))
-  ensures y != null ==> (forall v1: Ref, v2: Ref :: { exists_path($$(g), v1, v2) } exists_path($$(g), v1, v2) == (exists_path(old($$(g)), v1, v2) || exists_path(old($$(g)), v1, x) && exists_path(old($$(g)), y, v2)))
-
-
-method unlink_next(g: Set[Ref], x: Ref)
-  requires (x in g)
-  requires !((null in g)) && ((x in g) && (acc(x.next, write) && ((forall n: Ref :: { n.next } (n in g) && n != x ==> acc(n.next, 1 / 2)) && (forall n: Ref :: { (n.next in g) } { (n in g),n.next } (n in g) && n.next != null ==> (n.next in g)))))
-  ensures !((null in g)) && ((x in g) && (acc(x.next, write) && ((forall n: Ref :: { n.next } (n in g) && n != x ==> acc(n.next, 1 / 2)) && (forall n: Ref :: { (n.next in g) } { (n in g),n.next } (n in g) && n.next != null ==> (n.next in g)))))
-  ensures x.next == null
-  ensures old(x.next) == null ==> $$(g) == old($$(g))
-  ensures old(x.next) != null ==> (forall v1: Ref, v2: Ref :: { edge($$(g), v1, v2) } edge($$(g), v1, v2) == (edge(old($$(g)), v1, v2) && !(v1 == x && v2 == old(x.next))))
-  ensures old(x.next) != null ==> (forall v1: Ref, v2: Ref :: { exists_path($$(g), v1, v2) } v1 != v2 ==> exists_path($$(g), v1, v2) == (exists_path(old($$(g)), v1, v2) && !(exists_path(old($$(g)), v1, x) && exists_path(old($$(g)), old(x.next), v2))))

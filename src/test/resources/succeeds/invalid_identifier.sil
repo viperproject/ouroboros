@@ -1,0 +1,5 @@
+ //:: ExpectedOutput(invalid.identifier)
+method Graph(g: Graph, n: Node)
+{
+    assert true
+}

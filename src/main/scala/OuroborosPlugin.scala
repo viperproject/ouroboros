@@ -11,11 +11,13 @@ import java.net.URL
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, Paths}
 
+import viper.silver.{FastMessaging}
 import viper.silver.ast._
 import viper.silver.ast.utility.Rewriter.{Strategy, StrategyBuilder, Traverse}
 import viper.silver.parser._
 import viper.silver.verifier._
 
+import scala.collection.mutable
 import scala.io.{BufferedSource, Codec}
 
 class OuroborosPlugin extends SilverPlugin {
@@ -24,23 +26,105 @@ class OuroborosPlugin extends SilverPlugin {
 
   val graph_handler = new OuroborosGraphDefinition(this)
   val graphAST_handler = new OuroborosGraphHandler()
-
+  val graph_names_handler = new OuroborosNamesHandler()
   var translatedCode = ""
+  var methodKeyWords : Set[String] = Set()
+  var keywords: mutable.Map[String, String] = mutable.Map.empty[String, String]
 
   override def beforeResolve(input: PProgram): PProgram = {
 
     println(">>> beforeResolve " + Thread.currentThread().getId)
 
+    def getErrors(nodes: Set[PIdnDef]) = {
+      var newErrors: Set[AbstractError] = Set()
+      nodes.map(x => {
+        val message = FastMessaging.message(x, "Cannot use identifier " + x.name)
+        for (m <- message) {
+          newErrors += OuroborosInvalidIdentifierError( m.label,
+            m.pos match {
+              case fp: FilePosition =>
+                SourcePosition(fp.file, m.pos.line, m.pos.column)
+              case _ =>
+                //SourcePosition(_inputFile.get, m.pos.line, m.pos.column)
+                NoPosition //TODO find position
+            }
+          )
+        }
+        x
+      })
+
+      _errors ++= newErrors
+
+    }
+
 
     //val pprog = addPreamble(input, "/viper/silver/plugin/TrCloDomain.sil")
 
-    val pprog: PProgram =
+    //Collect identifiers
+    var names: Set[String] = Set()
+    var invalidIdentifier: Option[Set[PIdnDef]] = None
+    invalidIdentifier = graph_names_handler.collectNames(input)
+    names = graph_names_handler.used_names
+    //println("NAMES: " + names)
+
+    //If one identifier is "Graph" or "Node", stop
+    invalidIdentifier match {
+      case None =>
+      case Some(nodes) => {
+        getErrors(nodes)
+        return input
+      }
+    }
+
+    //Get Ref Fields
+    val ref_fields: Seq[String] = input.fields.collect {
+      case PField(f, t) if t == TypeHelper.Ref => f.name
+      case x:PField => x.typ match {
+        case d: PDomainType if d.domain.name == "Node" => x.idndef.name
+      }
+    }
+    //println("REF_FIELDS: " + ref_fields)
+
+    var preamble: PProgram =
       addPreamble(
+        addPreamble(
+          addPreamble(
+            PProgram(Seq(), Seq(), Seq(), Seq(), Seq(), Seq(), Seq(), Seq()),
+            "/viper/silver/plugin/TrCloDomain.sil"),
+          "/viper/silver/plugin/TrCloTypes.sil"),
+        "/viper/silver/plugin/TrCloOperations.sil")
+
+
+    //synthesize parametric entities
+    val synthesizeResult = OuroborosSynthesize.synthesize(preamble, ref_fields)
+    preamble = synthesizeResult._1
+    methodKeyWords = synthesizeResult._2
+    println("MethodKeyWords: " + methodKeyWords)
+
+
+    //Fresh Name Generation
+    preamble = graph_names_handler.getNewNames(preamble, names, ref_fields)
+    keywords = graph_names_handler.graph_keywords
+    graph_handler.graph_keywords = keywords
+
+    val pprog: PProgram =
+      PProgram(
+        preamble.imports ++ input.imports,
+        preamble.macros ++ input.macros,
+        preamble.domains ++ input.domains,
+        preamble.fields ++ input.fields,
+        preamble.functions ++ input.functions,
+        preamble.predicates ++ input.predicates,
+        preamble.methods ++ input.methods,
+        preamble.errors ++ input.errors
+      )
+
+    /*addPreamble(
         addPreamble(
           addPreamble(input,
             "/viper/silver/plugin/TrCloDomain.sil"),
             "/viper/silver/plugin/TrCloTypes.sil"),
-            "/viper/silver/plugin/TrCloOperations.sil")
+            "/viper/silver/plugin/TrCloOperations.sil")*/
 
     //val methodRewriter = new Strategy[PNode, String](
     //  {
@@ -51,7 +135,7 @@ class OuroborosPlugin extends SilverPlugin {
 
     val ourRewriter = StrategyBuilder.Slim[PNode](
       {
-        case p: PProgram => graph_handler.synthesizeParametricEntities(pprog)
+        //case p: PProgram => graph_handler.synthesizeParametricEntities(pprog)
         case m: PMethod => graph_handler.handlePMethod(pprog, m)
         case m: PCall => graph_handler.handlePCall(pprog, m)
         case m: PField => graph_handler.handlePField(pprog, m) //TODO Fields, Domains
@@ -63,7 +147,7 @@ class OuroborosPlugin extends SilverPlugin {
     // Construct the parent relation for the overall PAST:
     newProg.initProperties()
 
-    println(newProg)
+    //println(newProg)
 
     newProg
   }
@@ -73,11 +157,15 @@ class OuroborosPlugin extends SilverPlugin {
     println(">>> beforeVerify")
 
     val graph_defs = graph_handler.graph_definitions
+    var containsAssignment = false
 
     val ourRewriter = StrategyBuilder.Context[Node, String](
       {
         case (m: Method, ctx) if graph_defs.contains(m.name) => graphAST_handler.handleMethod(input, m, graph_defs.get(m.name), ctx)
-        case (fa: FieldAssign, ctx) => graph_handler.handleAssignments(input, fa, ctx)
+        case (fa: FieldAssign, ctx) => {
+          containsAssignment = true
+          graph_handler.handleAssignments(input, fa, ctx)
+        }
       },
       "", // default context
       {
@@ -85,7 +173,15 @@ class OuroborosPlugin extends SilverPlugin {
       }
     )
 
-    val inputPrime = ourRewriter.execute[Program](input)
+    var inputPrime = ourRewriter.execute[Program](input)
+
+    inputPrime = Program(inputPrime.domains, inputPrime.fields, inputPrime.functions, inputPrime.predicates,
+      if(containsAssignment) inputPrime.methods else inputPrime.methods.filter(method => !method.name.contains("link_")) //TODO user cannot use identifiers containing "link_"
+    )(inputPrime.pos, inputPrime.info, inputPrime.errT)
+
+/*    inputPrime = Program(inputPrime.domains, inputPrime.fields, inputPrime.functions, inputPrime.predicates,
+          if(containsAssignment) inputPrime.methods else inputPrime.methods.filter(method => !methodKeyWords.contains(method.name)) //TODO user cannot use identifiers containing "link_"
+        )(inputPrime.pos, inputPrime.info, inputPrime.errT)*/
 
     translatedCode = inputPrime.toString()
     //println(inputPrime)

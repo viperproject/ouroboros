@@ -6,6 +6,8 @@
 
 package viper.silver.plugin
 
+import java.util
+
 import scala.collection.{immutable, mutable}
 import viper.silver.{ast, parser}
 import viper.silver.ast.utility.Rewriter.{ContextC, Rewritable}
@@ -30,6 +32,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
 
 /*  case class OurGraphSpec(inputs: Seq[OurObject], outputs: Seq[OurObject])*/
   val graph_definitions: mutable.Map[String, OurGraphSpec] = mutable.Map.empty[String, OurGraphSpec]
+  var graph_keywords: mutable.Map[String, String] = mutable.Map.empty[String, String]
 
   def handlePFormalArgDecl(input: PProgram, decl: PFormalArgDecl): PFormalArgDecl = decl.typ match {
     case d: PDomainType =>
@@ -145,16 +148,16 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
   }*/
 
   private def EDGE(prog: PProgram, graph_exp: PExp, lhs_node_exp: PExp, rhs_node_exp: PExp): PExp = PCall(
-    PIdnUse("edge"),
+    PIdnUse(getIdentifier("edge")),
     Seq(
-      PCall(PIdnUse("$$"), Seq(graph_exp)),
+      PCall(PIdnUse(getIdentifier("$$")), Seq(graph_exp)),
       lhs_node_exp.deepCopyAll[PExp],
       rhs_node_exp.deepCopyAll[PExp]))
 
   private def EXISTS_PATH(prog: PProgram, graph_exp: PExp, lhs_node_exp: PExp, rhs_node_exp: PExp): PExp = PCall(
-    PIdnUse("exists_path"),
+    PIdnUse(getIdentifier("exists_path")),
     Seq(
-      PCall(PIdnUse("$$"), Seq(graph_exp.deepCopyAll[PExp])),
+      PCall(PIdnUse(getIdentifier("$$")), Seq(graph_exp.deepCopyAll[PExp])),
       lhs_node_exp.deepCopyAll[PExp],
       rhs_node_exp.deepCopyAll[PExp]))
 
@@ -165,16 +168,16 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
   )
 
   private def FUNCTIONAL(prog: PProgram, graph_exp: PExp) = PCall(
-    PIdnUse("func_graph"),
-    Seq(PCall(PIdnUse("$$"), Seq(graph_exp.deepCopyAll[PExp]))))
+    PIdnUse(getIdentifier("func_graph")),
+    Seq(PCall(PIdnUse(getIdentifier("$$")), Seq(graph_exp.deepCopyAll[PExp]))))
 
   private def UNSHARED(prog: PProgram, graph_exp: PExp) = PCall(
-    PIdnUse("unshared_graph"),
-    Seq(PCall(PIdnUse("$$"), Seq(graph_exp.deepCopyAll[PExp]))))
+    PIdnUse(getIdentifier("unshared_graph")),
+    Seq(PCall(PIdnUse(getIdentifier("$$")), Seq(graph_exp.deepCopyAll[PExp]))))
 
   private def ACYCLIC(prog: PProgram, graph_exp: PExp) = PCall(
-    PIdnUse("acyclic_graph"),
-    Seq(PCall(PIdnUse("$$"), Seq(graph_exp.deepCopyAll[PExp]))))
+    PIdnUse(getIdentifier("acyclic_graph")),
+    Seq(PCall(PIdnUse(getIdentifier("$$")), Seq(graph_exp.deepCopyAll[PExp]))))
 
   private def ACYCLIC_LIST_SEGMENT(prog: PProgram, graph_exp: PExp): PExp = PBinExp(
     ACYCLIC(prog, graph_exp.deepCopyAll[PExp]), "&&", PBinExp(FUNCTIONAL(prog, graph_exp.deepCopyAll[PExp]), "&&", UNSHARED(prog, graph_exp.deepCopyAll[PExp])))
@@ -226,25 +229,6 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
     // Store the graph specifications for future reference.
     graph_definitions(m.idndef.name) = OurGraphSpec(input_graphs, output_graphs)
 
-    def map_graphs_to_contracts(objects: Seq[OurObject]): Seq[PExp] = objects.collect {
-      case o => { o.typ match {
-        case n@ OurGraph => GRAPH(input, PIdnUse(o.name), ref_fields(input))
-      }}
-    }
-
-    def disjoint_graph_specs(objects: Seq[OurObject]): Seq[PExp] = {
-      val distinct_graphs: Iterator[List[OurObject]] = (objects.collect {
-        case o => o.typ match {
-          case g@ OurGraph => o
-        }
-      } toList).combinations(2)
-      distinct_graphs.map((g_pair: List[OurObject]) => {
-        DISJOINT(
-          PIdnUse(g_pair(0).name),
-          PIdnUse(g_pair(1).name))
-      }) toList
-    }
-
     def union_graph_specs(objects: Seq[OurObject], union_graphs: Seq[OurObject]): Seq[PExp] = union_graphs.toList match {
       case x :: xs if xs != Nil =>
         sys.error(s"In method ${m.idndef.name} we found the following output graphs: ${union_graphs.map(_.name)}, but no more than one output graph is allowed.")
@@ -257,16 +241,6 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
         PIdnUse(union_graphs.last.name)))
       case Nil => Seq()
     }
-
-    val output_graphs_footprint: Seq[PExp] =
-      if (output_graphs.nonEmpty)
-        map_graphs_to_contracts(output_graphs)
-      else if (input_graphs.nonEmpty)
-        Seq(GRAPH(input, seqOfPExpToPExp(input_graphs.collect {
-          case o => { o.typ match { case g@ OurGraph => PIdnUse(o.name) } }
-        }, "union", PEmptySet(TypeHelper.Ref)), ref_fields(input)))
-      else
-        Seq()
 
     PMethod(
       m.idndef,
@@ -357,7 +331,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
   }
 
   def assumeApplyTCFraming(exp: PExp, exp1: PExp): PStmt = {
-    PAssume(PCall(PIdnUse("apply_TCFraming"), Seq(exp, exp1)))
+    PAssume(PCall(PIdnUse(getIdentifier("apply_TCFraming")), Seq(exp, exp1)))
   }
 
 
@@ -383,115 +357,6 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
     }
 
   }
-
-  private def synthesizeFieldParametricMethods(input: PProgram): Seq[PMethod] = input.methods.collect {
-    case m: PMethod if m.idndef.name == "link_$field$" =>
-      input.fields.collect { // FIXME Ref type?
-        case f: PField =>
-          val new_m = m.deepCopyWithNameSubstitution(
-            idndef = PIdnDef(s"link_${f.idndef.name}"))(
-            "$field$", f.idndef.name)
-          new_m
-      }
-    case m: PMethod if m.idndef.name == "unlink_$field$" =>
-      input.fields.collect {
-        case f: PField =>
-          val new_m = m.deepCopyWithNameSubstitution(
-            idndef = PIdnDef(s"unlink_${f.idndef.name}"))(
-            "$field$", f.idndef.name)
-          new_m
-      }
-    case m: PMethod => Seq(m)
-
-  } flatten
-
-  private def read = PBinExp(PIntLit(1), "/", PIntLit(2)).deepCopyAll[PExp]
-
-  private def synthesizeApplyTCFramingHDF(input: PProgram): Seq[PFunction] = input.functions.collect {
-    case proto_f: PFunction if proto_f.idndef.name == "apply_TCFraming" =>
-      proto_f.deepCopy(pres =
-        collectQPsForRefFields(ref_fields(input), PIdnUse("g0"), this.read) ++
-          collectQPsForRefFields(ref_fields(input), PIdnUse("g1"), this.read) ++
-          proto_f.pres)
-    case f: PFunction => f
-  }
-
-  private def $$(input: PProgram) = PFunction(
-    PIdnDef("$$"),
-    Seq(
-      PFormalArgDecl(
-        PIdnDef("nodes"),
-        PSetType(TypeHelper.Ref)) ),
-    PSetType(PDomainType(PIdnUse("Edge"), Seq())),
-    collectQPsForRefFields(ref_fields(input), PIdnUse("nodes"), this.read),
-    Seq(
-      PForall(
-        Seq(
-          PFormalArgDecl(PIdnDef("p"), TypeHelper.Ref),
-          PFormalArgDecl(PIdnDef("s"), TypeHelper.Ref)),
-        Seq(
-          PTrigger(Seq(
-            PCall(PIdnUse("create_edge"),Seq(PIdnUse("p"),PIdnUse("s")))))),
-        PBinExp(
-          PBinExp(
-            PBinExp(
-              PBinExp(
-                PBinExp(PIdnUse("p"), "in", PIdnUse("nodes")),
-                "&&",
-                PBinExp(PIdnUse("s"), "in", PIdnUse("nodes"))),
-              "&&",
-              seqOfPExpToPExp(input.fields.map( f => PBinExp(
-                PFieldAccess(PIdnUse("p"),PIdnUse(f.idndef.name) ), "==", PIdnUse("s"))), "||", PBoolLit(false))),
-            "&&",
-            PBinExp(PIdnUse("p"), "!=", PIdnUse("s"))),
-          "<==>",
-          PBinExp(
-            PCall(PIdnUse("create_edge"),Seq(PIdnUse("p"),PIdnUse("s"))),
-            "in",
-            PResultLit()))),
-      PForall(
-        Seq(
-          PFormalArgDecl(PIdnDef("p"), TypeHelper.Ref),
-          PFormalArgDecl(PIdnDef("s"), TypeHelper.Ref)),
-        Seq(
-          PTrigger( Seq(
-            PBinExp(PIdnUse("p"), "in", PIdnUse("nodes")),
-            PBinExp(PIdnUse("s"), "in", PIdnUse("nodes")),
-            PCall(PIdnUse("exists_path"), Seq( PResultLit(), PIdnUse("p"), PIdnUse("s") ))))),
-        PBinExp(
-          PBinExp(
-            PBinExp(PIdnUse("p"), "in", PIdnUse("nodes")),
-            "&&",
-            PCall(PIdnUse("exists_path"), Seq( PResultLit(), PIdnUse("p"), PIdnUse("s") ))),
-          "==>",
-          PBinExp(PIdnUse("s"), "in", PIdnUse("nodes")))),
-      PForall(
-        Seq(
-          PFormalArgDecl(PIdnDef("p"), TypeHelper.Ref),
-          PFormalArgDecl(PIdnDef("s"), TypeHelper.Ref)),
-        Seq(
-          PTrigger( Seq(
-            PBinExp(PIdnUse("p"), "in", PIdnUse("nodes")),
-            PBinExp(PIdnUse("s"), "in", PIdnUse("nodes")),
-            PCall(PIdnUse("exists_path"), Seq( PResultLit(), PIdnUse("p"), PIdnUse("s") ))))),
-        PBinExp(
-          PBinExp(
-            PBinExp(PIdnUse("s"), "in", PIdnUse("nodes")),
-            "&&",
-            PCall(PIdnUse("exists_path"), Seq( PResultLit(), PIdnUse("p"), PIdnUse("s") ))),
-          "==>",
-          PBinExp(PIdnUse("p"), "in", PIdnUse("nodes"))))),
-    None, None)
-
-  def synthesizeParametricEntities(input: PProgram) = PProgram(
-    input.imports,
-    input.macros,
-    input.domains,
-    input.fields,
-    synthesizeApplyTCFramingHDF(input) :+ $$(input), //functions
-    input.predicates,
-    synthesizeFieldParametricMethods(input), //methods
-    input.errors)
 
   private def getNoExitWisdom(input: Program, g0:Exp, g1:Exp)(pos: Position = NoPosition, info: Info = NoInfo, errT: ErrorTrafo = NoTrafos): Stmt = {
     val $$_func = input.findFunction("$$")
@@ -583,19 +448,24 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
           val graph_defs = graph_definitions(m.name)
           val local_g =
             if (graph_defs.outputs.nonEmpty)
-              LocalVar(graph_defs.outputs.last.name)(SetType(Ref), fa.pos, fa.info, fa.errT)
+              LocalVar(graph_defs.outputs.last.name)(SetType(Ref), fa.pos, fa.info, fa.errT)//TODO change for multiple graph_definitions
             else
               seqOfExpToUnionExp(graph_defs.inputs.map { in => LocalVar(in.name)(SetType(Ref), fa.pos, fa.info, fa.errT) })(fa.pos, fa.info, fa.errT) //TODO causes an error, if there is no graph as input
 
           Seqn(
             Seq(
               getOperationalWisdoms(input, m, ctx)(fa.pos, fa.info, fa.errT),
-              MethodCall(s"unlink_${fa.lhs.field.name}", Seq(local_g, fa.lhs.rcv), Seq())(fa.pos, fa.info, fa.errT),
-              MethodCall(s"link_${fa.lhs.field.name}", Seq(local_g, fa.lhs.rcv, fa.rhs), Seq())(fa.pos, fa.info, fa.errT)),
+              MethodCall(getIdentifier(s"unlink_${fa.lhs.field.name}"), Seq(local_g, fa.lhs.rcv), Seq())(fa.pos, fa.info, fa.errT),
+              MethodCall(getIdentifier(s"link_${fa.lhs.field.name}"), Seq(local_g, fa.lhs.rcv, fa.rhs), Seq())(fa.pos, fa.info, fa.errT)),
             Seq())(fa.pos, fa.info, fa.errT)
       })
     } flatten, Seq())(fa.pos, fa.info, fa.errT)
   }
 
   def handleMethods(input: Program, m: Method, ctx: ContextC[Node, String]): Node = m
+
+   def getIdentifier(name : String): String = graph_keywords.get(name) match{
+     case None => name //TODO maybe throw error
+     case Some(newName) => newName
+   }
 }

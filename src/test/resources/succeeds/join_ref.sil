@@ -5,5 +5,8 @@ ensures forall n:Ref, n2:Ref :: n in g1 && n2 in g1 && exists_path($$(old(g1)), 
 {
     //assume apply_TCFraming(g1, g2)
     g := g1 union g2
+    /*var n5 : Ref
+    n5 := new(*)
+    n5.next := n5*/
     assert forall n:Ref, n2:Ref :: n in g1 && n2 in g1 && exists_path($$(old(g1)), n, n2) ==> exists_path($$(g), n, n2)
 }

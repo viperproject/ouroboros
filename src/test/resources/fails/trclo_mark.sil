@@ -241,6 +241,5 @@ method mark(g:Set[Ref], roots:Set[Ref]) returns (marked:Set[Ref])
 //     // Signature: apply_noExit(EG:Set[Edge], U:Set[Ref], M:Set[Ref]): Bool
     assume apply_noExit($$(g), g, marked)
 
-    //:: ExpectedOutput(assert.failed:assertion.false)
     // assert false
 }
