@@ -94,11 +94,18 @@ class OuroborosPlugin extends SilverPlugin {
           "/viper/silver/plugin/TrCloTypes.sil"),
         "/viper/silver/plugin/TrCloOperations.sil")
 
+/*    val methods = preLoadSilFile("/viper/silver/plugin/TrCloMethods.sil") match {
+      case None => PProgram(Seq(), Seq(), Seq(), Seq(), Seq(), Seq(), Seq(), Seq())
+      case Some(program) => program
+    }
+
+    //TODO synthesize methods and get mapping*/
+
 
     //synthesize parametric entities
     val synthesizeResult = OuroborosSynthesize.synthesize(preamble, ref_fields)
     preamble = synthesizeResult._1
-    methodKeyWords = synthesizeResult._2
+      methodKeyWords = synthesizeResult._2 //TODO delete
     //println("MethodKeyWords: " + methodKeyWords)
 
 
@@ -187,6 +194,14 @@ class OuroborosPlugin extends SilverPlugin {
     translatedCode = inputPrime.toString()
     //println(inputPrime)
     inputPrime
+  }
+
+  override def mapVerificationResult(input: VerificationResult): VerificationResult = input match {
+    case Success => Success
+    case Failure(errors) => Failure(errors.map {
+      case x: AbstractVerificationError => x.transformedError()
+      case x => x
+    })
   }
 
   private def readResourceIntoTmpFile(resource: String): Path = {

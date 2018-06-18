@@ -5,7 +5,8 @@ import viper.silver.ast.utility.Rewriter.ContextC
 import viper.silver.plugin.errors.{OuroborosGraphSpecificactionError, OuroborosInternalEncodingError}
 import viper.silver.plugin.reasons.{InsufficientGraphPermission, NullInGraphReason, OpenGraphReason}
 import viper.silver.verifier.AbstractVerificationError
-import viper.silver.verifier.reasons.InternalReason
+import viper.silver.verifier.errors.PostconditionViolated
+import viper.silver.verifier.reasons.{AssertionFalse, InsufficientPermission, InternalReason}
 
 import scala.collection.mutable
 
@@ -16,19 +17,45 @@ class OuroborosGraphHandler {
   def handleMethod(input: Program, m: Method, s: Option[OurGraphSpec], ctx: ContextC[Node, String]): Method = s match {
     case None => m
     case Some(ss) => {
-      val inputGraphs = m.formalArgs.filter(x => ss.inputs.map(y => y.name).contains(x.name))
+      val inputObjects: Seq[(OurObject, Seq[LocalVarDecl])] = ss.inputs.map(obj => (obj,m.formalArgs.filter(arg => arg.name == obj.name)))
+      val outputObjects: Seq[(OurObject, Seq[LocalVarDecl])] = ss.outputs.map(obj => (obj,m.formalReturns.filter(arg => arg.name == obj.name)))
+      val inputGraphs = {
+        m.formalArgs.filter(x => ss.inputs.map(y => y.name).contains(x.name))
+      }
       val outputGraphs = m.formalReturns.filter(x => ss.outputs.map(y => y.name).contains(x.name))
       Method(
         m.name,
         m.formalArgs,
         m.formalReturns,
-        GRAPH(inputGraphs, input.fields) ++ disjointGraphs(inputGraphs) ++ m.pres,
-        GRAPH(outputGraphs, input.fields) ++ m.posts,
+        disjointGraphs(inputGraphs, input) ++ TYPE(inputObjects, input.fields, input, m) ++ m.pres,
+        TYPE(outputObjects, input.fields, input, m) ++ m.posts,
         handleMethodBody(input, m.body, inputGraphs, outputGraphs) /* ++ TCFraming*/
       ) (m.pos, m.info, m.errT)
     }
   }
 
+
+  def TYPE(objects: Seq[(OurObject, Seq[LocalVarDecl])], fields: Seq[Field], input: Program, method: Method): Seq[Exp] = objects.flatMap(
+    {
+      mapping => {
+        val obj = mapping._1
+        val decls = mapping._2
+        decls.size match {
+          case 1 => {
+            val decl = decls.head
+            obj.typ match {
+              case OurClosedGraph => Seq(GRAPH(decl, fields, input, method, true))
+              case OurGraph => Seq(GRAPH(decl, fields, input, method, false))
+              //case OurList => //TODO
+              case _ => Seq()
+            }
+          }
+          case 0 => Seq()
+        }
+
+      }
+    }
+  )
   val qpsForRefFieldErrTrafo : ErrTrafo = ErrTrafo({
     case x => OuroborosGraphSpecificactionError(
       x.offendingNode,
@@ -51,32 +78,62 @@ class OuroborosGraphHandler {
     )
   })
 
-def GRAPH(graphs: Seq[LocalVarDecl], fields: Seq[Field] /*, errT : ErrorTrafo*/): Seq[Exp] = {
-  val notNullInGraphErrTrafo : ErrTrafo = ErrTrafo({
-    case x => OuroborosGraphSpecificactionError(
-      x.offendingNode,
-      NullInGraphReason(
-        x.offendingNode,
-        s"Null might be in graph $x"
-      ),
-      x.cached
-    )
-  })
+def GRAPH(graph: LocalVarDecl, fields: Seq[Field], input: Program, method: Method, closed: Boolean): Exp = {
+  val graphErrTrafo: ErrTrafo = ErrTrafo(
+    {
+      case err: PostconditionViolated => err.reason match {
+        case r : InsufficientPermission => { //TODO maybe find out, for which field, we don't have enough permissions
+          OuroborosGraphSpecificactionError(
+            err.offendingNode,
+            InsufficientGraphPermission(
+              err.offendingNode,
+              "There might be insufficient permission to access all fields of nodes inside the graph."
+            ),
+            err.cached
+          )
+        }
+        case r : AssertionFalse if r.readableMessage.contains(s"${getIdentifier("closed")}(")=> {
+          OuroborosGraphSpecificactionError(
+            err.offendingNode,
+            OpenGraphReason(
+              err.offendingNode,
+              "This graph might not be closed."
+            ),
+            err.cached
+          )
+        }
 
-  var toReturn : Seq[Exp] = Seq()
-  var a = 0
+        case r : AssertionFalse if r.readableMessage.contains(s"${getIdentifier("NoNullInGraph")}(") => {
+          OuroborosGraphSpecificactionError(
+            err.offendingNode,
+            NullInGraphReason(
+              err.offendingNode,
+              "Null might be in this graph."
+            ),
+            err.cached
+          )
+        }
+
+        case _ => err
+      }
+      case err => err
+    }
+  )
   //print("Decls: " + decls + " ")
-  for(a <- graphs.indices){
-   // print("a: " + a + " ")
-    val decl = graphs(a)
-    val unExp : UnExp = Not(AnySetContains(NullLit()(decl.pos, decl.info, notNullInGraphErrTrafo), LocalVar(decl.name)(decl.typ, decl.pos, decl.info, notNullInGraphErrTrafo))(decl.pos, decl.info, notNullInGraphErrTrafo))(decl.pos, decl.info, notNullInGraphErrTrafo)
-    val QPForRefFields : Seq[Exp] = collectQPsForRefFields(fields, decl, FullPerm()(decl.pos, decl.info, qpsForRefFieldErrTrafo))
-    val InGraphForallsForRefFields : Seq[Exp] = collectInGraphForallsForRefFields(fields, decl)
-    toReturn = toReturn :+ ((unExp +: QPForRefFields) ++ InGraphForallsForRefFields)
-      .foldRight[Exp](TrueLit()(decl.pos, decl.info, decl.errT))(
-        (x, y) => And(x, y)(decl.pos, decl.info, decl.errT)) //TODO If there is an error, then there is an error in the encoding => OuroborosInternalEncodingError
-  }
-  toReturn
+    val noNullInGraph = input.findFunction(getIdentifier("NoNullInGraph"))
+    val closedFunction = input.findDomainFunction(getIdentifier("closed"))
+    //val closed = input.findFunction(getIdentifier("CLOSED"))
+    val unExp : FuncApp = FuncApp(
+      noNullInGraph,
+      Seq(
+        LocalVar(graph.name)(graph.typ, graph.pos, graph.info, graphErrTrafo)
+      )
+    )(graph.pos, graph.info, graphErrTrafo)
+    val QPForRefFields : Seq[Exp] = collectQPsForRefFields(fields, graph, FullPerm()(graph.pos, graph.info, qpsForRefFieldErrTrafo))
+    val InGraphForallsForRefFields = if(closed) collectInGraphForallsForRefFields(fields, graph) else Seq()
+    ((unExp +: QPForRefFields) ++ InGraphForallsForRefFields)
+      .foldRight[Exp](TrueLit()(graph.pos, graph.info, graphErrTrafo))(
+        (x, y) => And(x, y)(graph.pos, graph.info, graphErrTrafo)) //TODO If there is an error, then there is an error in the encoding => OuroborosInternalEncodingError
 }
 
   private def collectQPsForRefFields(fields : Seq[Field], graph : LocalVarDecl, perm_exp: Exp = FullPerm()(NoPosition, NoInfo, qpsForRefFieldErrTrafo)): Seq[Exp] =
@@ -122,45 +179,23 @@ def GRAPH(graphs: Seq[LocalVarDecl], fields: Seq[Field] /*, errT : ErrorTrafo*/)
     )(graph.pos, graph.info, closedGraphErrTrafo) //TODO If there is an error, then there is an error in the encoding => OuroborosInternalEncodingError
   }
 
-  private def disjointGraphs(graphs: Seq[LocalVarDecl]): Seq[Exp] = {
-    graphs.flatMap(x => DISJOINT(x, graphs.filter(y => graphs.indexOf(y) > graphs.indexOf(x))))
+  private def disjointGraphs(graphs: Seq[LocalVarDecl], input: Program): Seq[Exp] = {
+    graphs.flatMap(x => DISJOINT(x, graphs.filter(y => graphs.indexOf(y) > graphs.indexOf(x)), input))
   }
 
-  private def DISJOINT(g0 : LocalVarDecl, g1: Seq[LocalVarDecl]): Seq[Exp] = {
-    g1.map(x => DISJOINT(g0, x))
+  private def DISJOINT(g0 : LocalVarDecl, g1: Seq[LocalVarDecl], input: Program): Seq[Exp] = {
+    g1.map(x => DISJOINT(g0, x, input))
   }
 
-  private def DISJOINT(g0: LocalVarDecl, g1: LocalVarDecl): Exp = {
-    And(
-      Forall(
-        Seq(LocalVarDecl("n", Ref)(g0.pos, g0.info, g0.errT)),
-        Seq(Trigger(Seq(
-          AnySetContains(LocalVar("n")(Ref, g0.pos, g0.info, g0.errT), LocalVar(g0.name)(g0.typ, g0.pos, g0.info, g0.errT))(g0.pos, g0.info, g0.errT),
-          AnySetContains(LocalVar("n")(Ref, g1.pos, g1.info, g1.errT), LocalVar(g1.name)(g1.typ, g1.pos, g1.info, g1.errT))(g1.pos, g1.info, g1.errT)
-        ))(g0.pos, g0.info, g0.errT)),
-        Implies(
-          AnySetContains(LocalVar("n")(Ref, g0.pos, g0.info, g0.errT), LocalVar(g0.name)(g0.typ, g0.pos, g0.info, g0.errT))(g0.pos, g0.info, g0.errT),
-          Not(
-            AnySetContains(LocalVar("n")(Ref, g1.pos, g1.info, g1.errT), LocalVar(g1.name)(g1.typ, g1.pos, g1.info, g1.errT))(g1.pos, g1.info, g1.errT)
-          )(g1.pos, g1.info, g1.errT)
-        )(g0.pos, g0.info, g0.errT)
-      )(g0.pos, g0.info, g0.errT)
-      ,
-      Forall(
-        Seq(LocalVarDecl("n", Ref)(g0.pos, g0.info, g0.errT)),
-        Seq(Trigger(Seq(
-          AnySetContains(LocalVar("n")(Ref, g0.pos, g0.info, g0.errT), LocalVar(g0.name)(g0.typ, g0.pos, g0.info, g0.errT))(g0.pos, g0.info, g0.errT),
-          AnySetContains(LocalVar("n")(Ref, g1.pos, g1.info, g1.errT), LocalVar(g1.name)(g1.typ, g1.pos, g1.info, g1.errT))(g1.pos, g1.info, g1.errT)
-        ))(g0.pos, g0.info, g0.errT)),
-        Implies(
-          AnySetContains(LocalVar("n")(Ref, g1.pos, g1.info, g1.errT), LocalVar(g1.name)(g1.typ, g1.pos, g1.info, g1.errT))(g1.pos, g1.info, g1.errT),
-          Not(
-            AnySetContains(LocalVar("n")(Ref, g0.pos, g0.info, g0.errT), LocalVar(g0.name)(g0.typ, g0.pos, g0.info, g0.errT))(g0.pos, g0.info, g0.errT)
-          )(g1.pos, g1.info, g1.errT)
-        )(g0.pos, g0.info, g0.errT)
-      )(g0.pos, g0.info, g0.errT)
-    )(g0.pos, g0.info, g0.errT) //TODO If there is an error, then there is an error in the encoding => OuroborosInternalEncodingError
-
+  private def DISJOINT(g0: LocalVarDecl, g1: LocalVarDecl, input: Program): Exp = {
+    val disjoint = input.findFunction(getIdentifier("DISJOINT"))
+    FuncApp(
+      disjoint,
+      Seq(
+        LocalVar(g0.name)(g0.typ, g0.pos, g0.info, g0.errT),
+        LocalVar(g1.name)(g1.typ, g1.pos, g1.info, g1.errT)
+      )
+    )(g0.pos, g0.info, g0.errT)
   }
 
   private def handleMethodBody(input: Program, maybeBody: Option[Seqn], inputGraphs: Seq[LocalVarDecl], outputGraphs: Seq[LocalVarDecl]): Option[Seqn] = maybeBody match{

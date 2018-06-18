@@ -43,8 +43,8 @@ function apply_TCFraming(g0:Set[Ref], g1:Set[Ref]): Bool
     //requires forall n:Ref :: {n.r} n in g1 ==> acc(n.r)
 
     //requires disjoint_sets(g0,g1)
-    requires forall n:Ref :: { n in g0, n in g1 } n in g0 ==> !(n in g1)
-    requires forall n:Ref :: { n in g0, n in g1 } n in g1 ==> !(n in g0)
+    requires closed(forall n:Ref :: { n in g0, n in g1 } n in g0 ==> !(n in g1))
+    requires closed(forall n:Ref :: { n in g0, n in g1 } n in g1 ==> !(n in g0))
 
     // needed for triggering
     ensures g0 union g1 == g1 union g0
@@ -62,3 +62,19 @@ function $$(nodes: Set[Ref]): Set[Edge]
   //ensures (forall p: Ref, s: Ref :: { create_edge(p, s) } ((p in nodes) && (s in nodes) && p.next == s && p != s) == (create_edge(p, s) in result))
   ensures (forall p: Ref, s: Ref :: { (p in nodes),(s in nodes),exists_path(result, p, s) } (p in nodes) && exists_path(result, p, s) ==> (s in nodes))
   ensures (forall p: Ref, s: Ref :: { (p in nodes),(s in nodes),exists_path(result, p, s) } (s in nodes) && exists_path(result, p, s) ==> (p in nodes))
+
+function DISJOINT(g1: Set[Ref], g2:Set[Ref]): Bool
+{
+    (forall n: Ref :: { (n in g1),(n in g2) } (n in g1) ==> !((n in g2))) && (forall n: Ref :: { (n in g1),(n in g2) } (n in g2) ==> !((n in g1)))
+}
+
+function NoNullInGraph(g0:Set[Ref]): Bool //TODO needed?
+{
+    !(null in g0)
+}
+
+function CLOSED(g: Set[Ref]): Bool
+    requires (forall n: Ref :: { n.$field$ } (n in g) ==> acc(n.$field$, 1 / 2))
+{
+    (forall n: Ref :: { (n.$field$ in g) } { (n in g),n.$field$ } (n in g) && n.$field$ != null ==> (n.$field$ in g))
+}

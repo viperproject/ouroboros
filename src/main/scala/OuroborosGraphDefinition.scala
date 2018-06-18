@@ -22,7 +22,20 @@ import viper.silver.verifier.reasons.{AssertionFalse, InsufficientPermission, In
 trait OurType
 case object OurNode extends OurType
 case object OurGraph extends OurType
+case object OurClosedGraph extends OurType
 case object OurList extends OurType
+
+object OurTypes {
+  val ourTypes = Seq("Graph", "ClosedGraph", "List")
+
+  def getOurObject(ourType : String) : Option[OurType] = ourType match {
+    case "Graph" => Some(OurGraph)
+    case "ClosedGraph" => Some(OurClosedGraph)
+    case "List" => Some(OurList)
+      //TODO more types
+    case _ => None
+  }
+}
 
 case class OurObject(name: String, typ: OurType)
 
@@ -41,13 +54,14 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
   def handlePFormalArgDecl(input: PProgram, decl: PFormalArgDecl): PFormalArgDecl = decl.typ match {
     case d: PDomainType =>
       d.domain.name match {
-        case "Node" => PFormalArgDecl(decl.idndef, TypeHelper.Ref)
-        case "Graph" => PFormalArgDecl(decl.idndef, PSetType(TypeHelper.Ref))
-        case "List" => PFormalArgDecl(decl.idndef, PSetType(TypeHelper.Ref))
+        case "Node" => PFormalArgDecl(decl.idndef, TypeHelper.Ref).setPos(decl)
+        case "Graph" => PFormalArgDecl(decl.idndef, PSetType(TypeHelper.Ref)).setPos(decl)
+        case "ClosedGraph" => PFormalArgDecl(decl.idndef, PSetType(TypeHelper.Ref)).setPos(decl)
+        case "List" => PFormalArgDecl(decl.idndef, PSetType(TypeHelper.Ref)).setPos(decl)
         case _ => decl
       }
     case d: PSetType =>
-      PFormalArgDecl(decl.idndef, PSetType(handlePFormalArgDecl(input, PFormalArgDecl(decl.idndef, d.elementType)).typ))
+      PFormalArgDecl(decl.idndef, PSetType(handlePFormalArgDecl(input, PFormalArgDecl(decl.idndef, d.elementType)).typ)).setPos(decl)
     case _ => decl
   }
 
@@ -104,12 +118,17 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
       concatInGraphForallsForRefFields(prog.fields, graph_exp.deepCopyAll[PExp])))
   */
 
-  private def GRAPH(prog: PProgram, graph_exp: PExp, fields: Seq[String]) = seqOfPExpToPExp(
+  private def CLOSED_GRAPH(prog: PProgram, graph_exp: PExp, fields: Seq[String], c: PCall) = seqOfPExpToPExp(
     (PUnExp("!", PBinExp(PNullLit(), "in", graph_exp.deepCopyAll[PExp])) +:
-    collectQPsForRefFields(fields, graph_exp, PFullPerm())) ++
-    collectInGraphForallsForRefFields(fields, graph_exp), "&&", PBoolLit(true))
+    collectQPsForRefFields(fields, graph_exp, PFullPerm())) :+
+    PCall(PIdnUse(getIdentifier("closed")), //TODO could do closed for each field separately such that we can find out, which field is not closed
+      Seq(
+        collectInGraphForallsForRefFields(fields, graph_exp)
+          .foldRight[PExp](PBoolLit(true))(
+          (exp0, exp1) => PBinExp(exp0, "&&", exp1)
+        ))), "&&", PBoolLit(true)).setPos(c)
 
-  private def PROTECTED_GRAPH(prog: PProgram, graph_exp: PExp, fields: Seq[String], mutable_node_exp: PExp, mutable_field: String) = seqOfPExpToPExp(Seq(
+  private def PROTECTED_GRAPH(prog: PProgram, graph_exp: PExp, fields: Seq[String], mutable_node_exp: PExp, mutable_field: String, c: PCall) = seqOfPExpToPExp(Seq(
     PUnExp("!", PBinExp(PNullLit(), "in", graph_exp.deepCopyAll[PExp])),
     PBinExp(mutable_node_exp.deepCopyAll[PExp], "in", graph_exp.deepCopyAll[PExp])
   ) ++ fields.map(f =>
@@ -117,8 +136,13 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
         PAccPred(PFieldAccess(mutable_node_exp.deepCopyAll[PExp], PIdnUse(f)), PFullPerm())
       else
         PAccPred(PFieldAccess(mutable_node_exp.deepCopyAll[PExp], PIdnUse(f)), PBinExp(PIntLit(1), "/", PIntLit(2)))) ++
-    collectQPsForRefFieldsProtected(fields, mutable_node_exp, graph_exp) ++
-    collectInGraphForallsForRefFields(fields, graph_exp), "&&", PBoolLit(true))
+    collectQPsForRefFieldsProtected(fields, mutable_node_exp, graph_exp) :+
+    PCall(PIdnUse(getIdentifier("closed")), //TODO could do closed for each field separately
+      Seq(
+        collectInGraphForallsForRefFields(fields, graph_exp)
+          .foldRight[PExp](PBoolLit(true))(
+          (exp0, exp1) => PBinExp(exp0, "&&", exp1)
+        ))), "&&", PBoolLit(true)).setPos(c)
 
 
    /*
@@ -151,12 +175,12 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
     ???
   }*/
 
-  private def EDGE(prog: PProgram, graph_exp: PExp, lhs_node_exp: PExp, rhs_node_exp: PExp): PExp = PCall(
+  private def EDGE(prog: PProgram, graph_exp: PExp, lhs_node_exp: PExp, rhs_node_exp: PExp, c: PCall): PExp = PCall(
     PIdnUse(getIdentifier("edge")),
     Seq(
       PCall(PIdnUse(getIdentifier("$$")), Seq(graph_exp)),
       lhs_node_exp.deepCopyAll[PExp],
-      rhs_node_exp.deepCopyAll[PExp]))
+      rhs_node_exp.deepCopyAll[PExp])).setPos(c)
 
   private def EXISTS_PATH(prog: PProgram, graph_exp: PExp, lhs_node_exp: PExp, rhs_node_exp: PExp): PExp = PCall(
     PIdnUse(getIdentifier("exists_path")),
@@ -186,31 +210,6 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
   private def ACYCLIC_LIST_SEGMENT(prog: PProgram, graph_exp: PExp): PExp = PBinExp(
     ACYCLIC(prog, graph_exp.deepCopyAll[PExp]), "&&", PBinExp(FUNCTIONAL(prog, graph_exp.deepCopyAll[PExp]), "&&", UNSHARED(prog, graph_exp.deepCopyAll[PExp])))
 
-  private def DISJOINT(g0: PExp, g1: PExp): PExp = PBinExp(
-    PForall(
-      Seq(PFormalArgDecl(PIdnDef("n"), TypeHelper.Ref)),
-      Seq( PTrigger(Seq(
-        PBinExp(PIdnUse("n"), "in", g0),
-        PBinExp(PIdnUse("n"), "in", g1)
-      )) ),
-      PBinExp(
-        PBinExp(PIdnUse("n"), "in", g0),
-        "==>",
-        PUnExp("!",
-          PBinExp(PIdnUse("n"), "in", g1)))),
-    "&&",
-    PForall(
-      Seq(PFormalArgDecl(PIdnDef("n"), TypeHelper.Ref)),
-      Seq( PTrigger(Seq(
-        PBinExp(PIdnUse("n"), "in", g0),
-        PBinExp(PIdnUse("n"), "in", g1)
-      )) ),
-      PBinExp(
-        PBinExp(PIdnUse("n"), "in", g1),
-        "==>",
-        PUnExp("!",
-          PBinExp(PIdnUse("n"), "in", g0)))))
-
   def ref_fields(prog: PProgram): Seq[String] = prog.fields.collect {
     case PField(f, t) if t == TypeHelper.Ref => f.name
     case x:PField => x.typ match {
@@ -220,31 +219,21 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
 
   def handlePMethod(input: PProgram, m: PMethod): PNode = {
 
-    def collect_objects(collection: Seq[PFormalArgDecl], typename: String): Seq[OurObject] = collection.collect {
-      case x:PFormalArgDecl if (x.typ match {
-        case d: PDomainType if d.domain.name == typename => true
-        case _ => false//TODO set of Graphs
-      }) => OurObject(x.idndef.name, OurGraph)
+    def collect_objects(collection: Seq[PFormalArgDecl]): Seq[OurObject] = collection.flatMap {
+      case x:PFormalArgDecl => x.typ match {
+        case d: PDomainType => OurTypes.getOurObject(d.domain.name) match {
+          case None => Seq()
+          case Some(ourType) => Seq(OurObject(x.idndef.name, ourType))
+        }
+        case _ => Seq()
+      }//TODO set of Graphs
     }
 
-    val input_graphs: Seq[OurObject] = collect_objects(m.formalArgs, "Graph")
-    val output_graphs: Seq[OurObject] = collect_objects(m.formalReturns, "Graph")
+    val input_graphs: Seq[OurObject] = collect_objects(m.formalArgs)
+    val output_graphs: Seq[OurObject] = collect_objects(m.formalReturns)
 
     // Store the graph specifications for future reference.
     graph_definitions(m.idndef.name) = OurGraphSpec(input_graphs, output_graphs)
-
-    def union_graph_specs(objects: Seq[OurObject], union_graphs: Seq[OurObject]): Seq[PExp] = union_graphs.toList match {
-      case x :: xs if xs != Nil =>
-        sys.error(s"In method ${m.idndef.name} we found the following output graphs: ${union_graphs.map(_.name)}, but no more than one output graph is allowed.")
-        Seq()
-      case x :: Nil => Seq(PBinExp(
-        seqOfPExpToPExp(
-          objects.map{ case o => PIdnUse(o.name) },
-          "union", PEmptySet(TypeHelper.Ref)),
-        "==",
-        PIdnUse(union_graphs.last.name)))
-      case Nil => Seq()
-    }
 
     PMethod(
       m.idndef,
@@ -257,30 +246,11 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
       /*map_graphs_to_contracts(input_graphs) ++ disjoint_graph_specs(input_graphs) ++*/ m.pres/*.map(x => {
         handlePExp(input, x)
       })*/,
-      /*output_graphs_footprint ++ union_graph_specs(input_graphs, output_graphs) ++ */m.posts/*.map(x => { TODO remove union_graph_specs
+      /*output_graphs_footprint ++ union_graph_specs(input_graphs, output_graphs) ++ */m.posts/*.map(x => {
         handlePExp(input, x)
       })*/,
-      handlePMethodBody(m.body,  input_graphs, output_graphs))
-  }
-
-  //add Framing Axioms and later Coloring Axioms
-  def handlePMethodBody(body: Option[PStmt], input_graphs: Seq[OurObject], output_graphs: Seq[OurObject]): Option[PStmt] =
-    input_graphs.size match {
-      case a if a > 1 && output_graphs.size == 1 => Some(PSeqn((Seq(assignUnionGraphWithFraming(input_graphs, output_graphs)) /: body)(_ :+ _)))
-      case _ => body
-  }
-
-  def assignUnionGraphWithFraming(input_graphs: Seq[OurObject], output_graph: Seq[OurObject]): PStmt = {
-      PVarAssign(
-        PIdnUse(
-          output_graph.last.name
-        ),
-        seqOfPExpToPExp(
-          input_graphs.map{ case o => PIdnUse(o.name) },
-          "union", PEmptySet(TypeHelper.Ref))
-
-    )
-
+      m.body
+    ).setPos(m)
   }
 
   def handlePField(input: PProgram, m: PField): PField = {
@@ -316,21 +286,21 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
   def handlePCall(input: PProgram, m: PCall): PNode = {
 
     m.func.name match {
-      case "GRAPH" if m.args.length == 1 => GRAPH(input, m.args(0), ref_fields(input))
+      case "GRAPH" if m.args.length == 1 => CLOSED_GRAPH(input, m.args.head, ref_fields(input), m) //TODO add CLOSED_GRAPH
       case "PROTECTED_GRAPH" if m.args.length == 3 => m.args(2) match {
         case PIdnUse(f_name) =>
-          PROTECTED_GRAPH(input, m.args(0), ref_fields(input), m.args(1), f_name)
+          PROTECTED_GRAPH(input, m.args.head, ref_fields(input), m.args(1), f_name, m)
         case _ => m
       }
 
-      case "EDGE" if m.args.length == 3 => EDGE(input, m.args(0), m.args(1), m.args(2))
-      case "EXISTS_PATH" if m.args.length == 3 => EXISTS_PATH(input, m.args(0), m.args(1), m.args(2))
-      case "IS_GLOBAL_ROOT" if m.args.length == 2 => IS_GLOBAL_ROOT(input, m.args(0), m.args(1))
+      case "EDGE" if m.args.length == 3 => EDGE(input, m.args.head, m.args(1), m.args(2), m)
+      case "EXISTS_PATH" if m.args.length == 3 => EXISTS_PATH(input, m.args.head, m.args(1), m.args(2))
+      case "IS_GLOBAL_ROOT" if m.args.length == 2 => IS_GLOBAL_ROOT(input, m.args.head, m.args(1))
 
-      case "FUNCTIONAL" if m.args.length == 1 => FUNCTIONAL(input, m.args(0))
-      case "UNSHARED" if m.args.length == 1 => UNSHARED(input, m.args(0))
-      case "ACYCLIC" if m.args.length == 1 => ACYCLIC(input, m.args(0))
-      case "ACYCLIC_LIST_SEGMENT" if m.args.length == 1 => ACYCLIC_LIST_SEGMENT(input, m.args(0))
+      case "FUNCTIONAL" if m.args.length == 1 => FUNCTIONAL(input, m.args.head)
+      case "UNSHARED" if m.args.length == 1 => UNSHARED(input, m.args.head)
+      case "ACYCLIC" if m.args.length == 1 => ACYCLIC(input, m.args.head)
+      case "ACYCLIC_LIST_SEGMENT" if m.args.length == 1 => ACYCLIC_LIST_SEGMENT(input, m.args.head)
       case _ => m
     }
 
@@ -419,12 +389,12 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
   }
 
   def handleAssignments(input: Program, fa: FieldAssign, ctx: ContextC[Node, String]): Node = {
-    val unlinkErrTrafo: ErrTrafo = {
+    val unlinkErrTrafo: ErrTrafo = {//TODO improve Error messages
       ErrTrafo({
         case x: PreconditionInCallFalse => {
           x.reason match {
             case r: InsufficientPermission =>  OuroborosAssignmentError(x.offendingNode,
-              InsufficientGraphPermission(x.offendingNode, s"There might be insufficient permissiion to get read access to the ${fa.lhs.field.name} fields of all elements in ${x.offendingNode.args.head}" +
+              InsufficientGraphPermission(x.offendingNode, s"There might be insufficient permissiion to get read access to the ${fa.lhs.field.name} fields of all elements in ${x.offendingNode.args.head} " +
                 s"and write access to the ${fa.lhs.field.name} field of ${x.offendingNode.args(1)}. Original message: " + x.reason.readableMessage),
               x.cached)
 
@@ -447,7 +417,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
         case x: PreconditionInCallFalse => {
           x.reason match {
             case r: AssertionFalse =>  OuroborosAssignmentError(x.offendingNode,
-              NotInGraphReason(x.offendingNode, s"Assignment Error: ${x.offendingNode.args(2)} might not be in ${x.offendingNode.args.head}. \n" +
+              NotInGraphReason(x.offendingNode, s"Assignment Error: ${x.offendingNode.args(2)} might not be in ${x.offendingNode.args.head}. " +
                 s"Original Message: ${x.reason.readableMessage}"),
               x.cached)
 
@@ -479,8 +449,6 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
       })
     } flatten, Seq())(fa.pos, fa.info, unlinkErrTrafo)
   }
-
-  def handleMethods(input: Program, m: Method, ctx: ContextC[Node, String]): Node = m
 
    def getIdentifier(name : String): String = graph_keywords.get(name) match{
      case None => name //TODO maybe throw error

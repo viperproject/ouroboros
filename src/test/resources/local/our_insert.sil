@@ -5,9 +5,11 @@ ensures x.next == y
 ensures y.next == old(x.next)
 {
     var old_x_next : Ref := x.next
-    unlink_next(g, x)
+    /*unlink_next(g, x)
     link_next(g, x, y)
-    link_next(g, y, old_x_next)
+    link_next(g, y, old_x_next)*/
+    x.next := y
+    y.next := old_x_next
 
     //assert forall n : Ref, n2: Ref :: {exists_path($$(g), n, n2)} n in g && n2 in g && old(exists_path($$(g), n, n2)) ==> exists_path($$(g), n, n2)
 

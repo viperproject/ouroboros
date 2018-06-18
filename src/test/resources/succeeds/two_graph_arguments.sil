@@ -12,5 +12,6 @@
 field next:Node
 method test(g0: Graph, g1: Graph) returns  (g: Graph)
 {
-assert true
+    g := g0 union g1
+    assert true
 }

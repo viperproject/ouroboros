@@ -11,7 +11,7 @@ abstract class OuroborosAbstractVerificationError extends AbstractVerificationEr
 object errors {
   type ErrorNode = Node with Positioned with TransformableErrors with Rewritable
   case class OuroborosGraphSpecificactionError(offendingNode: ErrorNode, reason: ErrorReason, override val cached: Boolean = false) extends OuroborosAbstractVerificationError {
-    val id = "Graph"//TODO
+    val id = "graph.specification"//TODO
     val text = "It could not be verified that this is a graph."
     def withNode(offendingNode: errors.ErrorNode = this.offendingNode) = OuroborosGraphSpecificactionError(offendingNode, this.reason)
     def withReason(r: ErrorReason) = OuroborosGraphSpecificactionError(offendingNode, r)
@@ -25,7 +25,7 @@ object errors {
   }
 
   case class OuroborosAssignmentError(offendingNode: ErrorNode, reason: ErrorReason, override val cached: Boolean = false) extends OuroborosAbstractVerificationError {
-    val id = "Graph"//TODO
+    val id = "graph.assignment"//TODO
     val text = "Assignment failed."
     def withNode(offendingNode: errors.ErrorNode = this.offendingNode) = OuroborosAssignmentError(offendingNode, this.reason)
     def withReason(r: ErrorReason) = OuroborosAssignmentError(offendingNode, r)

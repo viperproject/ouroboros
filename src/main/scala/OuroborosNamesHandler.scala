@@ -12,7 +12,7 @@ class OuroborosNamesHandler {
   var used_names = Set[String]() //TODO change to Set
   var graph_keywords = mutable.Map.empty[String, String]
 
-  val reserved_keywords = Set("Graph", "Node")
+  val reserved_keywords = Set("Graph", "Node", "CLOSED", "DISJOINT", "ClosedGraph")
 
   def collectNames(input : PProgram): Option[Set[PIdnDef]] = {
     var invalidIdentifier : Option[Set[PIdnDef]] = None
