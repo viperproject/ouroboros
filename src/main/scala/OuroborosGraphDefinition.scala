@@ -13,7 +13,7 @@ import viper.silver.{ast, parser}
 import viper.silver.ast.utility.Rewriter.{ContextC, Rewritable}
 import viper.silver.ast._
 import viper.silver.parser.{PFormalArgDecl, _}
-import viper.silver.plugin.errors.{OuroborosAssignmentError}
+import viper.silver.plugin.errors.OuroborosAssignmentError
 import viper.silver.plugin.reasons.{InsufficientGraphPermission, NotInGraphReason}
 import viper.silver.verifier.errors.PreconditionInCallFalse
 import viper.silver.verifier.reasons.{AssertionFalse, InsufficientPermission, InternalReason}
@@ -178,22 +178,22 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
   private def EDGE(prog: PProgram, graph_exp: PExp, lhs_node_exp: PExp, rhs_node_exp: PExp, c: PCall): PExp = PCall(
     PIdnUse(getIdentifier("edge")),
     Seq(
-      PCall(PIdnUse(getIdentifier("$$")), Seq(graph_exp)),
+      PCall(PIdnUse(getIdentifier("$$")), Seq(graph_exp)).setPos(c),
       lhs_node_exp.deepCopyAll[PExp],
       rhs_node_exp.deepCopyAll[PExp])).setPos(c)
 
-  private def EXISTS_PATH(prog: PProgram, graph_exp: PExp, lhs_node_exp: PExp, rhs_node_exp: PExp): PExp = PCall(
+  private def EXISTS_PATH(prog: PProgram, graph_exp: PExp, lhs_node_exp: PExp, rhs_node_exp: PExp, c: PCall): PExp = PCall(
     PIdnUse(getIdentifier("exists_path")),
     Seq(
-      PCall(PIdnUse(getIdentifier("$$")), Seq(graph_exp.deepCopyAll[PExp])),
+      PCall(PIdnUse(getIdentifier("$$")), Seq(graph_exp.deepCopyAll[PExp])).setPos(c),
       lhs_node_exp.deepCopyAll[PExp],
-      rhs_node_exp.deepCopyAll[PExp]))
+      rhs_node_exp.deepCopyAll[PExp])).setPos(c)
 
-  private def IS_GLOBAL_ROOT(prog: PProgram, graph_exp: PExp, root_node: PExp) = PForall(
+  private def IS_GLOBAL_ROOT(prog: PProgram, graph_exp: PExp, root_node: PExp, c: PCall) = PForall(
     Seq(PFormalArgDecl(PIdnDef("n"), TypeHelper.Ref)),
-    Seq( PTrigger(Seq(EXISTS_PATH(prog, graph_exp, root_node.deepCopyAll[PExp], PIdnUse("n")))) ),
-    PBinExp(PBinExp(PIdnUse("n"), "in", graph_exp.deepCopyAll[PExp]), "==>", EXISTS_PATH(prog, graph_exp, root_node.deepCopyAll[PExp], PIdnUse("n")))
-  )
+    Seq( PTrigger(Seq(EXISTS_PATH(prog, graph_exp, root_node.deepCopyAll[PExp], PIdnUse("n"), c))) ),
+    PBinExp(PBinExp(PIdnUse("n"), "in", graph_exp.deepCopyAll[PExp]), "==>", EXISTS_PATH(prog, graph_exp, root_node.deepCopyAll[PExp], PIdnUse("n"), c)) //TODO change that "n" is unique
+  ).setPos(c)
 
   private def FUNCTIONAL(prog: PProgram, graph_exp: PExp) = PCall(
     PIdnUse(getIdentifier("func_graph")),
@@ -294,8 +294,8 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
       }
 
       case "EDGE" if m.args.length == 3 => EDGE(input, m.args.head, m.args(1), m.args(2), m)
-      case "EXISTS_PATH" if m.args.length == 3 => EXISTS_PATH(input, m.args.head, m.args(1), m.args(2))
-      case "IS_GLOBAL_ROOT" if m.args.length == 2 => IS_GLOBAL_ROOT(input, m.args.head, m.args(1))
+      case "EXISTS_PATH" if m.args.length == 3 => EXISTS_PATH(input, m.args.head, m.args(1), m.args(2), m)
+      case "IS_GLOBAL_ROOT" if m.args.length == 2 => IS_GLOBAL_ROOT(input, m.args.head, m.args(1), m)
 
       case "FUNCTIONAL" if m.args.length == 1 => FUNCTIONAL(input, m.args.head)
       case "UNSHARED" if m.args.length == 1 => UNSHARED(input, m.args.head)
@@ -359,7 +359,12 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
   private def getOperationalWisdoms(input: Program, local_m: Method, ctx: ContextC[Node, String])(pos: Position = NoPosition, info: Info = NoInfo, errT: ErrorTrafo = NoTrafos): Stmt = {
 
     val graph_defs: OurGraphSpec = graph_definitions(local_m.name)
-    val distinct_graphs: Seq[OurObject] = graph_defs.inputs.collect { case o => o.typ match { case g@ OurGraph => o } }
+    val distinct_graphs: Seq[OurObject] = graph_defs.inputs.collect {
+      case o => o.typ match {
+        case g@ OurGraph => o
+        case g@ OurClosedGraph => o //TODO more graphs types
+      }
+    }
 
     def all_wisdoms_for_this_frame(g: OurObject, subframe_gs: Seq[LocalVar]) = Seqn(
       Seq(

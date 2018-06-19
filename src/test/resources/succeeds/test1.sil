@@ -1,0 +1,5 @@
+
+
+field next: Ref
+
+method test1(g0: Graph, g1: Graph, n: Node) // error java.lang.RuntimeException: Internal Error: variable n is already defined.

@@ -1,0 +1,10 @@
+field next: Node
+
+method test4(g0: Graph, g1: Graph, x: Node, y: Node) 
+requires x in g0 && y in g1
+ 
+requires forall n:Ref, m:Ref :: n in g0 && m in g0 ==> EXISTS_PATH(g0,n,m)
+requires forall n:Ref, m:Ref :: n in g1 && m in g1 ==> EXISTS_PATH(g1,n,m)
+{
+//x.next := y // does not terminate Commented out such that sbt testOnly terminates
+}
