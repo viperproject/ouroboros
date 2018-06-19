@@ -28,7 +28,7 @@ class OuroborosGraphHandler {
         m.formalArgs,
         m.formalReturns,
         disjointGraphs(inputGraphs, input) ++ inputTypes(inputObjects, input.fields, input, m) ++ m.pres,
-        inputTypes/*outputTypes*/(outputObjects/* ++ inputObjects*/, input.fields, input, m) ++ m.posts,
+        outputTypes(outputObjects ++ inputObjects, input.fields, input, m) ++ m.posts,
         handleMethodBody(input, m.body, inputGraphs, outputGraphs) /* ++ TCFraming*/
       ) (m.pos, m.info, m.errT)
     }
@@ -55,27 +55,81 @@ class OuroborosGraphHandler {
       }
   )
 
-  /*def outputTypes(objects: Seq[(OurObject, Seq[LocalVarDecl])], fields: Seq[Field], input: Program, method: Method): Seq[Exp] = objects.flatMap(
+  def outputTypes(objects: Seq[(OurObject, Seq[LocalVarDecl])], fields: Seq[Field], input: Program, method: Method): Seq[Exp] =
     {
+      val noNullInGraph = input.findFunction(getIdentifier("NoNullInGraph"))
       var additionalPostConditions : Seq[Exp] = Seq()
-      var allGraphs : Seq
-      mapping => {
-        val obj = mapping._1
-        val decls = mapping._2
-        decls.size match {
-          case 1 => {
-            val decl = decls.head
-            obj.typ match {
-              case OurClosedGraph => Seq(GRAPH(decl, fields, input, method, true))
-              case OurGraph => Seq(GRAPH(decl, fields, input, method, false))
-              //case OurList => //TODO
+      var allGraphs : Option[Exp] = None
+      objects.map(
+        mapping => {
+          val obj = mapping._1
+          val decls = mapping._2
+          decls.size match {
+            case 1 => {
+              val decl = decls.head
+              obj.typ match {
+                case OurClosedGraph =>
+                  allGraphs match {
+                    case None => allGraphs = Some(
+                      LocalVar(
+                        decl.name
+                      )(decl.typ, decl.pos, decl.info, graphErrTrafo)
+                    )
+                    case Some(prev) => allGraphs = Some(
+                      AnySetUnion(
+                        prev,
+                        LocalVar(
+                          decl.name
+                        )(decl.typ, decl.pos, decl.info, graphErrTrafo)
+                      )(decl.pos, decl.info, graphErrTrafo)
+                    )
+                  }
+                  var postConditions : Seq[Exp] =
+                    FuncApp(
+                      noNullInGraph,
+                      Seq(
+                        LocalVar(decl.name)(decl.typ, decl.pos, decl.info, graphErrTrafo)
+                      )
+                    )(decl.pos, decl.info, graphErrTrafo) +:
+                    collectInGraphForallsForRefFields(fields, decl)
+
+                  additionalPostConditions = additionalPostConditions :+ postConditions.foldRight[Exp](BoolLit(true)())((exp, foldedExp) => And(foldedExp, exp)(exp.pos, exp.info, graphErrTrafo))
+                case OurGraph => {
+                  allGraphs match {
+                    case None => allGraphs = Some(
+                      LocalVar(
+                        decl.name
+                      )(decl.typ, decl.pos, decl.info, graphErrTrafo)
+                    )
+                    case Some(prev) => allGraphs = Some(
+                      AnySetUnion(
+                        prev,
+                        LocalVar(
+                          decl.name
+                        )(decl.typ, decl.pos, decl.info, graphErrTrafo)
+                      )(decl.pos, decl.info, graphErrTrafo)
+                    )
+                  }
+                  additionalPostConditions = additionalPostConditions :+ FuncApp(noNullInGraph, Seq(LocalVar(decl.name)(decl.typ, decl.pos, decl.info, graphErrTrafo)))(decl.pos, decl.info, graphErrTrafo)
+                }
+                //case OurList => //TODO
+              }
             }
+            case 0 => Seq()
           }
-          case 0 => Seq()
+          mapping
         }
+      )
+      allGraphs match {
+        case Some(graphs) => {
+          val qps: Seq[Exp] = collectQPsForRefFields(fields, graphs, FullPerm()())
+          val qp: Exp = qps.foldRight[Exp](BoolLit(true)())((exp, foldedExps) => And(foldedExps, exp)(exp.pos, exp.info, qpsForRefFieldErrTrafo))
+
+          qp +: additionalPostConditions
+        }
+        case None => Seq()
       }
     }
-  )*/
   val qpsForRefFieldErrTrafo : ErrTrafo = ErrTrafo({
     case x => OuroborosGraphSpecificactionError(
       x.offendingNode,
@@ -98,7 +152,6 @@ class OuroborosGraphHandler {
     )
   })
 
-def GRAPH(graph: LocalVarDecl, fields: Seq[Field], input: Program, method: Method, closed: Boolean): Exp = {
   val graphErrTrafo: ErrTrafo = ErrTrafo(
     {
       case err: PostconditionViolated => err.reason match {
@@ -139,6 +192,8 @@ def GRAPH(graph: LocalVarDecl, fields: Seq[Field], input: Program, method: Metho
       case err => err
     }
   )
+
+def GRAPH(graph: LocalVarDecl, fields: Seq[Field], input: Program, method: Method, closed: Boolean): Exp = {
   //print("Decls: " + decls + " ")
     val noNullInGraph = input.findFunction(getIdentifier("NoNullInGraph"))
     val closedFunction = input.findDomainFunction(getIdentifier("closed"))
@@ -149,21 +204,21 @@ def GRAPH(graph: LocalVarDecl, fields: Seq[Field], input: Program, method: Metho
         LocalVar(graph.name)(graph.typ, graph.pos, graph.info, graphErrTrafo)
       )
     )(graph.pos, graph.info, graphErrTrafo)
-    val QPForRefFields : Seq[Exp] = collectQPsForRefFields(fields, graph, FullPerm()(graph.pos, graph.info, qpsForRefFieldErrTrafo))
+    val QPForRefFields : Seq[Exp] = collectQPsForRefFields(fields, LocalVar(graph.name)(graph.typ, graph.pos, graph.info, qpsForRefFieldErrTrafo), FullPerm()(graph.pos, graph.info, qpsForRefFieldErrTrafo))
     val InGraphForallsForRefFields = if(closed) Seq(DomainFuncApp(input.findDomainFunction(getIdentifier("closed")), collectInGraphForallsForRefFields(fields, graph), Map.empty[TypeVar, Type])(graph.pos, graph.info, graphErrTrafo)) else Seq()
     ((unExp +: QPForRefFields) ++ InGraphForallsForRefFields)
       .foldRight[Exp](TrueLit()(graph.pos, graph.info, graphErrTrafo))(
         (x, y) => And(x, y)(graph.pos, graph.info, graphErrTrafo)) //TODO If there is an error, then there is an error in the encoding => OuroborosInternalEncodingError
 }
 
-  private def collectQPsForRefFields(fields : Seq[Field], graph : LocalVarDecl, perm_exp: Exp = FullPerm()(NoPosition, NoInfo, qpsForRefFieldErrTrafo)): Seq[Exp] =
+  private def collectQPsForRefFields(fields : Seq[Field], graph : Exp, perm_exp: Exp = FullPerm()(NoPosition, NoInfo, qpsForRefFieldErrTrafo)): Seq[Exp] =
     fields.map(f => getQPForGraphNodes(graph, f, perm_exp))
 
-  private def getQPForGraphNodes(graph: LocalVarDecl, field: Field, perm: Exp): Exp = {
+  private def getQPForGraphNodes(graph: Exp, field: Field, perm: Exp): Exp = {
     Forall(
       Seq(LocalVarDecl(getIdentifier("n"), Ref)(graph.pos, graph.info, qpsForRefFieldErrTrafo)),
       Seq(Trigger(Seq(FieldAccess(LocalVar(getIdentifier("n"))(Ref, graph.pos, graph.info, qpsForRefFieldErrTrafo), field)(graph.pos, graph.info, qpsForRefFieldErrTrafo)))(graph.pos, graph.info, qpsForRefFieldErrTrafo)),
-      Implies(AnySetContains(LocalVar(getIdentifier("n"))(Ref, graph.pos, graph.info, qpsForRefFieldErrTrafo), LocalVar(graph.name)(graph.typ, graph.pos, graph.info, qpsForRefFieldErrTrafo))(graph.pos, graph.info, qpsForRefFieldErrTrafo),
+      Implies(AnySetContains(LocalVar(getIdentifier("n"))(Ref, graph.pos, graph.info, qpsForRefFieldErrTrafo), graph)(graph.pos, graph.info, qpsForRefFieldErrTrafo),
         FieldAccessPredicate(FieldAccess(LocalVar(getIdentifier("n"))(Ref, graph.pos, graph.info, qpsForRefFieldErrTrafo), field)(graph.pos, graph.info, qpsForRefFieldErrTrafo), perm)(graph.pos, graph.info, qpsForRefFieldErrTrafo))(graph.pos, graph.info, qpsForRefFieldErrTrafo)
     )(graph.pos, graph.info, qpsForRefFieldErrTrafo)
   }

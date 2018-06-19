@@ -143,7 +143,10 @@ method join(g1: Set[Ref], g2: Set[Ref]) returns (g: Set[Ref])
   requires DISJOINT(g1, g2)
   requires NoNullInGraph(g1) && ((forall n: Ref :: { n.next } (n in g1) ==> acc(n.next, write)) && true)
   requires NoNullInGraph(g2) && ((forall n: Ref :: { n.next } (n in g2) ==> acc(n.next, write)) && true)
-  ensures NoNullInGraph(g) && ((forall n: Ref :: { n.next } (n in g) ==> acc(n.next, write)) && true)
+  ensures true && (forall n: Ref :: { n.next } (n in g union g1 union g2) ==> acc(n.next, write))
+  ensures NoNullInGraph(g)
+  ensures NoNullInGraph(g1)
+  ensures NoNullInGraph(g2)
 {
   inhale apply_TCFraming(g1, g2)
   g := g1 union g2
