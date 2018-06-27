@@ -8,5 +8,8 @@ requires forall n:Ref, m:Ref :: n in g0 && m in g0 ==> EXISTS_PATH(g0,n,m)
 requires forall n:Ref, m:Ref :: n in g1 && m in g1 ==> EXISTS_PATH(g1,n,m)
 {
 assert ((forall n: Ref :: (n in g0 union g1) && n.next != null ==> (n.next in g0 union g1)))
-x.next := y // does not terminate Commented out such that sbt testOnly terminates
+// unlink_next(g0 union g1, x)
+// link_next(g0 union g1, x, y)
+field_update(next, g0 union g1, x, y)
+//x.next := y // does not terminate Commented out such that sbt testOnly terminates
 }

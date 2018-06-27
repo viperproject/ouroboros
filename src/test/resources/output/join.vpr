@@ -80,15 +80,6 @@ domain TrClo {
   }
 }
 
-domain GraphAxioms {
-  
-  function closed(b: Bool): Bool
-  
-  axiom ax_closed {
-    (forall b: Bool :: { closed(b) } closed(b) == b)
-  }
-}
-
 domain Node {
   
   
@@ -106,16 +97,6 @@ domain List {
 
 field next: Ref
 
-function apply_TCFraming(g0: Set[Ref], g1_0: Set[Ref]): Bool
-  requires (forall n: Ref :: { n.next } (n in g0) ==> acc(n.next, 1 / 2))
-  requires (forall n: Ref :: { n.next } (n in g1_0) ==> acc(n.next, 1 / 2))
-  requires closed((forall n: Ref :: { (n in g0),(n in g1_0) } (n in g0) ==> !((n in g1_0))))
-  requires closed((forall n: Ref :: { (n in g0),(n in g1_0) } (n in g1_0) ==> !((n in g0))))
-  ensures g0 union g1_0 == g1_0 union g0
-  ensures (forall u: Ref, v: Ref :: { exists_path($$(g0), u, v) } { exists_path($$(g0 union g1_0), u, v) } (u in g0) && ((v in g0) && exists_path($$(g0), u, v)) ==> exists_path($$(g0 union g1_0), u, v))
-  ensures (forall u: Ref, v: Ref :: { exists_path($$(g1_0), u, v) } { exists_path($$(g1_0 union g0), u, v) } (u in g1_0) && ((v in g1_0) && exists_path($$(g1_0), u, v)) ==> exists_path($$(g1_0 union g0), u, v)) 
-
-
 function $$(nodes: Set[Ref]): Set[Edge]
   requires (forall n: Ref :: { n.next } (n in nodes) ==> acc(n.next, 1 / 2))
   ensures (forall p: Ref, s: Ref :: { create_edge(p, s) } ((p in nodes) && (s in nodes) && (p.next == s || true) && p != s) == (create_edge(p, s) in result))
@@ -123,32 +104,20 @@ function $$(nodes: Set[Ref]): Set[Edge]
   ensures (forall p: Ref, s: Ref :: { (p in nodes),(s in nodes),exists_path(result, p, s) } (s in nodes) && exists_path(result, p, s) ==> (p in nodes)) 
 
 
-function DISJOINT(g1_0: Set[Ref], g2_0: Set[Ref]): Bool 
-{
-  (forall n: Ref :: { (n in g1_0),(n in g2_0) } (n in g1_0) ==> !((n in g2_0))) && (forall n: Ref :: { (n in g1_0),(n in g2_0) } (n in g2_0) ==> !((n in g1_0)))
-}
-
-function NoNullInGraph(g0: Set[Ref]): Bool 
-{
-  !((null in g0))
-}
-
-function CLOSED(g_0: Set[Ref]): Bool
-  requires true && (forall n: Ref :: { n.next } (n in g_0) ==> acc(n.next, 1 / 2)) 
-{
-  true && (forall n: Ref :: { (n.next in g_0) } { (n in g_0),n.next } (n in g_0) && n.next != null ==> (n.next in g_0))
-}
-
 method join(g1: Set[Ref], g2: Set[Ref]) returns (g: Set[Ref])
-  requires DISJOINT(g1, g2)
-  requires NoNullInGraph(g1) && ((forall n: Ref :: { n.next } (n in g1) ==> acc(n.next, write)) && true)
-  requires NoNullInGraph(g2) && ((forall n: Ref :: { n.next } (n in g2) ==> acc(n.next, write)) && true)
+  requires (forall n: Ref :: { (n in g1),(n in g2) } (n in g1) ==> !((n in g2))) && (forall n: Ref :: { (n in g1),(n in g2) } (n in g2) ==> !((n in g1)))
+  requires !((null in g1)) && ((forall n: Ref :: { n.next } (n in g1) ==> acc(n.next, write)) && true)
+  requires !((null in g2)) && ((forall n: Ref :: { n.next } (n in g2) ==> acc(n.next, write)) && true)
   requires true && (forall n: Ref :: { (n.next in g1 union g2) } { (n in g1 union g2),n.next } (n in g1 union g2) && n.next != null ==> (n.next in g1 union g2))
   ensures true && (forall n: Ref :: { n.next } (n in g union g1 union g2) ==> acc(n.next, write))
-  ensures NoNullInGraph(g)
-  ensures NoNullInGraph(g1)
-  ensures NoNullInGraph(g2)
+  ensures !((null in g))
+  ensures !((null in g1))
+  ensures !((null in g2))
 {
-  inhale apply_TCFraming(g1, g2)
+  exhale (forall n: Ref :: { (n in g1),(n in g2) } (n in g1) ==> !((n in g2)))
+  exhale (forall n: Ref :: { (n in g1),(n in g2) } (n in g2) ==> !((n in g1)))
+  inhale g1 union g2 == g2 union g1
+  inhale (forall u: Ref, v: Ref :: { exists_path($$(g1), u, v) } { exists_path($$(g1 union g2), u, v) } (u in g1) && ((v in g1) && exists_path($$(g1), u, v)) ==> exists_path($$(g1 union g2), u, v))
+  inhale (forall u: Ref, v: Ref :: { exists_path($$(g2), u, v) } { exists_path($$(g2 union g1), u, v) } (u in g2) && ((v in g2) && exists_path($$(g2), u, v)) ==> exists_path($$(g2 union g1), u, v))
   g := g1 union g2
 }

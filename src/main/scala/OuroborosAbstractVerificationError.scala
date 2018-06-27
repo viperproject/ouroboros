@@ -62,6 +62,13 @@ object reasons {
 
     def withNode(offendingNode: errors.ErrorNode = this.offendingNode) = OpenGraphReason(offendingNode, this.explanation)
   }
+
+  case class NotDisjointGraphsReason(offendingNode: ErrorNode, explanation: String) extends AbstractErrorReason {
+    val id = "graphs.not.disjoint"
+    val readableMessage = explanation
+
+    def withNode(offendingNode: errors.ErrorNode = this.offendingNode) = NotDisjointGraphsReason(offendingNode, this.explanation)
+  }
 }
 
 abstract class OuroborosAbstractError extends AbstractError {

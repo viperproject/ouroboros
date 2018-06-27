@@ -2,6 +2,7 @@ package viper.silver.plugin
 
 import java.util
 
+import viper.silver.ast.ErrorTrafo
 import viper.silver.ast.utility.Rewriter.StrategyBuilder
 import viper.silver.parser._
 
@@ -9,10 +10,7 @@ import scala.collection.mutable
 
 class OuroborosNamesHandler {
 
-  var used_names = Set[String]() //TODO change to Set
-  var graph_keywords = mutable.Map.empty[String, String]
-
-  val reserved_keywords = Set("Graph", "Node", "CLOSED", "DISJOINT", "ClosedGraph")
+  val reserved_keywords = Set("Graph", "Node", "CLOSED", "DISJOINT", "ClosedGraph", "field_update", "apply_TCFraming")
 
   def collectNames(input : PProgram): Option[Set[PIdnDef]] = {
     var invalidIdentifier : Option[Set[PIdnDef]] = None
@@ -30,7 +28,7 @@ class OuroborosNamesHandler {
 
     val collector = StrategyBuilder.Slim[PNode](
       {
-        case d: PIdnDef => checkIfValid(d); used_names += d.name; d
+        case d: PIdnDef => checkIfValid(d); OuroborosNames.used_names += d.name; d
       }
     )
 
@@ -39,13 +37,12 @@ class OuroborosNamesHandler {
   }
 
   def getNewNames(input : PProgram, usedNames : Set[String], fields: Seq[String]): PProgram = {
-    var test = PartialFunction[String, String](d => d)
 
-    graph_keywords = mutable.Map.empty[String, String]
+    //OuroborosNames.graph_keywords = mutable.Map.empty[String, String]
     val rewriter = StrategyBuilder.Slim[PNode](
       {
         case d : PIdnDef => {
-          graph_keywords.get(d.name) match { //Check if name has already a mapping. If yes, take mapping, else getNewName
+          OuroborosNames.graph_keywords.get(d.name) match { //Check if name has already a mapping. If yes, take mapping, else getNewName
             case None => {//we don't have a mapping for this name yet
               val newName = getNewName(d.name)
               PIdnDef(newName)
@@ -57,7 +54,7 @@ class OuroborosNamesHandler {
           if (fields.contains(u.name)) {
             u
           } else {
-            graph_keywords.get(u.name) match {
+            OuroborosNames.graph_keywords.get(u.name) match {
               case None => {
                 val newName = getNewName(u.name)
                 PIdnUse(newName)
@@ -78,14 +75,14 @@ class OuroborosNamesHandler {
 
     def conc(i: Integer) = prefix + "_" + i.toString
     def addNewName(oldName: String, newName: String) = {
-      used_names += newName
-      graph_keywords.put(oldName, newName)
+      OuroborosNames.used_names += newName
+      OuroborosNames.graph_keywords.put(oldName, newName)
     }
 
     var name = prefix
-    if (used_names.contains(name)) {
+    if (OuroborosNames.used_names.contains(name)) {
       var i = 0
-      while (used_names contains conc(i)) {
+      while (OuroborosNames.used_names contains conc(i)) {
         i += 1
       }
       name = conc(i)
@@ -98,4 +95,21 @@ class OuroborosNamesHandler {
   }
 
 
+}
+
+object OuroborosNames {
+  var graph_keywords: mutable.Map[String, String] = mutable.Map.empty[String, String]
+  var used_names: Set[String] = Set[String]()
+  var macroNames: mutable.Map[String, Option[ErrorTrafo]] = mutable.Map.empty[String, Option[ErrorTrafo]]//Set()
+
+  def reset() = {
+    graph_keywords = mutable.Map.empty[String, String]
+    used_names = Set[String]()
+    macroNames = mutable.Map.empty[String, Option[ErrorTrafo]]
+  }
+
+  def getIdentifier(name : String): String = graph_keywords.get(name) match{
+    case None => name //TODO maybe throw error
+    case Some(newName) => newName
+  }
 }

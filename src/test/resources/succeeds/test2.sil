@@ -8,7 +8,13 @@ requires x in g0 && y in g1
 requires forall n:Ref, m:Ref :: n in g0 && m in g0 ==> EXISTS_PATH(g0,n,m)
 requires forall n:Ref, m:Ref :: n in g1 && m in g1 ==> EXISTS_PATH(g1,n,m)
  //:: ExpectedOutput(postcondition.violated:assertion.false)
-ensures forall n:Ref, m:Ref :: n in g0 && m in g1 ==> EXISTS_PATH(g,n,m) // Why does this verify? 
+ensures forall n:Ref, m:Ref :: n in g0 && m in g1 ==> EXISTS_PATH(g,n,m) // Why does this verify?
 {
-g := g0 union g1 
+    // var z: Node 
+    // //z := new(*)
+    // var g2: Graph
+    // var g3: ClosedGraph
+    //assume z in g2
+    g := g0 union g1 
+   // x.n1 := z
 }

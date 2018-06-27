@@ -1,0 +1,68 @@
+
+function DISJOINT(g1: Set[Ref], g2:Set[Ref]): Bool
+{
+    (forall n: Ref :: { (n in g1),(n in g2) } (n in g1) ==> !((n in g2))) && (forall n: Ref :: { (n in g1),(n in g2) } (n in g2) ==> !((n in g1)))
+}
+
+function NoNullInGraph(g0:Set[Ref]): Bool
+{
+    !(null in g0)
+}
+
+function CLOSED(g: Set[Ref]): Bool
+    requires (forall n: Ref :: { n.$field$ } (n in g) ==> acc(n.$field$, 1 / 2))
+{
+    (forall n: Ref :: { (n.$field$ in g) } { (n in g),n.$field$ } (n in g) && n.$field$ != null ==> (n.$field$ in g))
+}
+
+function apply_TCFraming(g0:Set[Ref], g1:Set[Ref]): Bool
+    //requires GRAPH(g0) && GRAPH(g1)
+    //requires forall n:Ref :: {n.l} n in g0 ==> acc(n.l)
+    //requires forall n:Ref :: {n.r} n in g0 ==> acc(n.r)
+    //requires forall n:Ref :: {n.l} n in g1 ==> acc(n.l)
+    //requires forall n:Ref :: {n.r} n in g1 ==> acc(n.r)
+
+    //requires disjoint_sets(g0,g1)
+    requires (forall n:Ref :: { n in g0, n in g1 } n in g0 ==> !(n in g1))
+    requires (forall n:Ref :: { n in g0, n in g1 } n in g1 ==> !(n in g0))
+
+    // needed for triggering
+    ensures g0 union g1 == g1 union g0
+
+    ensures forall u:Ref, v:Ref :: { exists_path($$(g0),u,v) }{ exists_path($$(g0 union g1),u,v) } u in g0 && v in g0 && exists_path($$(g0),u,v) ==> exists_path($$(g0 union g1),u,v)
+    ensures forall u:Ref, v:Ref :: { exists_path($$(g1),u,v) }{ exists_path($$(g1 union g0),u,v) } u in g1 && v in g1 && exists_path($$(g1),u,v) ==> exists_path($$(g1 union g0),u,v)
+
+    //probably wrong
+    //ensures forall u:Ref, v:Ref :: { exists_path($$(g0),u,v) }{ exists_path($$(g0 union g1),u,v) } u in g0 && v in g0 && !exists_path($$(g0),u,v) ==> !exists_path($$(g0 union g1),u,v)
+    //ensures forall u:Ref, v:Ref :: { exists_path($$(g1),u,v) }{ exists_path($$(g0 union g1),u,v) } u in g1 && v in g1 && !exists_path($$(g1),u,v) ==> !exists_path($$(g1 union g0),u,v)
+
+
+method link_$field$(g:Set[Ref], x:Ref, y:Ref)
+    requires x in g
+    requires y != null ==> y in g
+    requires PROTECTED_GRAPH(g,x,$field$)
+    ensures PROTECTED_GRAPH(g,x,$field$)
+    ensures x.$field$ == y
+    ensures y == null ==> $$(g) == old($$(g))
+    ensures y != null ==> forall v1:Ref, v2:Ref ::
+        { edge(old($$(g)),v1,v2) }
+            edge($$(g),v1,v2) <==> edge(old($$(g)),v1,v2) || (v1==x && v2==y)
+    ensures y != null ==> forall v1:Ref, v2:Ref ::
+        { exists_path($$(g),v1,v2) }
+            exists_path($$(g),v1,v2) <==> exists_path(old($$(g)),v1,v2) || (exists_path(old($$(g)),v1,x) && exists_path(old($$(g)),y,v2))
+
+
+method unlink_$field$(g:Set[Ref], x:Ref)
+    requires x in g
+    requires PROTECTED_GRAPH(g,x,$field$)
+    ensures PROTECTED_GRAPH(g,x,$field$)
+    ensures x.$field$ == null
+    ensures old(x.$field$) == null ==> $$(g) == old($$(g))
+    ensures old(x.$field$) != null ==> forall v1:Ref, v2:Ref ::
+        { edge($$(g),v1,v2) }
+            edge($$(g),v1,v2) <==> edge(old($$(g)),v1,v2) && !(v1==x && v2==old(x.$field$))
+    ensures old(x.$field$) != null ==> (forall v1:Ref, v2:Ref ::
+        { exists_path($$(g),v1,v2) }
+            (v1 != v2) ==> (
+                exists_path($$(g),v1,v2) <==>
+                    exists_path(old($$(g)),v1,v2) && !(exists_path(old($$(g)),v1,x) && exists_path(old($$(g)),old(x.$field$),v2))))

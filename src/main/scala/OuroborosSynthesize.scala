@@ -7,11 +7,8 @@ import scala.collection.mutable
 
 object OuroborosSynthesize {
 
-  var method_keywords : Set[String] = Set()
-
   def synthesize(program: PProgram, fields: Seq[String]) = {
-    method_keywords = Set()
-    (PProgram(
+    PProgram(
       program.imports,
       program.macros,
       program.domains,
@@ -20,8 +17,7 @@ object OuroborosSynthesize {
       program.predicates,
       program.methods.flatMap(m => synthesizeMethod(m, fields)),
       program.errors
-    ),
-      method_keywords)
+    )
   }
 
 /*
@@ -35,8 +31,6 @@ object OuroborosSynthesize {
 
   def synthesizeFunction(function: PFunction, fields: Seq[String]) = {
 
-    fields.foldRight[PExp](PBoolLit(true))( (f, expr) => PBinExp(PBinExp(
-      PFieldAccess(PIdnUse("p"),PIdnUse(f) ), "==", PIdnUse("s")), "||", expr))//TODO for what is that?
     function.idndef.name match {
       case "apply_TCFraming" => {
         function.deepCopy(pres =
@@ -80,7 +74,10 @@ object OuroborosSynthesize {
             PBinExp(
               PCall(PIdnUse("create_edge"),Seq(PIdnUse("p"),PIdnUse("s"))),
               "in",
-              PResultLit()))))++ proto_f.posts
+              PResultLit()
+            )
+          )
+        )) ++ proto_f.posts
       )
   }
 
@@ -130,7 +127,6 @@ object OuroborosSynthesize {
             val new_m = m.deepCopyWithNameSubstitution(
               idndef = PIdnDef(s"link_${f}"))(
               "$field$", f)
-            method_keywords += s"link_${f}"
             new_m
           }
         )
@@ -142,40 +138,6 @@ object OuroborosSynthesize {
             val new_m = m.deepCopyWithNameSubstitution(
               idndef = PIdnDef(s"unlink_${f}"))(
               "$field$", f)
-            method_keywords += s"unlink_${f}"
-            new_m
-          }
-        )
-
-      case m: PMethod => Seq(m)
-    }
-  }
-
-  def synthesizeMethods(methods: Seq[PMethod], fields: Seq[String]) = {
-    var methodsMapping : mutable.Map[String, Seq[PMethod]] = new mutable.HashMap[String, Seq[PMethod]]()
-    methods.map {
-      case m: PMethod if m.idndef.name == "link_$field$" =>
-        fields map { f =>
-          val new_m = m.deepCopyWithNameSubstitution(
-            idndef = PIdnDef(s"link_${f}"))(
-            "$field$", f)
-          method_keywords += s"link_${f}"
-          methodsMapping.put(f, Seq(new_m))
-          new_m
-        }
-
-
-      case m: PMethod if m.idndef.name == "unlink_$field$" =>
-        fields.map(
-          { f =>
-            val new_m = m.deepCopyWithNameSubstitution(
-              idndef = PIdnDef(s"unlink_${f}"))(
-              "$field$", f)
-            method_keywords += s"unlink_${f}"
-            methodsMapping.get(f) match {
-              case None => methodsMapping.put(f, Seq(new_m))
-              case Some(new_ms) => methodsMapping.put(f, new_ms :+ new_m)
-            }
             new_m
           }
         )

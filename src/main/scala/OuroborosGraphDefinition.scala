@@ -10,8 +10,9 @@ import java.util
 
 import scala.collection.{immutable, mutable}
 import viper.silver.{ast, parser}
-import viper.silver.ast.utility.Rewriter.{ContextC, Rewritable}
+import viper.silver.ast.utility.Rewriter.{ContextC, Rewritable, StrategyBuilder}
 import viper.silver.ast._
+import viper.silver.ast.utility.Rewriter
 import viper.silver.parser.{PFormalArgDecl, _}
 import viper.silver.plugin.errors.OuroborosAssignmentError
 import viper.silver.plugin.reasons.{InsufficientGraphPermission, NotInGraphReason}
@@ -19,7 +20,7 @@ import viper.silver.verifier.errors.PreconditionInCallFalse
 import viper.silver.verifier.reasons.{AssertionFalse, InsufficientPermission, InternalReason}
 
 
-trait OurType
+trait OurType //extends PDomainType
 case object OurNode extends OurType
 case object OurGraph extends OurType
 case object OurClosedGraph extends OurType
@@ -43,13 +44,13 @@ trait OurOperation
 //case class OurLink(name: String) extends OurOperation
 //case class OurUnlink(name: String) extends OurOperation
 case class OurOperPair(name: String) extends OurOperation
-case class OurGraphSpec(inputs: Seq[OurObject], outputs: Seq[OurObject])
+case class OurGraphSpec(inputs: Seq[OurObject], locals: Seq[OurObject], outputs: Seq[OurObject])
 
 class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
 
 /*  case class OurGraphSpec(inputs: Seq[OurObject], outputs: Seq[OurObject])*/
   val graph_definitions: mutable.Map[String, OurGraphSpec] = mutable.Map.empty[String, OurGraphSpec]
-  var graph_keywords: mutable.Map[String, String] = mutable.Map.empty[String, String]
+  //var graph_keywords: mutable.Map[String, String] = mutable.Map.empty[String, String]
 
   def handlePFormalArgDecl(input: PProgram, decl: PFormalArgDecl): PFormalArgDecl = decl.typ match {
     case d: PDomainType =>
@@ -121,12 +122,10 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
   private def CLOSED_GRAPH(prog: PProgram, graph_exp: PExp, fields: Seq[String], c: PCall) = seqOfPExpToPExp(
     (PUnExp("!", PBinExp(PNullLit(), "in", graph_exp.deepCopyAll[PExp])) +:
     collectQPsForRefFields(fields, graph_exp, PFullPerm())) :+
-    PCall(PIdnUse(getIdentifier("closed")), //TODO could do closed for each field separately such that we can find out, which field is not closed
-      Seq(
         collectInGraphForallsForRefFields(fields, graph_exp)
           .foldRight[PExp](PBoolLit(true))(
           (exp0, exp1) => PBinExp(exp0, "&&", exp1)
-        ))), "&&", PBoolLit(true)).setPos(c)
+        ), "&&", PBoolLit(true)).setPos(c)
 
   private def PROTECTED_GRAPH(prog: PProgram, graph_exp: PExp, fields: Seq[String], mutable_node_exp: PExp, mutable_field: String, c: PCall) = seqOfPExpToPExp(Seq(
     PUnExp("!", PBinExp(PNullLit(), "in", graph_exp.deepCopyAll[PExp])),
@@ -137,12 +136,10 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
       else
         PAccPred(PFieldAccess(mutable_node_exp.deepCopyAll[PExp], PIdnUse(f)), PBinExp(PIntLit(1), "/", PIntLit(2)))) ++
     collectQPsForRefFieldsProtected(fields, mutable_node_exp, graph_exp) :+
-    PCall(PIdnUse(getIdentifier("closed")), //TODO could do closed for each field separately
-      Seq(
         collectInGraphForallsForRefFields(fields, graph_exp)
           .foldRight[PExp](PBoolLit(true))(
           (exp0, exp1) => PBinExp(exp0, "&&", exp1)
-        ))), "&&", PBoolLit(true)).setPos(c)
+        ), "&&", PBoolLit(true)).setPos(c)
 
 
    /*
@@ -232,8 +229,40 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
     val input_graphs: Seq[OurObject] = collect_objects(m.formalArgs)
     val output_graphs: Seq[OurObject] = collect_objects(m.formalReturns)
 
+
+    //TODO handle MethodBody in a separate method
+    var mBody : Option[PStmt] = None
+    val local_graphs: Seq[OurObject] = {
+      var locals: Seq[OurObject] = Seq()
+      val localCollector = StrategyBuilder.Slim[PNode]({
+        case l: PLocalVarDecl => l.typ match {
+          case d: PDomainType => d.domain.name match {
+            case "Node" => PLocalVarDecl(l.idndef, TypeHelper.Ref, l.init).setPos(l)
+            case name => {
+              OurTypes.getOurObject(name) match {
+                case None => l
+                case Some(ourType) => {
+                  locals :+= OurObject(l.idndef.name, ourType)
+                  PLocalVarDecl(l.idndef, PSetType(TypeHelper.Ref).setPos(l.typ), l.init).setPos(l)
+                }
+              }
+            }
+          }
+          case _ => l
+        }
+      })
+      mBody = m.body match {
+        case None => None
+        case Some(body) => {
+          val test = Some(localCollector.execute[PStmt](body))
+          test
+        }
+      }
+      locals
+    }
+
     // Store the graph specifications for future reference.
-    graph_definitions(m.idndef.name) = OurGraphSpec(input_graphs, output_graphs)
+    graph_definitions(m.idndef.name) = OurGraphSpec(input_graphs, local_graphs, output_graphs)
 
     PMethod(
       m.idndef,
@@ -249,7 +278,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
       /*output_graphs_footprint ++ union_graph_specs(input_graphs, output_graphs) ++ */m.posts/*.map(x => {
         handlePExp(input, x)
       })*/,
-      m.body
+      mBody
     ).setPos(m)
   }
 
@@ -304,6 +333,50 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
       case _ => m
     }
 
+  }
+
+  def handlePMethodCall(input: PProgram, m: PMethodCall): PNode = {
+    m.method.name match {
+      case "field_update" if m.args.length == 4 => field_update(input, m)
+      case _ => m
+    }
+  }
+
+  def field_update(input: PProgram, m: PMethodCall): PStmt = {
+    m.args.head match {
+      case field: PIdnUse => {
+        val fieldName = field.name
+        val unlinkMethodName = OuroborosNames.getIdentifier(s"unlink_$fieldName")
+        val linkMethodName = OuroborosNames.getIdentifier(s"link_$fieldName")
+        val copier = StrategyBuilder.Slim[PNode](PartialFunction.empty).duplicateEverything
+
+        //println("FIELD_UPDATE arguments : " + m.args)
+        val unlinkMethod = PMethodCall(
+          Seq(),
+          PIdnUse(unlinkMethodName),
+          Seq(copier.execute[PExp](m.args(1)), copier.execute[PExp](m.args(2)))
+
+        )
+
+        //println(s"$unlinkMethodName arguments: " + unlinkMethod.args)
+
+        val linkMethod = PMethodCall(
+          Seq(),
+          PIdnUse(linkMethodName),
+          m.args.tail.map(arg => copier.execute[PExp](arg))
+        )
+
+        //println(s"$linkMethodName arguments: " + linkMethod.args)
+
+        PSeqn(
+          Seq(
+            unlinkMethod,
+            linkMethod
+          )
+        )
+      }
+      case _ => m //TODO throw error
+    }
   }
 
   private def getNoExitWisdom(input: Program, g0:Exp, g1:Exp)(pos: Position = NoPosition, info: Info = NoInfo, errT: ErrorTrafo = NoTrafos): Stmt = {
@@ -368,7 +441,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
 
     def all_wisdoms_for_this_frame(g: OurObject, subframe_gs: Seq[LocalVar]) = Seqn(
       Seq(
-        getFramingWisdom(input, LocalVar(g.name)(SetType(Ref), pos, info, errT), seqOfExpToUnionExp(subframe_gs)(pos, info, errT))(pos, info, errT),
+        //getFramingWisdom(input, LocalVar(g.name)(SetType(Ref), pos, info, errT), seqOfExpToUnionExp(subframe_gs)(pos, info, errT))(pos, info, errT),
         getNoExitWisdom(input, LocalVar(g.name)(SetType(Ref), pos, info, errT), seqOfExpToUnionExp(subframe_gs)(pos, info, errT))(pos, info, errT)),
       Seq())(pos, info, errT)
 
@@ -384,7 +457,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
             val subframe_gs: Seq[LocalVar] = (x :: xs).map { subframe => LocalVar(subframe.name)(SetType(Ref), pos, info, errT) }
             Seqn(
               Seq(
-                getFramingWisdom(input, LocalVar(g.name)(SetType(Ref), pos, info, errT), seqOfExpToUnionExp(subframe_gs)(pos, info, errT))(pos, info, errT),
+                //  getFramingWisdom(input, LocalVar(g.name)(SetType(Ref), pos, info, errT), seqOfExpToUnionExp(subframe_gs)(pos, info, errT))(pos, info, errT),
                 getNoExitWisdom(input, LocalVar(g.name)(SetType(Ref), pos, info, errT), seqOfExpToUnionExp(subframe_gs)(pos, info, errT))(pos, info, errT)),
               Seq())(pos, info, errT)
       }
@@ -404,11 +477,11 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
               x.cached)
 
             case r: AssertionFalse =>  OuroborosAssignmentError(x.offendingNode,
-              NotInGraphReason(x.offendingNode, s"${x.offendingNode.args(1)} might not be in ${x.offendingNode.args(0)}" +
-                s" or null might be in ${x.offendingNode.args(0)}. Original message: " + x.reason.readableMessage),
+              NotInGraphReason(x.offendingNode, s"${x.offendingNode.args(1)} might not be in ${x.offendingNode.args.head}" +
+                s" or null might be in ${x.offendingNode.args.head}. Original message: " + x.reason.readableMessage),
               x.cached)
 
-            case xy =>  OuroborosAssignmentError(x.offendingNode,
+            case _ =>  OuroborosAssignmentError(x.offendingNode,
               InternalReason(x.offendingNode, "internal error in unlink: " + x.reason.readableMessage),
               x.cached)
           }
@@ -445,17 +518,31 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
             else
               seqOfExpToUnionExp(graph_defs.inputs.map { in => LocalVar(in.name)(SetType(Ref), fa.pos, fa.info, unlinkErrTrafo) })(fa.pos, fa.info, unlinkErrTrafo) //TODO causes an error, if there is no graph as input
 
+          val unlinkMethodCall = MethodCall(getIdentifier(s"unlink_${fa.lhs.field.name}"), Seq(local_g, fa.lhs.rcv), Seq())(fa.pos, fa.info, unlinkErrTrafo)
+          val linkMethodCall = MethodCall(getIdentifier(s"link_${fa.lhs.field.name}"), Seq(local_g, fa.lhs.rcv, fa.rhs), Seq())(fa.pos, fa.info, linkErrTrafo)
+
+          val unlinkInlined =
+            if (OuroborosNames.macroNames.contains(unlinkMethodCall.methodName))
+              OuroborosMemberInliner.inlineMethod(unlinkMethodCall, input, unlinkMethodCall.pos, unlinkMethodCall.info, unlinkMethodCall.errT)
+            else
+              unlinkMethodCall
+          val linkInlined =
+            if (OuroborosNames.macroNames.contains(linkMethodCall.methodName))
+              OuroborosMemberInliner.inlineMethod(linkMethodCall, input, linkMethodCall.pos, linkMethodCall.info, linkMethodCall.errT)
+            else
+              linkMethodCall
+
           Seqn(
             Seq(
               getOperationalWisdoms(input, m, ctx)(fa.pos, fa.info, unlinkErrTrafo),
-              MethodCall(getIdentifier(s"unlink_${fa.lhs.field.name}"), Seq(local_g, fa.lhs.rcv), Seq())(fa.pos, fa.info, unlinkErrTrafo),
-              MethodCall(getIdentifier(s"link_${fa.lhs.field.name}"), Seq(local_g, fa.lhs.rcv, fa.rhs), Seq())(fa.pos, fa.info, linkErrTrafo)),
+              unlinkInlined,
+              linkInlined),
             Seq())(fa.pos, fa.info, unlinkErrTrafo)
       })
     } flatten, Seq())(fa.pos, fa.info, unlinkErrTrafo)
   }
 
-   def getIdentifier(name : String): String = graph_keywords.get(name) match{
+   def getIdentifier(name : String): String = OuroborosNames.graph_keywords.get(name) match{
      case None => name //TODO maybe throw error
      case Some(newName) => newName
    }

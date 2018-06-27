@@ -28,10 +28,13 @@ class OuroborosPlugin extends SilverPlugin {
   val graphAST_handler = new OuroborosGraphHandler()
   val graph_names_handler = new OuroborosNamesHandler()
   var translatedCode = ""
-  var methodKeyWords : Set[String] = Set()
-  var keywords: mutable.Map[String, String] = mutable.Map.empty[String, String]
+
+  def reset() = {
+    OuroborosNames.reset
+  }
 
   override def beforeResolve(input: PProgram): PProgram = {
+    reset
 
     println(">>> beforeResolve ")
 
@@ -61,10 +64,8 @@ class OuroborosPlugin extends SilverPlugin {
     //val pprog = addPreamble(input, "/viper/silver/plugin/TrCloDomain.sil")
 
     //Collect identifiers
-    var names: Set[String] = Set()
     var invalidIdentifier: Option[Set[PIdnDef]] = None
     invalidIdentifier = graph_names_handler.collectNames(input)
-    names = graph_names_handler.used_names
     //println("NAMES: " + names)
 
     //If one identifier is "Graph" or "Node", stop
@@ -94,26 +95,56 @@ class OuroborosPlugin extends SilverPlugin {
           "/viper/silver/plugin/TrCloTypes.sil"),
         "/viper/silver/plugin/TrCloOperations.sil")
 
-/*    val methods = preLoadSilFile("/viper/silver/plugin/TrCloMethods.sil") match {
+    val macroFile : PProgram = preLoadSilFile("/viper/silver/plugin/TrCloMacros.sil") match {
       case None => PProgram(Seq(), Seq(), Seq(), Seq(), Seq(), Seq(), Seq(), Seq())
-      case Some(program) => program
+      case Some(pProgram) => pProgram
     }
 
-    //TODO synthesize methods and get mapping*/
+    /*  val synthesized = OuroborosSynthesize.synthesize(macros, ref_fields)
+      var synthesizedMacros : PProgram= synthesized._1
+    */  //TODO synthesize methods and get mapping
 
 
     //synthesize parametric entities
-    val synthesizeResult = OuroborosSynthesize.synthesize(preamble, ref_fields)
-    preamble = synthesizeResult._1
-      methodKeyWords = synthesizeResult._2 //TODO delete
+    preamble = OuroborosSynthesize.synthesize(preamble, ref_fields)
     //println("MethodKeyWords: " + methodKeyWords)
+
+    val macroSynthesizedFile = OuroborosSynthesize.synthesize(macroFile, ref_fields)
 
 
     //Fresh Name Generation
-    preamble = graph_names_handler.getNewNames(preamble, names, ref_fields)
-    keywords = graph_names_handler.graph_keywords
-    graph_handler.graph_keywords = keywords
-    graphAST_handler.graph_keywords = keywords
+    preamble = graph_names_handler.getNewNames(preamble, OuroborosNames.used_names, ref_fields)
+
+    val macroDefinitivePAST: PProgram = graph_names_handler.getNewNames(macroSynthesizedFile, OuroborosNames.used_names, ref_fields)
+
+    preamble = PProgram(
+      preamble.imports ++ macroDefinitivePAST.imports,
+      preamble.macros ++ macroDefinitivePAST.macros,
+      preamble.domains ++ macroDefinitivePAST.domains,
+      preamble.fields ++ macroDefinitivePAST.fields,
+      preamble.functions ++ macroDefinitivePAST.functions,
+      preamble.predicates ++ macroDefinitivePAST.predicates,
+      preamble.methods ++ macroDefinitivePAST.methods,
+      preamble.errors ++ macroDefinitivePAST.errors
+    )
+
+
+    val macros : Seq[PGlobalDeclaration] = macroSynthesizedFile.methods ++ macroSynthesizedFile.functions
+
+    macros.map {
+      case function: PFunction => {
+        OuroborosNames.macroNames put (function.idndef.name, None) //put(function.idndef.name, function.formalArgs.map(arg => arg.idndef.name))
+        function
+      }
+      case method: PMethod => {
+        OuroborosNames.macroNames put (method.idndef.name, None) //put(method.idndef.name, method.formalArgs.map(arg => arg.idndef.name))
+        method
+      }
+
+      case mac => mac
+    }
+//    synthesizedMacros = graph_names_handler.getNewNames(synthesizedMacros, names ++ keywords.values, ref_fields)
+
 
     val pprog: PProgram =
       PProgram(
@@ -146,7 +177,9 @@ class OuroborosPlugin extends SilverPlugin {
         //case p: PProgram => graph_handler.synthesizeParametricEntities(pprog)
         case m: PMethod => graph_handler.handlePMethod(pprog, m)
         case m: PCall => graph_handler.handlePCall(pprog, m)
+        case m: PMethodCall => graph_handler.handlePMethodCall(pprog, m)
         case m: PField => graph_handler.handlePField(pprog, m) //TODO Fields, Domains
+        case f: PFormalArgDecl => graph_handler.handlePFormalArgDecl(pprog, f) //TODO maybe register graphs?
       }
     )
 
@@ -174,6 +207,14 @@ class OuroborosPlugin extends SilverPlugin {
           containsAssignment = true
           graph_handler.handleAssignments(input, fa, ctx)
         }
+        case (fc : FuncApp, ctx) if OuroborosNames.macroNames.contains(fc.funcname) => OuroborosMemberInliner.inlineFunction(fc, input, fc.pos, fc.info, fc.errT)
+
+        case (mc: MethodCall, ctx) if OuroborosNames.macroNames.contains(mc.methodName) => OuroborosMemberInliner.inlineMethod(mc, input, mc.pos, mc.info, mc.errT)
+
+        case (inhale: Inhale, ctx) => inhale.exp match {
+          case fc: FuncApp if OuroborosNames.macroNames.contains(fc.funcname) => OuroborosMemberInliner.inlineInhaleFunction(inhale, fc, input, inhale.pos, inhale.info, inhale.errT)
+          case _ => inhale
+        }
       },
       "", // default context
       {
@@ -183,8 +224,10 @@ class OuroborosPlugin extends SilverPlugin {
 
     var inputPrime = ourRewriter.execute[Program](input)
 
-    inputPrime = Program(inputPrime.domains, inputPrime.fields, inputPrime.functions, inputPrime.predicates,
-      if(containsAssignment) inputPrime.methods else inputPrime.methods.filter(method => !method.name.contains("link_")) //TODO user cannot use identifiers containing "link_"
+    inputPrime = Program(inputPrime.domains, inputPrime.fields,
+      inputPrime.functions.filter(function => !OuroborosNames.macroNames.contains(function.name)),
+      inputPrime.predicates,
+      inputPrime.methods.filter(method => !OuroborosNames.macroNames.contains(method.name)) //TODO user cannot use identifiers containing "link_"
     )(inputPrime.pos, inputPrime.info, inputPrime.errT)
 
 /*    inputPrime = Program(inputPrime.domains, inputPrime.fields, inputPrime.functions, inputPrime.predicates,

@@ -168,11 +168,3 @@ domain TrClo {
                     exists f:Ref :: f in from && exists_path(EG,f,to)
         }
 }
-
-domain GraphAxioms {
-  function closed(b: Bool): Bool
-
-  axiom ax_closed{
-    forall b: Bool :: {closed(b)} closed(b) == b
-  }
-}
