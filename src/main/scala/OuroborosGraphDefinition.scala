@@ -8,6 +8,8 @@ package viper.silver.plugin
 
 import java.util
 
+import scala.language.postfixOps
+
 import scala.collection.{immutable, mutable}
 import viper.silver.{ast, parser}
 import viper.silver.ast.utility.Rewriter.{ContextC, Rewritable, StrategyBuilder}
@@ -217,13 +219,14 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
   def handlePMethod(input: PProgram, m: PMethod): PNode = {
 
     def collect_objects(collection: Seq[PFormalArgDecl]): Seq[OurObject] = collection.flatMap {
-      case x:PFormalArgDecl => x.typ match {
-        case d: PDomainType => OurTypes.getOurObject(d.domain.name) match {
-          case None => Seq()
-          case Some(ourType) => Seq(OurObject(x.idndef.name, ourType))
-        }
-        case _ => Seq()
-      }//TODO set of Graphs
+      x: PFormalArgDecl =>
+        x.typ match {
+          case d: PDomainType => OurTypes.getOurObject(d.domain.name) match {
+            case None => Seq()
+            case Some(ourType) => Seq(OurObject(x.idndef.name, ourType))
+          }
+          case _ => Seq()
+        } //TODO set of Graphs
     }
 
     val input_graphs: Seq[OurObject] = collect_objects(m.formalArgs)
@@ -238,25 +241,22 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
         case l: PLocalVarDecl => l.typ match {
           case d: PDomainType => d.domain.name match {
             case "Node" => PLocalVarDecl(l.idndef, TypeHelper.Ref, l.init).setPos(l)
-            case name => {
+            case name =>
               OurTypes.getOurObject(name) match {
                 case None => l
-                case Some(ourType) => {
+                case Some(ourType) =>
                   locals :+= OurObject(l.idndef.name, ourType)
                   PLocalVarDecl(l.idndef, PSetType(TypeHelper.Ref).setPos(l.typ), l.init).setPos(l)
-                }
               }
-            }
           }
           case _ => l
         }
       })
       mBody = m.body match {
         case None => None
-        case Some(body) => {
+        case Some(body) =>
           val test = Some(localCollector.execute[PStmt](body))
           test
-        }
       }
       locals
     }
@@ -305,10 +305,11 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
   }
 
   def handlePQuantifier(input: PProgram, m: PQuantifier): PQuantifier = {
-    m match{
+    m match {
       case m: PForall => PForall(m.vars.map(x => handlePFormalArgDecl(input, x)), m.triggers/*.map(x => PTrigger(x.exp.map(x => handlePExp(input, x))))*/,
         handlePExp(input, m.body))
       case m: PExists => PExists(m.vars.map(x => handlePFormalArgDecl(input, x)), m.body)//TODO handle PTrigger, PBody?
+      case m: PForPerm => m
     }
   }
 
@@ -344,7 +345,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
 
   def field_update(input: PProgram, m: PMethodCall): PStmt = {
     m.args.head match {
-      case field: PIdnUse => {
+      case field: PIdnUse =>
         val fieldName = field.name
         val unlinkMethodName = OuroborosNames.getIdentifier(s"unlink_$fieldName")
         val linkMethodName = OuroborosNames.getIdentifier(s"link_$fieldName")
@@ -374,7 +375,6 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
             linkMethod
           )
         )
-      }
       case _ => m //TODO throw error
     }
   }
@@ -469,7 +469,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
   def handleAssignments(input: Program, fa: FieldAssign, ctx: ContextC[Node, String]): Node = {
     val unlinkErrTrafo: ErrTrafo = {//TODO improve Error messages
       ErrTrafo({
-        case x: PreconditionInCallFalse => {
+        case x: PreconditionInCallFalse =>
           x.reason match {
             case r: InsufficientPermission =>  OuroborosAssignmentError(x.offendingNode,
               InsufficientGraphPermission(x.offendingNode, s"There might be insufficient permissiion to get read access to the ${fa.lhs.field.name} fields of all elements in ${x.offendingNode.args.head} " +
@@ -485,14 +485,13 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
               InternalReason(x.offendingNode, "internal error in unlink: " + x.reason.readableMessage),
               x.cached)
           }
-        }
         case x => x
       })
     }
 
     val linkErrTrafo: ErrTrafo = {
       ErrTrafo({
-        case x: PreconditionInCallFalse => {
+        case x: PreconditionInCallFalse =>
           x.reason match {
             case r: AssertionFalse =>  OuroborosAssignmentError(x.offendingNode,
               NotInGraphReason(x.offendingNode, s"Assignment Error: ${x.offendingNode.args(2)} might not be in ${x.offendingNode.args.head}. " +
@@ -503,7 +502,6 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
               InternalReason(x.offendingNode, "internal error in link: " + x.reason.readableMessage),
               x.cached)
           }
-        }
         case x => x
       })
     }

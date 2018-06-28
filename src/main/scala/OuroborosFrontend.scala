@@ -25,7 +25,7 @@ class OuroborosFrontend extends SilFrontend {
   override def configureVerifier(args: Seq[String]): SilFrontendConfig = ???
 
   def loadFile(path: Path): Option[Program] = {
-    _plugins = SilverPluginManager(None)
+    _plugins = SilverPluginManager()
     _state = TranslatorState.Initialized
     reset(path)
     translate()
@@ -38,7 +38,7 @@ class OuroborosFrontend extends SilFrontend {
   }
 
   def preLoadFile(path: Path): Option[PProgram] = {
-    _plugins = SilverPluginManager(None)
+    _plugins = SilverPluginManager()
     _state = TranslatorState.Initialized
     reset(path)
     parse()

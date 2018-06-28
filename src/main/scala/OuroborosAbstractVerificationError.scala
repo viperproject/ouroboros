@@ -2,12 +2,10 @@ package viper.silver.plugin
 
 import viper.silver.ast.utility.Rewriter.Rewritable
 import viper.silver.ast.{Node, Position, Positioned, TransformableErrors}
-import viper.silver.verifier.{errors, _}
-import viper.silver.verifier.errors.{ErrorNode, Internal}
-import viper.silver.verifier.reasons.{ErrorNode, InternalReason}
+import viper.silver.verifier.{AbstractVerificationError, AbstractError, AbstractErrorReason, ErrorReason}
 
-abstract class OuroborosAbstractVerificationError extends AbstractVerificationError{
-}
+abstract class OuroborosAbstractVerificationError extends AbstractVerificationError { }
+
 object errors {
   type ErrorNode = Node with Positioned with TransformableErrors with Rewritable
   case class OuroborosGraphSpecificactionError(offendingNode: ErrorNode, reason: ErrorReason, override val cached: Boolean = false) extends OuroborosAbstractVerificationError {
@@ -71,8 +69,7 @@ object reasons {
   }
 }
 
-abstract class OuroborosAbstractError extends AbstractError {
-}
+abstract class OuroborosAbstractError extends AbstractError { }
 
 case class OuroborosInvalidIdentifierError(message: String, override val pos: Position) extends OuroborosAbstractError {
   def fullId = "invalid.identifier"

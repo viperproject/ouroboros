@@ -20,7 +20,7 @@ class CarbonWithOuroborosFrontend(override val reporter: Reporter,
 
   override def reset(input: Path): Unit = {
     super.reset(input)
-    _plugins = new SilverPluginManager(SilverPluginManager.resolveAll("viper.silver.plugin.OuroborosPlugin"))
+    _plugins = new SilverPluginManager(SilverPluginManager.resolveAll("viper.silver.plugin.OuroborosPlugin")(reporter, logger, _config))
   }
 }
 

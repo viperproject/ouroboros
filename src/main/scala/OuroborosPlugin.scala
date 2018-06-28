@@ -11,16 +11,20 @@ import java.net.URL
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, Paths}
 
-import viper.silver.{FastMessaging}
+import ch.qos.logback.classic.Logger
+import viper.silver.reporter.Reporter
+import viper.silver.FastMessaging
 import viper.silver.ast._
 import viper.silver.ast.utility.Rewriter.{Strategy, StrategyBuilder, Traverse}
+import viper.silver.frontend.SilFrontendConfig
 import viper.silver.parser._
 import viper.silver.verifier._
 
 import scala.collection.mutable
 import scala.io.{BufferedSource, Codec}
 
-class OuroborosPlugin extends SilverPlugin {
+class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: SilFrontendConfig)
+  extends SilverPlugin with IOAwarePlugin {
 
   val our_frontend = new OuroborosFrontend
 
@@ -29,14 +33,14 @@ class OuroborosPlugin extends SilverPlugin {
   val graph_names_handler = new OuroborosNamesHandler()
   var translatedCode = ""
 
-  def reset() = {
-    OuroborosNames.reset
+  def reset(): Unit = {
+    OuroborosNames reset()
   }
 
   override def beforeResolve(input: PProgram): PProgram = {
-    reset
+    reset()
 
-    println(">>> beforeResolve ")
+    logger.debug(">>> beforeResolve ")
 
     def getErrors(nodes: Set[PIdnDef]) = {
       var newErrors: Set[AbstractError] = Set()
@@ -66,15 +70,14 @@ class OuroborosPlugin extends SilverPlugin {
     //Collect identifiers
     var invalidIdentifier: Option[Set[PIdnDef]] = None
     invalidIdentifier = graph_names_handler.collectNames(input)
-    //println("NAMES: " + names)
+    //logger.debug("NAMES: " + names)
 
     //If one identifier is "Graph" or "Node", stop
     invalidIdentifier match {
       case None =>
-      case Some(nodes) => {
+      case Some(nodes) =>
         getErrors(nodes)
         return input
-      }
     }
 
     //Get Ref Fields
@@ -84,7 +87,7 @@ class OuroborosPlugin extends SilverPlugin {
         case d: PDomainType if d.domain.name == "Node" => x.idndef.name
       }
     }
-    //println("REF_FIELDS: " + ref_fields)
+    //logger.debug("REF_FIELDS: " + ref_fields)
 
     var preamble: PProgram =
       addPreamble(
@@ -107,7 +110,7 @@ class OuroborosPlugin extends SilverPlugin {
 
     //synthesize parametric entities
     preamble = OuroborosSynthesize.synthesize(preamble, ref_fields)
-    //println("MethodKeyWords: " + methodKeyWords)
+    //logger.debug("MethodKeyWords: " + methodKeyWords)
 
     val macroSynthesizedFile = OuroborosSynthesize.synthesize(macroFile, ref_fields)
 
@@ -132,14 +135,12 @@ class OuroborosPlugin extends SilverPlugin {
     val macros : Seq[PGlobalDeclaration] = macroSynthesizedFile.methods ++ macroSynthesizedFile.functions
 
     macros.map {
-      case function: PFunction => {
+      case function: PFunction =>
         OuroborosNames.macroNames put (function.idndef.name, None) //put(function.idndef.name, function.formalArgs.map(arg => arg.idndef.name))
         function
-      }
-      case method: PMethod => {
+      case method: PMethod =>
         OuroborosNames.macroNames put (method.idndef.name, None) //put(method.idndef.name, method.formalArgs.map(arg => arg.idndef.name))
         method
-      }
 
       case mac => mac
     }
@@ -188,14 +189,14 @@ class OuroborosPlugin extends SilverPlugin {
     // Construct the parent relation for the overall PAST:
     newProg.initProperties()
 
-    //println(newProg)
+    //logger.debug(newProg)
 
     newProg
   }
 
   override def beforeVerify(input: Program): Program = {
 
-    println(">>> beforeVerify")
+    logger.debug(">>> beforeVerify")
 
     val graph_defs = graph_handler.graph_definitions
     var containsAssignment = false
@@ -203,10 +204,9 @@ class OuroborosPlugin extends SilverPlugin {
     val ourRewriter = StrategyBuilder.Context[Node, String](
       {
         case (m: Method, ctx) if graph_defs.contains(m.name) => graphAST_handler.handleMethod(input, m, graph_defs.get(m.name), ctx)
-        case (fa: FieldAssign, ctx) => {
+        case (fa: FieldAssign, ctx) =>
           containsAssignment = true
           graph_handler.handleAssignments(input, fa, ctx)
-        }
         case (fc : FuncApp, ctx) if OuroborosNames.macroNames.contains(fc.funcname) => OuroborosMemberInliner.inlineFunction(fc, input, fc.pos, fc.info, fc.errT)
 
         case (mc: MethodCall, ctx) if OuroborosNames.macroNames.contains(mc.methodName) => OuroborosMemberInliner.inlineMethod(mc, input, mc.pos, mc.info, mc.errT)
@@ -235,7 +235,7 @@ class OuroborosPlugin extends SilverPlugin {
         )(inputPrime.pos, inputPrime.info, inputPrime.errT)*/
 
     translatedCode = inputPrime.toString()
-    //println(inputPrime)
+    logger.debug(s"Complete Viper program:\n${inputPrime.toString()}")
     inputPrime
   }
 
