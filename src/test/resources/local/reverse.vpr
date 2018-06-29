@@ -1,0 +1,60 @@
+field next: Node
+
+
+method reverse(g: Graph, xe: Node) returns (y: Node)
+
+requires xe in g
+
+requires ACYCLIC(g)
+
+requires UNSHARED(g)
+
+requires FUNCTIONAL(g)
+
+
+// total[xe,xe,ne]
+
+requires forall v:Ref :: { EXISTS_PATH(g,xe,v) } 
+
+v in g ==> EXISTS_PATH(g,xe,v)
+
+{
+
+    var t:Node := null
+
+    var x:Node := xe
+
+    y := null
+
+
+    while ( x != null ) 
+
+    invariant GRAPH(g) // TODO
+
+
+    invariant x != null ==> x in g
+
+    invariant y != null ==> y in g 
+
+
+    invariant ACYCLIC(g)
+
+    invariant UNSHARED(g)
+
+    invariant FUNCTIONAL(g)
+
+
+    {
+
+        t := x.next
+
+        x.next := y
+
+        y := t
+
+        x := t
+
+    }
+
+}
+
