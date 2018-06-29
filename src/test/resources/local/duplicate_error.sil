@@ -1,4 +1,20 @@
 
-define TEST(test)(  //If this macro is uncommented, we get a duplicate error, and every other subsequent test fails
-    forall v: Node/*Set[Int]*/ :: true
-)
+// define TEST(test)(  //If this macro is uncommented, we get a duplicate error, and every other subsequent test fails
+//     forall v: Node, g: Graph/*Set[Int]*/ :: v in g
+// )
+
+/*method a()
+    requires true
+    ensures true
+{
+    var v: Node
+   // assert TEST(v)
+    if (true)
+    {
+        var x : Node
+    }
+    else
+    {
+        var x : Int
+    }
+}*/

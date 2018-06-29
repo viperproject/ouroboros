@@ -11,11 +11,11 @@ function get(s: Set[Ref]): Ref
 
 method mark(g:Set[Ref], roots:Set[Ref]) returns (marked:Set[Ref])
     requires |roots| > 0
-    requires GRAPH(g)
+    requires CLOSED_GRAPH(g)
     requires roots subset g
     //ensures roots subset marked
     ensures marked subset g
-    ensures GRAPH(g)
+    ensures CLOSED_GRAPH(g)
     //ensures forall v:Ref :: {v in marked}{exists_spath($$(g),roots,v)} v in g ==> ( v in marked ==> exists_spath($$(g),roots,v) )
     //ensures forall v:Ref :: {v in marked}{exists_spath($$(g),roots,v)} v in g ==> ( exists_spath($$(g),roots,v) ==> v in marked )
 {
@@ -25,7 +25,7 @@ method mark(g:Set[Ref], roots:Set[Ref]) returns (marked:Set[Ref])
 
     while ( |pending| > 0 )
 //         // Taking care of permissions.
-        invariant GRAPH(g)
+        invariant CLOSED_GRAPH(g)
 
 //         // Maintaining the graph.
         invariant x in g

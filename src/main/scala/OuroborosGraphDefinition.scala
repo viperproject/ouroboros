@@ -55,7 +55,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
   //var graph_keywords: mutable.Map[String, String] = mutable.Map.empty[String, String]
 
   def handlePFormalArgDecl(input: PProgram, decl: PFormalArgDecl): PFormalArgDecl =
-    //PFormalArgDecl(decl.idndef, getSilverType(decl.typ)).setPos(decl) //TODO PDefine cannot be duplicated
+    //PFormalArgDecl(decl.idndef, getSilverType(decl.typ)).setPos(decl) //TODO Only duplicate if needed, PDEFINE cannot be duplicated
   decl.typ match {
     case d: PDomainType =>
       d.domain.name match {
@@ -138,10 +138,10 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
       concatInGraphForallsForRefFields(prog.fields, graph_exp.deepCopyAll[PExp])))
   */
 
-  private def CLOSED_GRAPH(prog: PProgram, graph_exp: PExp, fields: Seq[String], c: PCall) = seqOfPExpToPExp(
+  private def GRAPH(prog: PProgram, graph_exp: PExp, fields: Seq[String], c: PCall, closed: Boolean) = seqOfPExpToPExp(
     (PUnExp("!", PBinExp(PNullLit(), "in", graph_exp.deepCopyAll[PExp])) +:
     collectQPsForRefFields(fields, graph_exp, PFullPerm())) :+
-        collectInGraphForallsForRefFields(fields, graph_exp)
+      (if (closed) collectInGraphForallsForRefFields(fields, graph_exp) else Seq())
           .foldRight[PExp](PBoolLit(true))(
           (exp0, exp1) => PBinExp(exp0, "&&", exp1)
         ), "&&", PBoolLit(true)).setPos(c)
@@ -203,8 +203,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
     Seq(
       PCall(PIdnUse(getIdentifier("$$")), Seq(graph_exp.deepCopyAll[PExp])).setPos(c),
       lhs_node_exp.deepCopyAll[PExp],
-      rhs_node_exp.deepCopyAll[PExp])).seRED, ACYCLIC
-    tPos(c)
+      rhs_node_exp.deepCopyAll[PExp])).setPos(c)
 
   private def IS_GLOBAL_ROOT(prog: PProgram, graph_exp: PExp, root_node: PExp, c: PCall) = PForall(
     Seq(PFormalArgDecl(PIdnDef("n"), TypeHelper.Ref)),
@@ -333,7 +332,8 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
   def handlePCall(input: PProgram, m: PCall): PNode = {
 
     m.func.name match {
-      case "GRAPH" if m.args.length == 1 => CLOSED_GRAPH(input, m.args.head, ref_fields(input), m) //TODO add CLOSED_GRAPH
+      case "CLOSED_GRAPH" if m.args.length == 1 => GRAPH(input, m.args.head, ref_fields(input), m, true)
+      case "GRAPH" if m.args.length == 1 => GRAPH(input, m.args.head, ref_fields(input), m, false)
       case "PROTECTED_GRAPH" if m.args.length == 3 => m.args(2) match {
         case PIdnUse(f_name) =>
           PROTECTED_GRAPH(input, m.args.head, ref_fields(input), m.args(1), f_name, m)
@@ -355,7 +355,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
 
   def handlePMethodCall(input: PProgram, m: PMethodCall): PNode = {
     m.method.name match {
-      case "field_update" if m.args.length == 4 => field_update(input, m)
+      case "UPDATE" if m.args.length == 4 => field_update(input, m)
       case _ => m
     }
   }
