@@ -52,7 +52,9 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
   val graph_definitions: mutable.Map[String, OurGraphSpec] = mutable.Map.empty[String, OurGraphSpec]
   //var graph_keywords: mutable.Map[String, String] = mutable.Map.empty[String, String]
 
-  def handlePFormalArgDecl(input: PProgram, decl: PFormalArgDecl): PFormalArgDecl = decl.typ match {
+  def handlePFormalArgDecl(input: PProgram, decl: PFormalArgDecl): PFormalArgDecl =
+    //PFormalArgDecl(decl.idndef, getSilverType(decl.typ)).setPos(decl) //TODO PDefine cannot be duplicated
+  decl.typ match {
     case d: PDomainType =>
       d.domain.name match {
         case "Node" => PFormalArgDecl(decl.idndef, TypeHelper.Ref).setPos(decl)
@@ -64,6 +66,21 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
     case d: PSetType =>
       PFormalArgDecl(decl.idndef, PSetType(handlePFormalArgDecl(input, PFormalArgDecl(decl.idndef, d.elementType)).typ)).setPos(decl)
     case _ => decl
+  }
+
+  def handlePLocalVarDecl(input: PProgram, decl: PLocalVarDecl): PLocalVarDecl =
+    PLocalVarDecl(decl.idndef, getSilverType(decl.typ), decl.init).setPos(decl)
+
+  def getSilverType(oldType: PType): PType = oldType match {
+    case d: PDomainType =>
+      d.domain.name match {
+        case "Node" => TypeHelper.Ref
+        case "Graph" | "ClosedGraph" | "List" => PSetType(TypeHelper.Ref)
+        case _ => oldType
+      }
+    case s: PSetType =>
+      PSetType(getSilverType(s.elementType))
+    case _ => oldType
   }
 
   private def seqOfPExpToPExp(exp_seq: Seq[PExp], binary_oper: String, neutral_element: PExp): PExp = exp_seq.toList match {
@@ -184,7 +201,8 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
     Seq(
       PCall(PIdnUse(getIdentifier("$$")), Seq(graph_exp.deepCopyAll[PExp])).setPos(c),
       lhs_node_exp.deepCopyAll[PExp],
-      rhs_node_exp.deepCopyAll[PExp])).setPos(c)
+      rhs_node_exp.deepCopyAll[PExp])).seRED, ACYCLIC
+    tPos(c)
 
   private def IS_GLOBAL_ROOT(prog: PProgram, graph_exp: PExp, root_node: PExp, c: PCall) = PForall(
     Seq(PFormalArgDecl(PIdnDef("n"), TypeHelper.Ref)),
@@ -192,20 +210,20 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
     PBinExp(PBinExp(PIdnUse("n"), "in", graph_exp.deepCopyAll[PExp]), "==>", EXISTS_PATH(prog, graph_exp, root_node.deepCopyAll[PExp], PIdnUse("n"), c)) //TODO change that "n" is unique
   ).setPos(c)
 
-  private def FUNCTIONAL(prog: PProgram, graph_exp: PExp) = PCall(
+  private def FUNCTIONAL(prog: PProgram, graph_exp: PExp, c: PCall) = PCall(
     PIdnUse(getIdentifier("func_graph")),
-    Seq(PCall(PIdnUse(getIdentifier("$$")), Seq(graph_exp.deepCopyAll[PExp]))))
+    Seq(PCall(PIdnUse(getIdentifier("$$")), Seq(graph_exp.deepCopyAll[PExp])))).setPos(c)
 
-  private def UNSHARED(prog: PProgram, graph_exp: PExp) = PCall(
+  private def UNSHARED(prog: PProgram, graph_exp: PExp, c: PCall) = PCall(
     PIdnUse(getIdentifier("unshared_graph")),
-    Seq(PCall(PIdnUse(getIdentifier("$$")), Seq(graph_exp.deepCopyAll[PExp]))))
+    Seq(PCall(PIdnUse(getIdentifier("$$")), Seq(graph_exp.deepCopyAll[PExp])))).setPos(c)
 
-  private def ACYCLIC(prog: PProgram, graph_exp: PExp) = PCall(
+  private def ACYCLIC(prog: PProgram, graph_exp: PExp, c: PCall) = PCall(
     PIdnUse(getIdentifier("acyclic_graph")),
-    Seq(PCall(PIdnUse(getIdentifier("$$")), Seq(graph_exp.deepCopyAll[PExp]))))
+    Seq(PCall(PIdnUse(getIdentifier("$$")), Seq(graph_exp.deepCopyAll[PExp])))).setPos(c)
 
-  private def ACYCLIC_LIST_SEGMENT(prog: PProgram, graph_exp: PExp): PExp = PBinExp(
-    ACYCLIC(prog, graph_exp.deepCopyAll[PExp]), "&&", PBinExp(FUNCTIONAL(prog, graph_exp.deepCopyAll[PExp]), "&&", UNSHARED(prog, graph_exp.deepCopyAll[PExp])))
+  private def ACYCLIC_LIST_SEGMENT(prog: PProgram, graph_exp: PExp, c: PCall): PExp = PBinExp(
+    ACYCLIC(prog, graph_exp.deepCopyAll[PExp], c), "&&", PBinExp(FUNCTIONAL(prog, graph_exp.deepCopyAll[PExp], c), "&&", UNSHARED(prog, graph_exp.deepCopyAll[PExp], c))).setPos(c)
 
   def ref_fields(prog: PProgram): Seq[String] = prog.fields.collect {
     case PField(f, t) if t == TypeHelper.Ref => f.name
@@ -326,10 +344,10 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
       case "EXISTS_PATH" if m.args.length == 3 => EXISTS_PATH(input, m.args.head, m.args(1), m.args(2), m)
       case "IS_GLOBAL_ROOT" if m.args.length == 2 => IS_GLOBAL_ROOT(input, m.args.head, m.args(1), m)
 
-      case "FUNCTIONAL" if m.args.length == 1 => FUNCTIONAL(input, m.args.head)
-      case "UNSHARED" if m.args.length == 1 => UNSHARED(input, m.args.head)
-      case "ACYCLIC" if m.args.length == 1 => ACYCLIC(input, m.args.head)
-      case "ACYCLIC_LIST_SEGMENT" if m.args.length == 1 => ACYCLIC_LIST_SEGMENT(input, m.args.head)
+      case "FUNCTIONAL" if m.args.length == 1 => FUNCTIONAL(input, m.args.head, m)
+      case "UNSHARED" if m.args.length == 1 => UNSHARED(input, m.args.head, m)
+      case "ACYCLIC" if m.args.length == 1 => ACYCLIC(input, m.args.head, m)
+      case "ACYCLIC_LIST_SEGMENT" if m.args.length == 1 => ACYCLIC_LIST_SEGMENT(input, m.args.head, m)
       case _ => m
     }
 

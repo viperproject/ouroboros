@@ -180,6 +180,7 @@ class OuroborosPlugin extends SilverPlugin {
         case m: PMethodCall => graph_handler.handlePMethodCall(pprog, m)
         case m: PField => graph_handler.handlePField(pprog, m) //TODO Fields, Domains
         case f: PFormalArgDecl => graph_handler.handlePFormalArgDecl(pprog, f) //TODO maybe register graphs?
+        case l: PLocalVarDecl => graph_handler.handlePLocalVarDecl(pprog, l) //
       }
     )
 
