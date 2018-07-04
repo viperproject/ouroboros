@@ -1,0 +1,12 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="sbt testOnly OuroborosTests" type="SbtRunConfiguration" factoryName="sbt Task">
+    <setting name="tasks" value="&quot;testOnly *OuroborosTests&quot;" />
+    <setting name="vmparams" value="-Xms512M -Xmx1024M -Xss1M -XX:+CMSClassUnloadingEnabled" />
+    <setting name="workingDir" value="$PROJECT_DIR$" />
+    <envs>
+      <env name="Z3_EXE" value="/usr/local/Viper/z3/bin/z3" />
+      <env name="BOOGIE_EXE" value="/usr/local/Viper/boogie/Binaries/Boogie.exe" />
+    </envs>
+    <method />
+  </configuration>
+</component>

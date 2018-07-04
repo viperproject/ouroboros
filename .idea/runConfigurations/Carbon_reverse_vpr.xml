@@ -1,0 +1,9 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Carbon reverse.vpr" type="Application" factoryName="Application">
+    <option name="MAIN_CLASS_NAME" value="viper.carbon.Carbon" />
+    <module name="our" />
+    <option name="PROGRAM_PARAMETERS" value="--plugin=viper.silver.plugin.OuroborosPlugin --z3Exe=/usr/local/Viper/z3/bin/z3 --boogieExe=/usr/local/Viper/boogie/Binaries/Boogie.exe ../ouroboros/src/test/resources/local/revers.vpr" />
+    <option name="WORKING_DIRECTORY" value="file://$PROJECT_DIR$/../carbon" />
+    <method />
+  </configuration>
+</component>
