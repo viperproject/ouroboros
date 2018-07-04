@@ -66,3 +66,9 @@ method unlink_$field$(g:Set[Ref], x:Ref)
             (v1 != v2) ==> (
                 exists_path($$(g),v1,v2) <==>
                     exists_path(old($$(g)),v1,v2) && !(exists_path(old($$(g)),v1,x) && exists_path(old($$(g)),old(x.$field$),v2))))
+
+function GRAPH_decl(g: Set[Ref]): Bool
+
+function CLOSED_GRAPH_decl(g: Set[Ref]): Bool
+
+method update_$field$(g:Set[Ref], x:Ref, y:Ref)

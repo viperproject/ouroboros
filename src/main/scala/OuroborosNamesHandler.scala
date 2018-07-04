@@ -41,16 +41,14 @@ class OuroborosNamesHandler {
     //OuroborosNames.graph_keywords = mutable.Map.empty[String, String]
     val rewriter = StrategyBuilder.Slim[PNode](
       {
-        case d : PIdnDef => {
+        case d : PIdnDef =>
           OuroborosNames.graph_keywords.get(d.name) match { //Check if name has already a mapping. If yes, take mapping, else getNewName
-            case None => {//we don't have a mapping for this name yet
+            case None => //we don't have a mapping for this name yet
               val newName = getNewName(d.name)
               PIdnDef(newName)
-            }
             case Some(newName) => PIdnDef(newName)
           }
-        }
-        case u : PIdnUse => {
+        case u : PIdnUse =>
           if (fields.contains(u.name)) {
             u
           } else {
@@ -62,7 +60,6 @@ class OuroborosNamesHandler {
               case Some(newName) => PIdnUse(newName)
             }
           }
-        }
         case x => x
       }
     )

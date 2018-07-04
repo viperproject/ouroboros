@@ -181,7 +181,7 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
         case m: PMethodCall => graph_handler.handlePMethodCall(pprog, m)
         case m: PField => graph_handler.handlePField(pprog, m) //TODO Fields, Domains
         case f: PFormalArgDecl => graph_handler.handlePFormalArgDecl(pprog, f) //TODO maybe register graphs?
-        case l: PLocalVarDecl => graph_handler.handlePLocalVarDecl(pprog, l) //
+        //case l: PLocalVarDecl => graph_handler.handlePLocalVarDecl(pprog, l) //
       }
     )
 
@@ -199,12 +199,14 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
 
     logger.debug(">>> beforeVerify")
 
+    val stmtHandler = new OuroborosStmtHandler
     val graph_defs = graph_handler.graph_definitions
     var containsAssignment = false
 
     val ourRewriter = StrategyBuilder.Context[Node, String](
       {
-        case (m: Method, ctx) if graph_defs.contains(m.name) => graphAST_handler.handleMethod(input, m, graph_defs.get(m.name), ctx)
+        case (m: Method, ctx) if graph_defs.contains(m.name) =>
+          stmtHandler.handleMethod(graphAST_handler.handleMethod(input, m, graph_defs.get(m.name), ctx), graph_defs.get(m.name), input)
         case (fa: FieldAssign, ctx) =>
           containsAssignment = true
           graph_handler.handleAssignments(input, fa, ctx)

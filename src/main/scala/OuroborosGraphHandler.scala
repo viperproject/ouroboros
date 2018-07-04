@@ -85,7 +85,7 @@ class OuroborosGraphHandler {
                   )
                 }
 
-                Seq(GRAPH(decl, fields, input, method, true))
+                Seq(GRAPH(LocalVar(decl.name)(decl.typ, decl.pos, decl.info, decl.errT), fields, input, true))
               }
               case OurGraph => {
                 allGraphs match {
@@ -104,7 +104,7 @@ class OuroborosGraphHandler {
                   )
                 }
 
-                Seq(GRAPH(decl, fields, input, method, false))
+                Seq(GRAPH(LocalVar(decl.name)(decl.typ, decl.pos, decl.info, decl.errT), fields, input, false))
               }
               //case OurList => //TODO
               case _ => Seq()
@@ -154,7 +154,7 @@ class OuroborosGraphHandler {
                   }
                   val postConditions : Seq[Exp] =
                     Seq(
-                      NO_NULL(decl, input),
+                      NO_NULL(LocalVar(decl.name)(decl.typ, decl.pos, decl.info, decl.errT), input),
                       CLOSED(LocalVar(decl.name)(decl.typ, decl.pos, decl.info, decl.errT), input))
 
                   additionalPostConditions = additionalPostConditions :+ postConditions.foldRight[Exp](TrueLit()())((exp, foldedExp) => And(foldedExp, exp)(exp.pos, exp.info, OuroborosErrorTransformers.graphErrTrafo))
@@ -195,22 +195,22 @@ class OuroborosGraphHandler {
       }
     }
 
-def NO_NULL(decl: LocalVarDecl, input: Program)= {
+def NO_NULL(decl: Exp, input: Program)= {
   val noNullInGraph = input.findFunction("NoNullInGraph")
   val noNullErrTrafo = OuroborosErrorTransformers.NullInGraphErrTrafo(Seq(decl))
-  val noNullCall = FuncApp(noNullInGraph, Seq(LocalVar(decl.name)(decl.typ, decl.pos, decl.info, decl.errT)))(decl.pos, decl.info, noNullErrTrafo)
+  val noNullCall = FuncApp(noNullInGraph, Seq(decl))(decl.pos, decl.info, noNullErrTrafo)
   if (OuroborosNames.macroNames.contains(noNullCall.funcname))
     OuroborosMemberInliner.inlineFunction(noNullCall, input, noNullCall.pos, noNullCall.info, noNullCall.errT)
   else
     noNullCall
 }
 
-def GRAPH(graph: LocalVarDecl, fields: Seq[Field], input: Program, method: Method, closed: Boolean): Exp = {
+def GRAPH(graph: Exp, fields: Seq[Field], input: Program, closed: Boolean): Exp = {
     val unExp : Exp = NO_NULL(graph, input)
-    val QPForRefFields : Seq[Exp] = collectQPsForRefFields(fields, LocalVar(graph.name)(graph.typ, graph.pos, graph.info, OuroborosErrorTransformers.qpsForRefFieldErrTrafo), FullPerm()(graph.pos, graph.info, OuroborosErrorTransformers.qpsForRefFieldErrTrafo))
+    val QPForRefFields : Seq[Exp] = collectQPsForRefFields(fields, graph.duplicateMeta(graph.pos, graph.info, OuroborosErrorTransformers.qpsForRefFieldErrTrafo).asInstanceOf[Exp], FullPerm()(graph.pos, graph.info, OuroborosErrorTransformers.qpsForRefFieldErrTrafo))
     val InGraphForallsForRefFields = if(closed)
       Seq(
-        CLOSED(LocalVar(graph.name)(graph.typ, graph.pos, graph.info, graph.errT), input)
+        CLOSED(graph, input)
       )//TODO (graph.pos, graph.info, OuroborosErrorTransformers.graphErrTrafo)
     else Seq()
     ((unExp +: QPForRefFields) ++ InGraphForallsForRefFields)

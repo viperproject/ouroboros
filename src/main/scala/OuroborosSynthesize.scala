@@ -141,7 +141,14 @@ object OuroborosSynthesize {
             new_m
           }
         )
-
+      case m: PMethod if m.idndef.name == "update_$field$" =>
+        //println("UPDATE")
+        fields.map(
+          f =>
+            m.deepCopyWithNameSubstitution(
+              idndef = PIdnDef(s"update_$f"))(
+              "$field$", f)
+        )
       case m: PMethod => Seq(m)
     }
   }

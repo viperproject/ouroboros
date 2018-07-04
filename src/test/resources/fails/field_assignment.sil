@@ -1,0 +1,17 @@
+field n1: Node
+method test(g: Graph)
+
+{
+    var g2: Graph
+    while(false)
+    {
+
+    }
+    var n: Node
+    n := new(*)
+    var n4: Node
+    var n2: Node
+    var n3: Node
+    n.n1 := n
+    g2 := Set(n2, n3, n4)
+}

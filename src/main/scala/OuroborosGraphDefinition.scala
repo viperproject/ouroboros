@@ -38,6 +38,12 @@ object OurTypes {
       //TODO more types
     case _ => None
   }
+
+  def getTypeDeclFunctionName(ourType: OurType): String = ourType match{
+    case OurGraph => OuroborosNames.getIdentifier("GRAPH_decl")
+    case OurClosedGraph => OuroborosNames.getIdentifier("CLOSED_GRAPH_decl")
+    //case OurList => OuroborosNames.getIdentifier("LIST_decl")
+  }
 }
 
 case class OurObject(name: String, typ: OurType)
@@ -46,7 +52,7 @@ trait OurOperation
 //case class OurLink(name: String) extends OurOperation
 //case class OurUnlink(name: String) extends OurOperation
 case class OurOperPair(name: String) extends OurOperation
-case class OurGraphSpec(inputs: Seq[OurObject], locals: Seq[OurObject], outputs: Seq[OurObject])
+case class OurGraphSpec(inputs: Seq[OurObject]/*, locals: Seq[OurObject]*/, outputs: Seq[OurObject])
 
 class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
 
@@ -70,7 +76,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
     case _ => decl
   }
 
-  def handlePLocalVarDecl(input: PProgram, decl: PLocalVarDecl): PLocalVarDecl =
+/*  def handlePLocalVarDecl(input: PProgram, decl: PLocalVarDecl): PLocalVarDecl =
     PLocalVarDecl(decl.idndef, getSilverType(decl.typ), decl.init).setPos(decl)
 
   def getSilverType(oldType: PType): PType = oldType match {
@@ -83,7 +89,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
     case s: PSetType =>
       PSetType(getSilverType(s.elementType))
     case _ => oldType
-  }
+  }*/
 
   private def seqOfPExpToPExp(exp_seq: Seq[PExp], binary_oper: String, neutral_element: PExp): PExp = exp_seq.toList match {
     case e :: Nil => e
@@ -98,25 +104,27 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
     case Nil => EmptySet(Ref)(pos, info, errT)//TrueLit()(pos, info, errT)
   }
 
+  lazy val n_Identifier: String = OuroborosNames.getIdentifier("n")
+
   // forall n:Ref :: {n.field_i} n in nodes ==> acc(n.field_i,perm_exp)
   private def getQPForGraphNodes(graph_exp: PExp, field: String, perm_exp: PExp = PFullPerm()): PExp = PForall(
-    Seq(PFormalArgDecl(PIdnDef("n"), TypeHelper.Ref)),
-    Seq(PTrigger( Seq( PFieldAccess(PIdnUse("n"),PIdnUse(field))))),
-    PBinExp( PBinExp(PIdnUse("n"), "in", graph_exp.deepCopyAll[PExp]), "==>", PAccPred(PFieldAccess(PIdnUse("n"), PIdnUse(field)), perm_exp.deepCopyAll[PExp])))
+    Seq(PFormalArgDecl(PIdnDef(n_Identifier), TypeHelper.Ref)),
+    Seq(PTrigger( Seq( PFieldAccess(PIdnUse(n_Identifier),PIdnUse(field))))),
+    PBinExp( PBinExp(PIdnUse(n_Identifier), "in", graph_exp.deepCopyAll[PExp]), "==>", PAccPred(PFieldAccess(PIdnUse(n_Identifier), PIdnUse(field)), perm_exp.deepCopyAll[PExp])))
 
   // ( forall n:Ref :: {n.field_i} n in nodes && n != mutable_node ==> acc(n.field_i,1/2) )
   private def getQPForGraphNodesExcept(graph_exp: PExp, field: String, perm_exp: PExp = PFullPerm(), except_node: PExp): PExp = PForall(
-    Seq(PFormalArgDecl(PIdnDef("n"), TypeHelper.Ref)),
-    Seq(PTrigger( Seq( PFieldAccess(PIdnUse("n"),PIdnUse(field))))),
-    PBinExp( PBinExp( PBinExp(PIdnUse("n"), "in", graph_exp.deepCopyAll[PExp]), "&&", PBinExp(PIdnUse("n"), "!=", except_node.deepCopyAll[PExp])), "==>", PAccPred(PFieldAccess(PIdnUse("n"), PIdnUse(field)), perm_exp.deepCopyAll[PExp])))
+    Seq(PFormalArgDecl(PIdnDef(n_Identifier), TypeHelper.Ref)),
+    Seq(PTrigger( Seq( PFieldAccess(PIdnUse(n_Identifier),PIdnUse(field))))),
+    PBinExp( PBinExp( PBinExp(PIdnUse(n_Identifier), "in", graph_exp.deepCopyAll[PExp]), "&&", PBinExp(PIdnUse(n_Identifier), "!=", except_node.deepCopyAll[PExp])), "==>", PAccPred(PFieldAccess(PIdnUse(n_Identifier), PIdnUse(field)), perm_exp.deepCopyAll[PExp])))
 
   // forall n:Ref ::{n.field_i in nodes}{n in nodes, n.field_i} n in nodes && n.field_i != null ==> n.field_i in nodes
   private def getInGraphForallForField(graph_exp: PExp, field: String): PExp = PForall(
-    Seq(PFormalArgDecl(PIdnDef("n"), TypeHelper.Ref)),
+    Seq(PFormalArgDecl(PIdnDef(n_Identifier), TypeHelper.Ref)),
     Seq(
-      PTrigger( Seq(PBinExp(PFieldAccess(PIdnUse("n"), PIdnUse(field)), "in", graph_exp.deepCopyAll[PExp])) ),
-      PTrigger( Seq(PBinExp(PIdnUse("n"), "in", graph_exp.deepCopyAll[PExp]), PFieldAccess(PIdnUse("n"), PIdnUse(field))))),
-    PBinExp( PBinExp(PBinExp(PIdnUse("n"), "in", graph_exp.deepCopyAll[PExp]), "&&", PBinExp(PFieldAccess(PIdnUse("n"), PIdnUse(field)), "!=", PNullLit())), "==>", PBinExp(PFieldAccess(PIdnUse("n"), PIdnUse(field)), "in", graph_exp.deepCopyAll[PExp])))
+      PTrigger( Seq(PBinExp(PFieldAccess(PIdnUse(n_Identifier), PIdnUse(field)), "in", graph_exp.deepCopyAll[PExp])) ),
+      PTrigger( Seq(PBinExp(PIdnUse(n_Identifier), "in", graph_exp.deepCopyAll[PExp]), PFieldAccess(PIdnUse(n_Identifier), PIdnUse(field))))),
+    PBinExp( PBinExp(PBinExp(PIdnUse(n_Identifier), "in", graph_exp.deepCopyAll[PExp]), "&&", PBinExp(PFieldAccess(PIdnUse(n_Identifier), PIdnUse(field)), "!=", PNullLit())), "==>", PBinExp(PFieldAccess(PIdnUse(n_Identifier), PIdnUse(field)), "in", graph_exp.deepCopyAll[PExp])))
 
 
   private def collectQPsForRefFields(fields: Seq[String], graph_exp: PExp, perm_exp: PExp = PFullPerm()): Seq[PExp] =
@@ -206,9 +214,9 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
       rhs_node_exp.deepCopyAll[PExp])).setPos(c)
 
   private def IS_GLOBAL_ROOT(prog: PProgram, graph_exp: PExp, root_node: PExp, c: PCall) = PForall(
-    Seq(PFormalArgDecl(PIdnDef("n"), TypeHelper.Ref)),
-    Seq( PTrigger(Seq(EXISTS_PATH(prog, graph_exp, root_node.deepCopyAll[PExp], PIdnUse("n"), c))) ),
-    PBinExp(PBinExp(PIdnUse("n"), "in", graph_exp.deepCopyAll[PExp]), "==>", EXISTS_PATH(prog, graph_exp, root_node.deepCopyAll[PExp], PIdnUse("n"), c)) //TODO change that "n" is unique
+    Seq(PFormalArgDecl(PIdnDef(n_Identifier), TypeHelper.Ref)),
+    Seq( PTrigger(Seq(EXISTS_PATH(prog, graph_exp, root_node.deepCopyAll[PExp], PIdnUse(n_Identifier), c))) ),
+    PBinExp(PBinExp(PIdnUse(n_Identifier), "in", graph_exp.deepCopyAll[PExp]), "==>", EXISTS_PATH(prog, graph_exp, root_node.deepCopyAll[PExp], PIdnUse(n_Identifier), c)) //TODO change that "n" is unique
   ).setPos(c)
 
   private def FUNCTIONAL(prog: PProgram, graph_exp: PExp, c: PCall) = PCall(
@@ -233,6 +241,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
     }
   }
 
+
   def handlePMethod(input: PProgram, m: PMethod): PNode = {
 
     def collect_objects(collection: Seq[PFormalArgDecl]): Seq[OurObject] = collection.flatMap {
@@ -250,35 +259,47 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
 
 
     //TODO handle MethodBody in a separate method
-    var mBody : Option[PStmt] = None
-    val local_graphs: Seq[OurObject] = {
-      var locals: Seq[OurObject] = Seq()
-      val localCollector = StrategyBuilder.Slim[PNode]({
-        case l: PLocalVarDecl => l.typ match {
-          case d: PDomainType => d.domain.name match {
-            case "Node" => PLocalVarDecl(l.idndef, TypeHelper.Ref, l.init).setPos(l)
-            case name =>
-              OurTypes.getOurObject(name) match {
-                case None => l
-                case Some(ourType) =>
-                  locals :+= OurObject(l.idndef.name, ourType)
-                  PLocalVarDecl(l.idndef, PSetType(TypeHelper.Ref).setPos(l.typ), l.init).setPos(l)
-              }
-          }
-          case _ => l
+
+    lazy val mBody: Option[PStmt] = m.body match {
+      case None => None
+      case Some(body) => Some(handlePMethodBody(body))
+    }
+
+    def handlePMethodBody(body: PStmt): PStmt = body match {
+      case pSeqn: PSeqn => PSeqn(pSeqn.ss.flatMap(s => handlePStmtInBody(s)))
+      case _ => body
+    }
+
+    def handlePStmtInBody(stmt: PStmt): Seq[PStmt] = stmt match {
+      case seqn: PSeqn => Seq(PSeqn(seqn.ss.flatMap(s => handlePStmtInBody(s))).setPos(seqn))
+      case pIf: PIf => Seq(PIf(pIf.cond, handlePStmtInBody(pIf.thn).head.asInstanceOf[PSeqn], handlePStmtInBody(pIf.els).head.asInstanceOf[PSeqn]).setPos(pIf))
+      case pWhile: PWhile => Seq(PWhile(pWhile.cond, pWhile.invs, handlePStmtInBody(pWhile.body).head.asInstanceOf[PSeqn]).setPos(pWhile))
+        //TODO are there more cases?
+      case l: PLocalVarDecl => l.typ match {
+        case d: PDomainType => d.domain.name match {
+          case "Node" => Seq(PLocalVarDecl(l.idndef, TypeHelper.Ref, l.init).setPos(l))
+          case name =>
+            OurTypes.getOurObject(name) match {
+              case None => Seq(l)
+              case Some(ourType) =>
+                  Seq(
+                    PLocalVarDecl(l.idndef, PSetType(TypeHelper.Ref).setPos(l.typ), l.init).setPos(l),
+                    PInhale(
+                      PCall(
+                        PIdnUse(OurTypes.getTypeDeclFunctionName(ourType)),
+                        Seq(PIdnUse(l.idndef.name))
+                      ).setPos(l)
+                    ).setPos(l)
+                  )
+            }
         }
-      })
-      mBody = m.body match {
-        case None => None
-        case Some(body) =>
-          val test = Some(localCollector.execute[PStmt](body))
-          test
+        case _ => Seq(l)
       }
-      locals
+      case _ => Seq(stmt)
     }
 
     // Store the graph specifications for future reference.
-    graph_definitions(m.idndef.name) = OurGraphSpec(input_graphs, local_graphs, output_graphs)
+    graph_definitions(m.idndef.name) = OurGraphSpec(input_graphs, /*local_graphs, */output_graphs)
 
     PMethod(
       m.idndef,
@@ -364,34 +385,18 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
     m.args.head match {
       case field: PIdnUse =>
         val fieldName = field.name
-        val unlinkMethodName = OuroborosNames.getIdentifier(s"unlink_$fieldName")
-        val linkMethodName = OuroborosNames.getIdentifier(s"link_$fieldName")
+        val updateMethodName = OuroborosNames.getIdentifier(s"update_$fieldName")
         val copier = StrategyBuilder.Slim[PNode](PartialFunction.empty).duplicateEverything
 
-        //println("FIELD_UPDATE arguments : " + m.args)
-        val unlinkMethod = PMethodCall(
+        val updateMethodCall = PMethodCall(
           Seq(),
-          PIdnUse(unlinkMethodName),
-          Seq(copier.execute[PExp](m.args(1)), copier.execute[PExp](m.args(2)))
-
-        )
-
-        //println(s"$unlinkMethodName arguments: " + unlinkMethod.args)
-
-        val linkMethod = PMethodCall(
-          Seq(),
-          PIdnUse(linkMethodName),
-          m.args.tail.map(arg => copier.execute[PExp](arg))
-        )
+          PIdnUse(updateMethodName),
+          m.args.tail.map(arg => copier.execute[PExp](arg).setPos(arg)) //TODO needed?
+        ).setPos(m)
 
         //println(s"$linkMethodName arguments: " + linkMethod.args)
 
-        PSeqn(
-          Seq(
-            unlinkMethod,
-            linkMethod
-          )
-        )
+        updateMethodCall
       case _ => m //TODO throw error
     }
   }
