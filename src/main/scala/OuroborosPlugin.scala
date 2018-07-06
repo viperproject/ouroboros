@@ -230,7 +230,7 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
     inputPrime = Program(inputPrime.domains, inputPrime.fields,
       inputPrime.functions.filter(function => !OuroborosNames.macroNames.contains(function.name)),
       inputPrime.predicates,
-      inputPrime.methods.filter(method => !OuroborosNames.macroNames.contains(method.name)) //TODO user cannot use identifiers containing "link_"
+      inputPrime.methods.filter(method => !OuroborosNames.macroNames.contains(method.name))
     )(inputPrime.pos, inputPrime.info, inputPrime.errT)
 
 /*    inputPrime = Program(inputPrime.domains, inputPrime.fields, inputPrime.functions, inputPrime.predicates,

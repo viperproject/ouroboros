@@ -2,7 +2,7 @@ field n1: Node
 method test(g: Graph)
 
 {
-    var g2: Graph
+    var g2: Graph := Set()
     while(false)
     {
 

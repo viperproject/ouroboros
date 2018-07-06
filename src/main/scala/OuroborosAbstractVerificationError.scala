@@ -8,11 +8,11 @@ abstract class OuroborosAbstractVerificationError extends AbstractVerificationEr
 
 object errors {
   type ErrorNode = Node with Positioned with TransformableErrors with Rewritable
-  case class OuroborosGraphSpecificactionError(offendingNode: ErrorNode, reason: ErrorReason, override val cached: Boolean = false) extends OuroborosAbstractVerificationError {
+  case class OuroborosGraphSpecificactionError(graph: String, offendingNode: ErrorNode, reason: ErrorReason, override val cached: Boolean = false) extends OuroborosAbstractVerificationError {
     val id = "graph.specification"//TODO
-    val text = "It could not be verified that this is a graph."
-    def withNode(offendingNode: errors.ErrorNode = this.offendingNode) = OuroborosGraphSpecificactionError(offendingNode, this.reason)
-    def withReason(r: ErrorReason) = OuroborosGraphSpecificactionError(offendingNode, r)
+    val text = s"It could not be verified that $graph is a graph."
+    def withNode(offendingNode: errors.ErrorNode = this.offendingNode) = OuroborosGraphSpecificactionError(graph, offendingNode, this.reason)
+    def withReason(r: ErrorReason) = OuroborosGraphSpecificactionError(graph, offendingNode, r)
   }
 
   case class OuroborosInternalEncodingError(offendingNode: ErrorNode, reason: ErrorReason, override val cached: Boolean = false) extends OuroborosAbstractVerificationError {

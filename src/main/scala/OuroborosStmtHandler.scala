@@ -111,7 +111,7 @@ class OuroborosStmtHandler {
   def handleWhile(stmt: While, wrapper: OuroborosStmtWrapper, input: Program): While = {
     val existingGraphs = wrapper.existingGraphs
     val graphInvs = existingGraphs.map(a => TYPE(a, input, stmt))
-    While(stmt.cond, stmt.invs ++ graphInvs, handleSeqn(stmt.body, wrapper, input))(stmt.pos, stmt.info, stmt.errT)
+    While(stmt.cond, graphInvs.toSeq ++ stmt.invs, handleSeqn(stmt.body, wrapper, input))(stmt.pos, stmt.info, stmt.errT)
   }
 
   def handleIf(ifStmt: If, wrapper: OuroborosStmtWrapper, input: Program): If = {

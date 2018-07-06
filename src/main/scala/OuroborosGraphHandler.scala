@@ -67,21 +67,22 @@ class OuroborosGraphHandler {
         decls.size match {
           case 1 =>
             val decl = decls.head
+            val graphErrTrafo = OuroborosErrorTransformers.graphErrTrafo(decl.name)
             obj.typ match {
               case OurClosedGraph => {
                 allGraphs match {
                   case None => allGraphs = Some(
                     LocalVar(
                       decl.name
-                    )(decl.typ, decl.pos, decl.info, OuroborosErrorTransformers.graphErrTrafo)
+                    )(decl.typ, decl.pos, decl.info, graphErrTrafo)
                   )
                   case Some(prev) => allGraphs = Some(
                     AnySetUnion(
                       prev,
                       LocalVar(
                         decl.name
-                      )(decl.typ, decl.pos, decl.info, OuroborosErrorTransformers.graphErrTrafo)
-                    )(decl.pos, decl.info, OuroborosErrorTransformers.graphErrTrafo)
+                      )(decl.typ, decl.pos, decl.info, graphErrTrafo)
+                    )(decl.pos, decl.info, graphErrTrafo)
                   )
                 }
 
@@ -92,15 +93,15 @@ class OuroborosGraphHandler {
                   case None => allGraphs = Some(
                     LocalVar(
                       decl.name
-                    )(decl.typ, decl.pos, decl.info, OuroborosErrorTransformers.graphErrTrafo)
+                    )(decl.typ, decl.pos, decl.info, graphErrTrafo)
                   )
                   case Some(prev) => allGraphs = Some(
                     AnySetUnion(
                       prev,
                       LocalVar(
                         decl.name
-                      )(decl.typ, decl.pos, decl.info, OuroborosErrorTransformers.graphErrTrafo)
-                    )(decl.pos, decl.info, OuroborosErrorTransformers.graphErrTrafo)
+                      )(decl.typ, decl.pos, decl.info, graphErrTrafo)
+                    )(decl.pos, decl.info, graphErrTrafo)
                   )
                 }
 
@@ -135,21 +136,22 @@ class OuroborosGraphHandler {
           decls.size match {
             case 1 => {
               val decl = decls.head
+              val graphErrTrafo = OuroborosErrorTransformers.graphErrTrafo(decl.name)
               obj.typ match {
                 case OurClosedGraph =>
                   allGraphs match {
                     case None => allGraphs = Some(
                       LocalVar(
                         decl.name
-                      )(decl.typ, decl.pos, decl.info, OuroborosErrorTransformers.graphErrTrafo)
+                      )(decl.typ, decl.pos, decl.info, graphErrTrafo)
                     )
                     case Some(prev) => allGraphs = Some(
                       AnySetUnion(
                         prev,
                         LocalVar(
                           decl.name
-                        )(decl.typ, decl.pos, decl.info, OuroborosErrorTransformers.graphErrTrafo)
-                      )(decl.pos, decl.info, OuroborosErrorTransformers.graphErrTrafo) //TODO other position?
+                        )(decl.typ, decl.pos, decl.info, graphErrTrafo)
+                      )(decl.pos, decl.info, graphErrTrafo) //TODO other position?
                     )
                   }
                   val postConditions : Seq[Exp] =
@@ -157,24 +159,24 @@ class OuroborosGraphHandler {
                       NO_NULL(LocalVar(decl.name)(decl.typ, decl.pos, decl.info, decl.errT), input),
                       CLOSED(LocalVar(decl.name)(decl.typ, decl.pos, decl.info, decl.errT), input))
 
-                  additionalPostConditions = additionalPostConditions :+ postConditions.foldRight[Exp](TrueLit()())((exp, foldedExp) => And(foldedExp, exp)(exp.pos, exp.info, OuroborosErrorTransformers.graphErrTrafo))
+                  additionalPostConditions = additionalPostConditions :+ postConditions.foldRight[Exp](TrueLit()())((exp, foldedExp) => And(foldedExp, exp)(exp.pos, exp.info, graphErrTrafo))
                 case OurGraph => {
                   allGraphs match {
                     case None => allGraphs = Some(
                       LocalVar(
                         decl.name
-                      )(decl.typ, decl.pos, decl.info, OuroborosErrorTransformers.graphErrTrafo)
+                      )(decl.typ, decl.pos, decl.info, graphErrTrafo)
                     )
                     case Some(prev) => allGraphs = Some(
                       AnySetUnion(
                         prev,
                         LocalVar(
                           decl.name
-                        )(decl.typ, decl.pos, decl.info, OuroborosErrorTransformers.graphErrTrafo)
-                      )(decl.pos, decl.info, OuroborosErrorTransformers.graphErrTrafo)
+                        )(decl.typ, decl.pos, decl.info, graphErrTrafo)
+                      )(decl.pos, decl.info, graphErrTrafo)
                     )
                   }
-                  additionalPostConditions = additionalPostConditions :+ FuncApp(noNullInGraph, Seq(LocalVar(decl.name)(decl.typ, decl.pos, decl.info, OuroborosErrorTransformers.graphErrTrafo)))(decl.pos, decl.info, OuroborosErrorTransformers.graphErrTrafo)
+                  additionalPostConditions = additionalPostConditions :+ FuncApp(noNullInGraph, Seq(LocalVar(decl.name)(decl.typ, decl.pos, decl.info, graphErrTrafo)))(decl.pos, decl.info, graphErrTrafo)
                 }
                 //case OurList => //TODO
               }
@@ -187,7 +189,7 @@ class OuroborosGraphHandler {
       allGraphs match {
         case Some(graphs) => {
           val qps: Seq[Exp] = collectQPsForRefFields(fields, graphs, FullPerm()())
-          val qp: Exp = qps.foldRight[Exp](BoolLit(true)())((exp, foldedExps) => And(foldedExps, exp)(exp.pos, exp.info, OuroborosErrorTransformers.qpsForRefFieldErrTrafo))
+          val qp: Exp = qps.foldRight[Exp](BoolLit(true)())((exp, foldedExps) => And(foldedExps, exp)(exp.pos, exp.info, OuroborosErrorTransformers.qpsForRefFieldErrTrafo(exp.toString())))
           val test : Position = method.formalArgs(0).pos
           qp +: additionalPostConditions
         }
@@ -206,28 +208,31 @@ def NO_NULL(decl: Exp, input: Program)= {
 }
 
 def GRAPH(graph: Exp, fields: Seq[Field], input: Program, closed: Boolean): Exp = {
-    val unExp : Exp = NO_NULL(graph, input)
-    val QPForRefFields : Seq[Exp] = collectQPsForRefFields(fields, graph.duplicateMeta(graph.pos, graph.info, OuroborosErrorTransformers.qpsForRefFieldErrTrafo).asInstanceOf[Exp], FullPerm()(graph.pos, graph.info, OuroborosErrorTransformers.qpsForRefFieldErrTrafo))
-    val InGraphForallsForRefFields = if(closed)
-      Seq(
-        CLOSED(graph, input)
-      )//TODO (graph.pos, graph.info, OuroborosErrorTransformers.graphErrTrafo)
-    else Seq()
-    ((unExp +: QPForRefFields) ++ InGraphForallsForRefFields)
-      .foldRight[Exp](TrueLit()(graph.pos, graph.info, OuroborosErrorTransformers.graphErrTrafo))(
-        (x, y) => And(x, y)(graph.pos, graph.info, OuroborosErrorTransformers.graphErrTrafo)) //TODO If there is an error, then there is an error in the encoding => OuroborosInternalEncodingError
+  val graphErrTrafo = OuroborosErrorTransformers.graphErrTrafo(graph.toString())
+  val qpsForRefFieldErrTrafo = OuroborosErrorTransformers.qpsForRefFieldErrTrafo(graph.toString())
+  val unExp : Exp = NO_NULL(graph, input)
+  val QPForRefFields : Seq[Exp] = collectQPsForRefFields(fields, graph.duplicateMeta(graph.pos, graph.info, qpsForRefFieldErrTrafo).asInstanceOf[Exp], FullPerm()(graph.pos, graph.info, qpsForRefFieldErrTrafo))
+  val InGraphForallsForRefFields = if(closed)
+    Seq(
+      CLOSED(graph, input)
+    )//TODO (graph.pos, graph.info, OuroborosErrorTransformers.graphErrTrafo)
+  else Seq()
+  ((unExp +: QPForRefFields) ++ InGraphForallsForRefFields)
+    .foldRight[Exp](TrueLit()(graph.pos, graph.info, graphErrTrafo))(
+      (x, y) => And(x, y)(graph.pos, graph.info, graphErrTrafo)) //TODO If there is an error, then there is an error in the encoding => OuroborosInternalEncodingError
 }
 
-  private def collectQPsForRefFields(fields : Seq[Field], graph : Exp, perm_exp: Exp = FullPerm()(NoPosition, NoInfo, OuroborosErrorTransformers.qpsForRefFieldErrTrafo)): Seq[Exp] =
+  private def collectQPsForRefFields(fields : Seq[Field], graph : Exp, perm_exp: Exp = FullPerm()(NoPosition, NoInfo, NoTrafos)): Seq[Exp] =
     fields.map(f => getQPForGraphNodes(graph, f, perm_exp))
 
   private def getQPForGraphNodes(graph: Exp, field: Field, perm: Exp): Exp = {
+    val qpsForRefFieldErrTrafo = OuroborosErrorTransformers.qpsForRefFieldErrTrafo(graph.toString())
     Forall(
-      Seq(LocalVarDecl(OuroborosNames.getIdentifier("n"), Ref)(graph.pos, graph.info, OuroborosErrorTransformers.qpsForRefFieldErrTrafo)),
-      Seq(Trigger(Seq(FieldAccess(LocalVar(OuroborosNames.getIdentifier("n"))(Ref, graph.pos, graph.info, OuroborosErrorTransformers.qpsForRefFieldErrTrafo), field)(graph.pos, graph.info, OuroborosErrorTransformers.qpsForRefFieldErrTrafo)))(graph.pos, graph.info, OuroborosErrorTransformers.qpsForRefFieldErrTrafo)),
-      Implies(AnySetContains(LocalVar(OuroborosNames.getIdentifier("n"))(Ref, graph.pos, graph.info, OuroborosErrorTransformers.qpsForRefFieldErrTrafo), graph)(graph.pos, graph.info, OuroborosErrorTransformers.qpsForRefFieldErrTrafo),
-        FieldAccessPredicate(FieldAccess(LocalVar(OuroborosNames.getIdentifier("n"))(Ref, graph.pos, graph.info, OuroborosErrorTransformers.qpsForRefFieldErrTrafo), field)(graph.pos, graph.info, OuroborosErrorTransformers.qpsForRefFieldErrTrafo), perm)(graph.pos, graph.info, OuroborosErrorTransformers.qpsForRefFieldErrTrafo))(graph.pos, graph.info, OuroborosErrorTransformers.qpsForRefFieldErrTrafo)
-    )(graph.pos, graph.info, OuroborosErrorTransformers.qpsForRefFieldErrTrafo)
+      Seq(LocalVarDecl(OuroborosNames.getIdentifier("n"), Ref)(graph.pos, graph.info, qpsForRefFieldErrTrafo)),
+      Seq(Trigger(Seq(FieldAccess(LocalVar(OuroborosNames.getIdentifier("n"))(Ref, graph.pos, graph.info, qpsForRefFieldErrTrafo), field)(graph.pos, graph.info, qpsForRefFieldErrTrafo)))(graph.pos, graph.info, qpsForRefFieldErrTrafo)),
+      Implies(AnySetContains(LocalVar(OuroborosNames.getIdentifier("n"))(Ref, graph.pos, graph.info, qpsForRefFieldErrTrafo), graph)(graph.pos, graph.info, qpsForRefFieldErrTrafo),
+        FieldAccessPredicate(FieldAccess(LocalVar(OuroborosNames.getIdentifier("n"))(Ref, graph.pos, graph.info, qpsForRefFieldErrTrafo), field)(graph.pos, graph.info, qpsForRefFieldErrTrafo), perm)(graph.pos, graph.info, qpsForRefFieldErrTrafo))(graph.pos, graph.info, qpsForRefFieldErrTrafo)
+    )(graph.pos, graph.info, qpsForRefFieldErrTrafo)
   }
 
   private def CLOSED( decl: Exp, input: Program): Exp ={

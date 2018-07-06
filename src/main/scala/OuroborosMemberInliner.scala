@@ -8,7 +8,7 @@ object OuroborosMemberInliner {
   def inlineFunction(fc: FuncApp, input: Program, pos: Position, info: Info, errT: ErrorTrafo): Exp = {
     val func = input.findFunction(fc.funcname)
     func.body match {
-      case Some(macro_def) => {
+      case Some(macro_def) =>
         val funcArgs = func.formalArgs.map(arg => arg.name)
         val callArgs = fc.getArgs
         StrategyBuilder.Slim[Node](
@@ -17,8 +17,7 @@ object OuroborosMemberInliner {
               callArgs(funcArgs.indexOf(x.name)).duplicateMeta((pos, info, errT))
             case n => n.duplicateMeta((pos, info, errT))
           }
-        ).duplicateEverything.execute[Exp](macro_def)
-      } //TODO CLOSED: "graph might not be closed" and not wellformed => insufficient permission
+        ).duplicateEverything.execute[Exp](macro_def) //TODO CLOSED: "graph might not be closed" and not wellformed => insufficient permission
 
       case None => fc
     }

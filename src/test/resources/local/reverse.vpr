@@ -1,7 +1,7 @@
 field next: Node
 
 
-method reverse(g: Graph, xe: Node) returns (y: Node)
+method reverse(g: ClosedGraph, xe: Node) returns (y: Node)
 
 requires xe in g
 
@@ -29,7 +29,7 @@ v in g ==> EXISTS_PATH(g,xe,v)
 
     while ( x != null ) 
 
-    invariant GRAPH(g) // TODO
+    //invariant GRAPH(g) // TODO
 
 
     invariant x != null ==> x in g

@@ -3,7 +3,8 @@ package viper.silver.plugin
 import viper.silver.ast.{ErrTrafo, Exp, Node}
 import viper.silver.plugin.errors.OuroborosGraphSpecificactionError
 import viper.silver.plugin.reasons.{InsufficientGraphPermission, NotDisjointGraphsReason, NullInGraphReason, OpenGraphReason}
-import viper.silver.verifier.errors.{ContractNotWellformed, PostconditionViolated}
+import viper.silver.verifier.AbstractVerificationError
+import viper.silver.verifier.errors.{ContractNotWellformed, LoopInvariantNotEstablished, LoopInvariantNotPreserved, PostconditionViolated}
 import viper.silver.verifier.reasons.{AssertionFalse, InsufficientPermission}
 
 object OuroborosErrorTransformers {
@@ -11,6 +12,7 @@ object OuroborosErrorTransformers {
   def NullInGraphErrTrafo(names:Seq[Node]): ErrTrafo = ErrTrafo(
     {
       case err => OuroborosGraphSpecificactionError(
+        names.head.toString(),
         err.offendingNode,
         NullInGraphReason(
           err.offendingNode,
@@ -19,25 +21,27 @@ object OuroborosErrorTransformers {
       )
     }
   )
-  val graphErrTrafo: ErrTrafo = ErrTrafo(
-    {
-      case err: PostconditionViolated => err.reason match {
+  def graphErrTrafo(g: String): ErrTrafo = {
+    def reasonTransformer(err: AbstractVerificationError): AbstractVerificationError = {
+      err.reason match {
         case r : InsufficientPermission => { //TODO maybe find out, for which field, we don't have enough permissions
           OuroborosGraphSpecificactionError(
+            g,
             err.offendingNode,
             InsufficientGraphPermission(
               err.offendingNode,
-              "There might be insufficient permission to access all fields of nodes inside the graph."
+              s"There might be insufficient permission to access all fields of nodes inside the graph $g."
             ),
             err.cached
           )
         }
         case r : AssertionFalse if r.readableMessage.contains(s"${OuroborosNames.getIdentifier("closed")}(")=> {
           OuroborosGraphSpecificactionError(
+            g,
             err.offendingNode,
             OpenGraphReason(
               err.offendingNode,
-              "This graph might not be closed."
+              s"The graph $g might not be closed."
             ),
             err.cached
           )
@@ -45,10 +49,11 @@ object OuroborosErrorTransformers {
 
         case r : AssertionFalse if r.readableMessage.contains(s"${OuroborosNames.getIdentifier("NoNullInGraph")}(") => {
           OuroborosGraphSpecificactionError(
+            g,
             err.offendingNode,
             NullInGraphReason(
               err.offendingNode,
-              "Null might be in this graph."
+               s"Null might be in the graph $g."
             ),
             err.cached
           )
@@ -56,21 +61,30 @@ object OuroborosErrorTransformers {
 
         case _ => err
       }
-      case err => err
     }
-  )
+    ErrTrafo(
+      {
+        case err: PostconditionViolated => reasonTransformer(err)
+        case err: LoopInvariantNotEstablished => reasonTransformer(err) //TODO different error messages for loop invariant
+        case err: LoopInvariantNotPreserved => reasonTransformer(err)
+        case err => err
+      }
+    )
+  }
 
   def closedGraphErrTrafo(names: Seq[Node]) : ErrTrafo = ErrTrafo({
     case x: ContractNotWellformed if x.reason.isInstanceOf[AssertionFalse] => OuroborosGraphSpecificactionError(
+      names.head.toString(),
       x.offendingNode,
       OpenGraphReason(
         x.offendingNode,
-        s"There might not be enough permissions to check closednes of ${names.head}."
+        s"There might not be enough permissions to check closedness of ${names.head}."
       ),
       x.cached
     )
 
     case x if x.reason.isInstanceOf[AssertionFalse] => OuroborosGraphSpecificactionError(
+      names.head.toString(),
       x.offendingNode,
       OpenGraphReason(
         x.offendingNode,
@@ -80,8 +94,9 @@ object OuroborosErrorTransformers {
     )
   })
 
-  val qpsForRefFieldErrTrafo : ErrTrafo = ErrTrafo({
+  def qpsForRefFieldErrTrafo(g: String) : ErrTrafo = ErrTrafo({
     case x => OuroborosGraphSpecificactionError(
+      g,
       x.offendingNode,
       InsufficientGraphPermission(
         x.offendingNode,
@@ -93,6 +108,7 @@ object OuroborosErrorTransformers {
 
   def disjointGraphsErrTrafo(names: Seq[Node]) : ErrTrafo = ErrTrafo({
     case x => OuroborosGraphSpecificactionError(
+      names.head.toString(),
       x.offendingNode,
       NotDisjointGraphsReason(
         x.offendingNode,
