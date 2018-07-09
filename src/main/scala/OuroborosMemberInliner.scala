@@ -24,9 +24,12 @@ object OuroborosMemberInliner {
   }
 
   def inlineMethod(mc: MethodCall, input: Program, pos: Position, info: Info, errT: ErrorTrafo): Stmt = {
+    val namesHandler = new OuroborosNamesHandler
       val method = input.findMethod(mc.methodName)
       val methodArgs = method.formalArgs.map(arg => arg.name)
       val callArgs = mc.args
+      val label = Label(
+        namesHandler.getNewName(s"inlinedMethodCall_${mc.methodName}"), Seq())()
       if(methodArgs.size != callArgs.size) { //only consider methods that don't return anything
         return mc
       }
@@ -34,6 +37,7 @@ object OuroborosMemberInliner {
         {
           case x: LocalVar if methodArgs.contains(x.name) =>
             callArgs(methodArgs.indexOf(x.name)).duplicateMeta((pos, info, errT))
+          case o: Old => LabelledOld(o.exp, label.name)(pos, info, errT)
           case n => n.duplicateMeta((pos, info, errT))
         }
       ).duplicateEverything
@@ -42,7 +46,7 @@ object OuroborosMemberInliner {
 
       contractsInlined ++= method.pres.map(exp => Exhale(contractsRewriter.execute[Exp](exp))(pos, info, errT))
       contractsInlined ++= method.posts.map(exp => Inhale(contractsRewriter.execute[Exp](exp))(pos, info, errT))
-      Seqn(contractsInlined, Seq())(pos, info, errT)
+      Seqn(label +: contractsInlined, Seq())(pos, info, errT)
   }
 
   def inlineInhaleFunction(inhale: Inhale, fc: FuncApp,  input: Program, pos: Position, info: Info, errT: ErrorTrafo): Stmt = {

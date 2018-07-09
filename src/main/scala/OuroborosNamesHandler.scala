@@ -10,7 +10,7 @@ import scala.collection.mutable
 
 class OuroborosNamesHandler {
 
-  val reserved_keywords = Set("CLOSED_GRAPH", "GRAPH", "ACYCLIC", "FUNCTIONAL", "Graph", "Node", "CLOSED", "DISJOINT", "ClosedGraph", "UPDATE", "apply_TCFraming")
+  val reserved_keywords = Set("CLOSED_ZOPG", "ZOPG", "CLOSED_GRAPH", "GRAPH", "ACYCLIC", "FUNCTIONAL", "Graph", "ClosedGraph", "ZOPG", "ClosedZOPG", "Node", "CLOSED", "DISJOINT", "UPDATE", "apply_TCFraming")
 
   def collectNames(input : PProgram): Option[Set[PIdnDef]] = {
     var invalidIdentifier : Option[Set[PIdnDef]] = None

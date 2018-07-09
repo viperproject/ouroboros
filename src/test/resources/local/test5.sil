@@ -1,0 +1,13 @@
+field next: Node
+method test5(g:ClosedGraph, g2: Graph, xe:Node) returns (y:Node)
+requires xe in g
+{
+    var n: Node
+    n := new(*)
+    var b: Bool
+    while(b)
+    {
+
+    }
+xe.next := null // error: scala.MatchError: OurClosedGraph
+}

@@ -201,15 +201,13 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
 
     val stmtHandler = new OuroborosStmtHandler
     val graph_defs = graph_handler.graph_definitions
-    var containsAssignment = false
 
     val ourRewriter = StrategyBuilder.Context[Node, String](
       {
         case (m: Method, ctx) if graph_defs.contains(m.name) =>
           stmtHandler.handleMethod(graphAST_handler.handleMethod(input, m, graph_defs.get(m.name), ctx), graph_defs.get(m.name), input)
-        case (fa: FieldAssign, ctx) =>
-          containsAssignment = true
-          graph_handler.handleAssignments(input, fa, ctx)
+//        case (fa: FieldAssign, ctx) =>
+//          graph_handler.handleAssignments(input, fa, ctx)
         case (fc : FuncApp, ctx) if OuroborosNames.macroNames.contains(fc.funcname) => OuroborosMemberInliner.inlineFunction(fc, input, fc.pos, fc.info, fc.errT)
 
         case (mc: MethodCall, ctx) if OuroborosNames.macroNames.contains(mc.methodName) => OuroborosMemberInliner.inlineMethod(mc, input, mc.pos, mc.info, mc.errT)

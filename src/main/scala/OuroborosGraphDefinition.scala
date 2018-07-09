@@ -22,27 +22,53 @@ import viper.silver.verifier.errors.PreconditionInCallFalse
 import viper.silver.verifier.reasons.{AssertionFalse, InsufficientPermission, InternalReason}
 
 
-trait OurType //extends PDomainType
-case object OurNode extends OurType
+sealed trait OurType //extends PDomainType
+//case object OurNode extends OurType
 case object OurGraph extends OurType
 case object OurClosedGraph extends OurType
-case object OurList extends OurType
+case object OurDAG extends OurType
+case object OurClosedDAG extends OurType
+case object OurZOPG extends OurType
+case object OurClosedZOPG extends OurType
+case object OurForest extends OurType
+case object OurClosedForest extends OurType
 
 object OurTypes {
-  val ourTypes = Seq("Graph", "ClosedGraph", "List")
+  //val ourTypes = Seq("Graph", "ClosedGraph", "List")
 
   def getOurObject(ourType : String) : Option[OurType] = ourType match {
     case "Graph" => Some(OurGraph)
     case "ClosedGraph" => Some(OurClosedGraph)
-    case "List" => Some(OurList)
-      //TODO more types
+    case "DAG" => Some(OurDAG)
+    case "ClosedDAG" => Some(OurClosedDAG)
+    case "ZOPG" => Some(OurZOPG)
+    case "ClosedZOPG" => Some(OurClosedZOPG)
+    case "Forest" => Some(OurForest)
+    case "OurClosedForest" => Some(OurClosedForest)
     case _ => None
+      //TODO more types
+  }
+
+  def getOurTypeName(ourType: OurType): String = ourType match {
+    case OurClosedGraph => "ClosedGraph"
+    case OurGraph => "Graph"
+    case OurDAG => "DAG"
+    case OurClosedDAG => "ClosedDAG"
+    case OurZOPG => "ZOPG"
+    case OurClosedZOPG => "ClosedZOPG"
+    case OurForest => "Forest"
+    case OurClosedForest => "ClosedForest"
   }
 
   def getTypeDeclFunctionName(ourType: OurType): String = ourType match{
     case OurGraph => OuroborosNames.getIdentifier("GRAPH_decl")
     case OurClosedGraph => OuroborosNames.getIdentifier("CLOSED_GRAPH_decl")
-    //case OurList => OuroborosNames.getIdentifier("LIST_decl")
+    case OurDAG => OuroborosNames.getIdentifier("DAG_decl")
+    case OurClosedDAG => OuroborosNames.getIdentifier("CLOSED_DAG_decl")
+    case OurZOPG => OuroborosNames.getIdentifier("ZOPG_decl")
+    case OurClosedZOPG => OuroborosNames.getIdentifier("CLOSED_ZOPG_decl")
+    case OurForest => OuroborosNames.getIdentifier("FOREST_decl")
+    case OurClosedForest => OuroborosNames.getIdentifier("CLOSED_FOREST_decl")
   }
 }
 
@@ -68,7 +94,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
         case "Node" => PFormalArgDecl(decl.idndef, TypeHelper.Ref).setPos(decl)
         case "Graph" => PFormalArgDecl(decl.idndef, PSetType(TypeHelper.Ref)).setPos(decl)
         case "ClosedGraph" => PFormalArgDecl(decl.idndef, PSetType(TypeHelper.Ref)).setPos(decl)
-        case "List" => PFormalArgDecl(decl.idndef, PSetType(TypeHelper.Ref)).setPos(decl)
+        case "ZOPG" | "ClosedZOPG" => PFormalArgDecl(decl.idndef, PSetType(TypeHelper.Ref)).setPos(decl)
         case _ => decl
       }
     case d: PSetType =>
@@ -150,7 +176,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
     (PUnExp("!", PBinExp(PNullLit(), "in", graph_exp.deepCopyAll[PExp])) +:
     collectQPsForRefFields(fields, graph_exp, PFullPerm())) :+
       (if (closed) collectInGraphForallsForRefFields(fields, graph_exp) else Seq())
-          .foldRight[PExp](PBoolLit(true))(
+          .foldLeft[PExp](PBoolLit(true))(
           (exp0, exp1) => PBinExp(exp0, "&&", exp1)
         ), "&&", PBoolLit(true)).setPos(c)
 
@@ -164,7 +190,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
         PAccPred(PFieldAccess(mutable_node_exp.deepCopyAll[PExp], PIdnUse(f)), PBinExp(PIntLit(1), "/", PIntLit(2)))) ++
     collectQPsForRefFieldsProtected(fields, mutable_node_exp, graph_exp) :+
         collectInGraphForallsForRefFields(fields, graph_exp)
-          .foldRight[PExp](PBoolLit(true))(
+          .foldLeft[PExp](PBoolLit(true))(
           (exp0, exp1) => PBinExp(exp0, "&&", exp1)
         ), "&&", PBoolLit(true)).setPos(c)
 
@@ -266,7 +292,11 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
     }
 
     def handlePMethodBody(body: PStmt): PStmt = body match {
-      case pSeqn: PSeqn => PSeqn(pSeqn.ss.flatMap(s => handlePStmtInBody(s)))
+      case pSeqn: PSeqn => PSeqn( output_graphs.map(f =>
+          PInhale(PCall(PIdnUse(OurTypes.getTypeDeclFunctionName(f.typ)), Seq(PIdnUse(f.name))))
+        /*handlePStmtInBody(
+          PLocalVarDecl(PIdnDef(f.name), PDomainType(PIdnUse(OurTypes.getOurTypeName(f.typ)), Seq()), None))*/
+      ) ++ pSeqn.ss.flatMap(s => handlePStmtInBody(s)))
       case _ => body
     }
 
@@ -325,7 +355,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
         d.domain.name match {
           case "Node" => PField(m.idndef, TypeHelper.Ref)
           case "Graph" => PField(m.idndef, PSetType(TypeHelper.Ref))
-          case "List" => PField(m.idndef, PSetType(TypeHelper.Ref))
+          case "ZOPG" | "ClosedZOPG" => PField(m.idndef, PSetType(TypeHelper.Ref))
           case _ => m
         }
       case d: PSetType =>
@@ -460,13 +490,6 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
         case g@ OurClosedGraph => o //TODO more graphs types
       }
     }
-
-    def all_wisdoms_for_this_frame(g: OurObject, subframe_gs: Seq[LocalVar]) = Seqn(
-      Seq(
-        //getFramingWisdom(input, LocalVar(g.name)(SetType(Ref), pos, info, errT), seqOfExpToUnionExp(subframe_gs)(pos, info, errT))(pos, info, errT),
-        getNoExitWisdom(input, LocalVar(g.name)(SetType(Ref), pos, info, errT), seqOfExpToUnionExp(subframe_gs)(pos, info, errT))(pos, info, errT)),
-      Seq())(pos, info, errT)
-
     println(s">>> getOperationalWisdoms(local_m = ${local_m.name})")
     println(s">>>  distinct_graphs = ${distinct_graphs.map(_.name)}")
 
@@ -554,7 +577,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
 
           Seqn(
             Seq(
-              getOperationalWisdoms(input, m, ctx)(fa.pos, fa.info, unlinkErrTrafo),
+//              getOperationalWisdoms(input, m, ctx)(fa.pos, fa.info, unlinkErrTrafo),
               unlinkInlined,
               linkInlined),
             Seq())(fa.pos, fa.info, unlinkErrTrafo)
@@ -562,8 +585,5 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
     } flatten, Seq())(fa.pos, fa.info, unlinkErrTrafo)
   }
 
-   def getIdentifier(name : String): String = OuroborosNames.graph_keywords.get(name) match{
-     case None => name //TODO maybe throw error
-     case Some(newName) => newName
-   }
+   def getIdentifier(name : String): String = OuroborosNames.getIdentifier(name)
 }

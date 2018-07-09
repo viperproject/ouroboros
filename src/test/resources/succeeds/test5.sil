@@ -1,6 +1,0 @@
-field next: Node
-method test5(g:ClosedGraph, xe:Node) returns (y:Node)
-requires xe in g
-{
-xe.next := null // error: scala.MatchError: OurClosedGraph 
-}

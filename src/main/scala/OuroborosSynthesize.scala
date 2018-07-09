@@ -66,8 +66,8 @@ object OuroborosSynthesize {
                   "&&",
                   PBinExp(PIdnUse("s"), "in", PIdnUse("nodes"))),
                 "&&",
-                fields.foldRight[PExp](PBoolLit(true))( (f, expr) => PBinExp(PBinExp(
-                  PFieldAccess(PIdnUse("p"),PIdnUse(f) ), "==", PIdnUse("s")), "||", expr))),
+                fields.foldLeft[PExp](PBoolLit(true))( (expr, f) => PBinExp(expr, "||", PBinExp(
+                  PFieldAccess(PIdnUse("p"),PIdnUse(f) ), "==", PIdnUse("s"))))),
               "&&",
               PBinExp(PIdnUse("p"), "!=", PIdnUse("s"))),
             "<==>",
@@ -93,12 +93,12 @@ object OuroborosSynthesize {
         ).duplicateEverything
 
         function.deepCopy(
-          pres = function.pres.map(p => fields.foldRight[PExp](PBoolLit(true))((field, exp) => {
+          pres = function.pres.map(p => fields.foldLeft[PExp](PBoolLit(true))((exp, field) => {
             fieldName = field
             val expToAdd = bodySynthesizer.execute[PExp](p)
             PBinExp(exp, "&&", expToAdd)
           })),
-          body = Some(fields.foldRight[PExp](PBoolLit(true))((field, exp) => {
+          body = Some(fields.foldLeft[PExp](PBoolLit(true))((exp, field) => {
             fieldName = field
             val expToAdd = bodySynthesizer.execute[PExp](body)
             PBinExp(exp, "&&", expToAdd)
