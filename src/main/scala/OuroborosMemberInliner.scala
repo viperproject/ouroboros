@@ -1,7 +1,9 @@
 package viper.silver.plugin
 
 import viper.silver.ast._
-import viper.silver.ast.utility.Rewriter.StrategyBuilder
+import viper.silver.ast.utility.Rewriter.{ContextC, StrategyBuilder}
+
+import scala.collection.mutable
 
 object OuroborosMemberInliner {
 
@@ -24,29 +26,63 @@ object OuroborosMemberInliner {
   }
 
   def inlineMethod(mc: MethodCall, input: Program, pos: Position, info: Info, errT: ErrorTrafo): Stmt = {
-    val namesHandler = new OuroborosNamesHandler
-      val method = input.findMethod(mc.methodName)
-      val methodArgs = method.formalArgs.map(arg => arg.name)
-      val callArgs = mc.args
-      val label = Label(
-        namesHandler.getNewName(s"inlinedMethodCall_${mc.methodName}"), Seq())()
-      if(methodArgs.size != callArgs.size) { //only consider methods that don't return anything
-        return mc
+    val calledMethod = input.findMethod(mc.methodName)
+    val methodArgs = calledMethod.formalArgs.map(arg => arg.name)
+    val callArgs = mc.args
+    val label = Label(
+      OuroborosNames.getNewName(s"inlinedMethodCall_${mc.methodName}"), Seq())()
+    assert(methodArgs.size == callArgs.size)
+    val contractsRewriter = StrategyBuilder.Slim[Node](
+      {
+        case x: LocalVar if methodArgs.contains(x.name) =>
+          callArgs(methodArgs.indexOf(x.name)).duplicateMeta((pos, info, errT))
+        case o: Old => LabelledOld(o.exp, label.name)(pos, info, errT)
+        case n => n.duplicateMeta((pos, info, errT))
       }
-      val contractsRewriter = StrategyBuilder.Slim[Node](
-        {
-          case x: LocalVar if methodArgs.contains(x.name) =>
-            callArgs(methodArgs.indexOf(x.name)).duplicateMeta((pos, info, errT))
-          case o: Old => LabelledOld(o.exp, label.name)(pos, info, errT)
-          case n => n.duplicateMeta((pos, info, errT))
-        }
-      ).duplicateEverything
+    ).duplicateEverything
 
-      var contractsInlined : Seq[Stmt] = Seq()
+    calledMethod.body match {
+      case None =>
+        var contractsInlined : Seq[Stmt] = Seq()
+        contractsInlined ++= calledMethod.pres.map(exp => Exhale(contractsRewriter.execute[Exp](exp))(pos, info, errT))
+        contractsInlined ++= calledMethod.posts.map(exp => Inhale(contractsRewriter.execute[Exp](exp))(pos, info, errT))
+        Seqn(label +: contractsInlined, Seq())(pos, SimpleInfo(Seq("", s"inlined $mc \n")), errT)
 
-      contractsInlined ++= method.pres.map(exp => Exhale(contractsRewriter.execute[Exp](exp))(pos, info, errT))
-      contractsInlined ++= method.posts.map(exp => Inhale(contractsRewriter.execute[Exp](exp))(pos, info, errT))
-      Seqn(label +: contractsInlined, Seq())(pos, info, errT)
+      case Some(body) =>
+        assert(calledMethod.pres.isEmpty && calledMethod.posts.isEmpty)
+        assert(calledMethod.name == OuroborosNames.getIdentifier("create_node"))
+        assert(mc.targets.size == 1)
+        assert(callArgs.size == 1)
+        val formalArg = methodArgs.head
+        val universe = mc.args.head
+        val target = mc.targets.head
+        val oldLhsNode = body.scopedDecls.find({
+          case x:LocalVarDecl => x.name.startsWith("lhs_node")
+          case _ => false
+        }).get.name
+        val lhs_node = target.name
+        val oldFreshX = body.scopedDecls.find({
+          case x:LocalVarDecl => x.name.startsWith("fresh_x")
+          case _ => false
+        }).get.asInstanceOf[LocalVarDecl].name
+        val newFreshTarget = OuroborosNames.getNewName(s"fresh_${target.name}")
+        val oldSingletonGraph = body.scopedDecls.find({
+          case x:LocalVarDecl => x.name.startsWith("singleton_graph")
+          case _ => false
+        }).get.asInstanceOf[LocalVarDecl].name
+        val newSingletonGraph = OuroborosNames.getNewName(s"singleton_graph_${target.name}")
+        val bodySynthesizer = StrategyBuilder.Slim[Node]({
+          case x: LocalVar if x.name == oldLhsNode => LocalVar(lhs_node)(Ref)
+          case x: LocalVar if x.name == oldFreshX => LocalVar(newFreshTarget)(Ref)
+          case x: LocalVar if x.name == oldSingletonGraph => LocalVar(newSingletonGraph)(SetType(Ref))
+          case x: LocalVar if x.name == formalArg => universe.duplicateMeta((x.pos, x.info, x.errT))
+        })
+        val fresh_xDecl = LocalVarDecl(newFreshTarget, Ref)()
+        val singleton_graphDecl = LocalVarDecl(newSingletonGraph, SetType(Ref))()
+        val decls = Seq(fresh_xDecl, singleton_graphDecl)
+        Seqn(bodySynthesizer.execute[Seqn](body).ss,decls)(body.pos, SimpleInfo(Seq("", s"create_node(universe = $universe)\n")), body.errT)
+
+    }
   }
 
   def inlineInhaleFunction(inhale: Inhale, fc: FuncApp,  input: Program, pos: Position, info: Info, errT: ErrorTrafo): Stmt = {

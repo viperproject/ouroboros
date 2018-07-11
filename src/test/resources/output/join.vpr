@@ -25,6 +25,8 @@ domain TrClo {
   
   function inst_uReach(EG: Set[Edge], x: Ref): Set[Ref]
   
+  function inst_uReach_rev(EG: Set[Edge], x: Ref): Set[Ref]
+  
   function acyclic_graph(EG: Set[Edge]): Bool
   
   function unshared_graph(EG: Set[Edge]): Bool
@@ -34,6 +36,12 @@ domain TrClo {
   function edge(EG: Set[Edge], p: Ref, s: Ref): Bool
   
   function edge_(EG: Set[Edge], p: Ref, s: Ref): Bool
+  
+  function succs(EG: Set[Edge], pred: Ref): Set[Ref]
+  
+  axiom ax_Succs {
+    (forall EG: Set[Edge], pred: Ref, succ: Ref :: { (succ in succs(EG, pred)) } (succ in succs(EG, pred)) == edge_(EG, pred, succ))
+  }
   
   axiom ax_EdgeSynonim {
     (forall EG: Set[Edge], p: Ref, s: Ref :: { edge(EG, p, s) } edge(EG, p, s) == edge_(EG, p, s))
@@ -49,6 +57,10 @@ domain TrClo {
   
   axiom ax_instantiation_uReach {
     (forall EG: Set[Edge], x: Ref, v: Ref :: { (v in inst_uReach(EG, x)) } { exists_path(EG, x, v) } (v in inst_uReach(EG, x)) == exists_path(EG, x, v))
+  }
+  
+  axiom ax_instantiation_uReach_rev {
+    (forall EG: Set[Edge], u: Ref, y: Ref :: { (u in inst_uReach_rev(EG, y)) } { exists_path(EG, u, y) } (u in inst_uReach_rev(EG, y)) == exists_path(EG, u, y))
   }
   
   axiom ax_Alias {

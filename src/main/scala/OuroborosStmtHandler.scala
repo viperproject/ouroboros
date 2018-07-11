@@ -11,7 +11,6 @@ import scala.collection.mutable
 
 class OuroborosStmtHandler {
   val graphHandler = new OuroborosGraphHandler
-  val namesHandler = new OuroborosNamesHandler
 
   def handleMethod(method: Method, spec: Option[OurGraphSpec], input: Program): Method = {
     Method(
@@ -121,7 +120,7 @@ class OuroborosStmtHandler {
     )
     val closednessSpec : Exp = FuncApp(closed, Seq(allExistingGraphsExp))()
 
-    While(stmt.cond, graphInvs.toSeq ++ stmt.invs :+ closednessSpec, handleSeqn(stmt.body, wrapper))(stmt.pos, stmt.info, stmt.errT)
+    While(stmt.cond, graphInvs.toSeq ++ stmt.invs :+ closednessSpec, handleSeqn(stmt.body, wrapper.copy()))(stmt.pos, stmt.info, stmt.errT)
   }
 
   def handleIf(ifStmt: If, wrapper: OuroborosStmtWrapper): If = {
@@ -133,10 +132,14 @@ class OuroborosStmtHandler {
     var newScopedDecls: mutable.Set[Declaration] = mutable.Set.empty[Declaration]
     val newSS = seqn.ss.map(s => {
       val newStmt = handleStmt(s, wrapper)
-      newScopedDecls ++= wrapper.newlyDeclaredSingletonGraphs
-      wrapper.newlyDeclaredSingletonGraphs.clear()
+      newScopedDecls ++= wrapper.newlyDeclaredVariables
+      wrapper.newlyDeclaredVariables.clear()
       newStmt
     })
+    val newDeclNames = newScopedDecls.collect({
+      case x: LocalVarDecl => x.name
+    })
+
     Seqn(newSS, seqn.scopedDecls ++ newScopedDecls)(seqn.pos, seqn.info, seqn.errT)
   }
 
@@ -145,8 +148,22 @@ class OuroborosStmtHandler {
     val updateMethodNames: mutable.Map[String, Field] = mutable.Map.empty
     input.fields.map(field => updateMethodNames.put(OuroborosNames.getIdentifier(s"update_${field.name}"), field))
     call.methodName match {
+      case x if x == "new_node" =>
+        val universe = wrapper.allExistingGraphs().foldLeft[Exp](EmptySet(Ref)())((exp, graph) => AnySetUnion(exp, LocalVar(graph)(SetType(Ref)))())
+        val newCall = MethodCall(OuroborosNames.getIdentifier("create_node"), Seq(universe), call.targets)(call.pos, call.info, call.errT)
+        if (OuroborosNames.macroNames.contains(newCall.methodName))
+          {
+            val inlinedCall: Seqn = OuroborosMemberInliner.inlineMethod(newCall, wrapper.input, call.pos, call.info, call.errT).asInstanceOf[Seqn]
+            val decls = inlinedCall.scopedDecls
+            wrapper.newlyDeclaredVariables ++= decls
+            wrapper.singletonGraphs ++= decls.collect({
+              case x:LocalVarDecl if x.typ.isInstanceOf[SetType] && x.typ.asInstanceOf[SetType].elementType == Ref => x.name
+            })
+            Seqn(inlinedCall.ss, Seq())(inlinedCall.pos, SimpleInfo(Seq("",s"inlined: create_node(universe = $universe)\n")), inlinedCall.errT)
+          }
+        else
+          call
       case x => updateMethodNames.get(x) match {
-        case None => call
         case Some(field) =>
           //TODO need to find out, which update method to use
           val copier = StrategyBuilder.Slim[Node](PartialFunction.empty).duplicateEverything
@@ -177,6 +194,7 @@ class OuroborosStmtHandler {
             ),
             Seq()
           )(call.pos, call.info, call.errT)
+        case None => call
       }
     }
   }
@@ -299,22 +317,22 @@ class OuroborosStmtHandler {
     val unlinkMethodCall = MethodCall(OuroborosNames.getIdentifier(s"unlink_${fa.lhs.field.name}"), Seq(allExistingGraphsExp, fa.lhs.rcv), Seq())(fa.pos, fa.info, unlinkErrTrafo)
     val linkMethodCall = MethodCall(OuroborosNames.getIdentifier(s"link_${fa.lhs.field.name}"), Seq(allExistingGraphsExp, fa.lhs.rcv, fa.rhs), Seq())(fa.pos, fa.info, linkErrTrafo)
 
-    val unlinkInlined =
-      if (OuroborosNames.macroNames.contains(unlinkMethodCall.methodName))
-        OuroborosMemberInliner.inlineMethod(unlinkMethodCall, input, unlinkMethodCall.pos, unlinkMethodCall.info, unlinkMethodCall.errT)
-      else
-        unlinkMethodCall
-    val linkInlined =
-      if (OuroborosNames.macroNames.contains(linkMethodCall.methodName))
-        OuroborosMemberInliner.inlineMethod(linkMethodCall, input, linkMethodCall.pos, linkMethodCall.info, linkMethodCall.errT)
-      else
-        linkMethodCall
+//    val unlinkInlined =
+////      if (OuroborosNames.macroNames.contains(unlinkMethodCall.methodName))
+////        OuroborosMemberInliner.inlineMethod(unlinkMethodCall, input, unlinkMethodCall.pos, unlinkMethodCall.info, unlinkMethodCall.errT)
+////      else
+//        unlinkMethodCall
+//    val linkInlined =
+////      if (OuroborosNames.macroNames.contains(linkMethodCall.methodName))
+////        OuroborosMemberInliner.inlineMethod(linkMethodCall, input, linkMethodCall.pos, linkMethodCall.info, linkMethodCall.errT)
+////      else
+//        linkMethodCall
 
     Seqn(
       Seq(
 //              getOperationalWisdoms(input, m, ctx)(fa.pos, fa.info, unlinkErrTrafo),
-        unlinkInlined,
-        linkInlined),
+        unlinkMethodCall,
+        linkMethodCall),
       Seq())(fa.pos, fa.info, unlinkErrTrafo)
 
   }
@@ -325,70 +343,8 @@ class OuroborosStmtHandler {
 
   def handleNewStmt(stmt: NewStmt, wrapper: OuroborosStmtWrapper): Stmt = stmt.fields.size match {
     case x if x == wrapper.input.fields.size =>
-      val closed = wrapper.input.findFunction(OuroborosNames.getIdentifier("CLOSED"))
-      val n_Identifier = OuroborosNames.getIdentifier("n")
-      val lhs = stmt.lhs
-      val singletonGraphName = namesHandler.getNewName(s"g_consisting_${lhs.name}")
-      val singletonGraphDecl: Declaration = LocalVarDecl(singletonGraphName, SetType(Ref))()
-      val singletonGraphSpec = Inhale(
-        And(
-          AnySetContains(
-            lhs.duplicate(lhs.getChildren).asInstanceOf[LocalVar],
-            LocalVar(singletonGraphName)(SetType(Ref))
-          )(),
-          Forall(
-            Seq(
-              LocalVarDecl(
-                n_Identifier,
-                Ref
-              )()
-            ),
-            Seq(
-              //TODO
-            ),
-            Implies(
-              NeCmp(
-                LocalVar(n_Identifier)(Ref),
-                LocalVar(lhs.name)(Ref)
-              )(),
-              Not(
-                AnySetContains(
-                  LocalVar(n_Identifier)(Ref),
-                  LocalVar(singletonGraphName)(SetType(Ref))
-                )()
-              )()
-            )()
-          )()
-        )()
-      )()
-
-      val allExistingGraphsExp : Exp = wrapper.allExistingGraphs().foldLeft[Exp](EmptySet(Ref)())(
-        (foldedGraphs, graphName) => AnySetUnion(foldedGraphs, LocalVar(graphName)(SetType(Ref)))()
-      )
-
-      val closednessSpec : Stmt = Inhale(
-        Implies(
-          FuncApp(closed, Seq(
-            allExistingGraphsExp.duplicateMeta(NoPosition, NoInfo, NoTrafos).asInstanceOf[Exp]
-          ))(),
-          FuncApp(closed, Seq(AnySetUnion(
-            allExistingGraphsExp.duplicateMeta(NoPosition, NoInfo, NoTrafos).asInstanceOf[Exp],
-            LocalVar(singletonGraphName)(SetType(Ref))
-          )()))()
-        )()
-      )()
-
-      wrapper.singletonGraphs.add(singletonGraphName)
-      wrapper.newlyDeclaredSingletonGraphs.add(singletonGraphDecl)
-      val test = Seqn(
-        Seq(
-          stmt,
-          singletonGraphSpec,
-          closednessSpec
-        ),
-        Seq()
-      )()
-       test
+      val call = MethodCall(OuroborosNames.getIdentifier("new_node"), Seq(), Seq(stmt.lhs))(stmt.pos, stmt.info, stmt.errT)
+      handleMethodCall(call, wrapper)
     case _ => stmt
   }
 
@@ -402,7 +358,6 @@ class OuroborosStmtHandler {
       case OurClosedGraph => graphHandler.GRAPH(LocalVar(name)(SetType(Ref), pos.pos, pos.info, pos.errT), fields, input, true, true)
       case _ => Seq(BoolLit(true)())
     }
-      //LocalVar(tuple._1)(tuple._1.typ, pos.pos, pos.info, pos.errT)
   }
 
   def nextStmt(stmt: Stmt): Stmt = stmt match { //TODO put into object
@@ -416,13 +371,13 @@ class OuroborosStmtHandler {
 
 }
 
-case class OuroborosStmtWrapper(input: Program, inputGraphs: Map[String, OurType], userDefinedGraphs: mutable.Map[String, (OurType)], singletonGraphs: mutable.Set[String], newlyDeclaredSingletonGraphs: mutable.Set[Declaration])
+case class OuroborosStmtWrapper(input: Program, inputGraphs: Map[String, OurType], userDefinedGraphs: mutable.Map[String, (OurType)], singletonGraphs: mutable.Set[String], newlyDeclaredVariables: mutable.Set[Declaration])
 {
   def copy(): OuroborosStmtWrapper = {
     val inputCopy: Map[String, OurType] = Map.empty ++ inputGraphs
     val existingCopy: mutable.Map[String, OurType] = mutable.Map.empty ++ userDefinedGraphs
     val singletonCopy: mutable.Set[String] = mutable.Set.empty[String] ++ singletonGraphs
-    val newlyDeclaredCopy: mutable.Set[Declaration] = mutable.Set.empty[Declaration] ++ newlyDeclaredSingletonGraphs
+    val newlyDeclaredCopy: mutable.Set[Declaration] = mutable.Set.empty[Declaration] ++ newlyDeclaredVariables
     OuroborosStmtWrapper(input, inputCopy, existingCopy, singletonCopy, newlyDeclaredCopy)
   }
 

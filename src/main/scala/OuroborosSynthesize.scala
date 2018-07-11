@@ -1,5 +1,6 @@
 package viper.silver.plugin
 
+import viper.silver.ast.Inhale
 import viper.silver.ast.utility.Rewriter.StrategyBuilder
 import viper.silver.parser._
 
@@ -10,7 +11,7 @@ object OuroborosSynthesize {
   def synthesize(program: PProgram, fields: Seq[String]) = {
     PProgram(
       program.imports,
-      program.macros,
+      Seq(),//program.macros,
       program.domains,
       program.fields,
       program.functions.map(f => synthesizeFunction(f, fields)),
@@ -84,7 +85,7 @@ object OuroborosSynthesize {
   def synthesizeClosed(function: PFunction, fields: Seq[String]): PFunction = {
     function.body match {
       case None => function
-      case Some(body) => {
+      case Some(body) =>
         var fieldName = "$field$"
         val bodySynthesizer = StrategyBuilder.Slim[PNode](
           {
@@ -104,7 +105,6 @@ object OuroborosSynthesize {
             PBinExp(exp, "&&", expToAdd)
           }))
         )
-      }
     }
 
   }
@@ -136,7 +136,7 @@ object OuroborosSynthesize {
         fields.map(
           { f =>
             val new_m = m.deepCopyWithNameSubstitution(
-              idndef = PIdnDef(s"unlink_${f}"))(
+              idndef = PIdnDef(s"unlink_$f"))(
               "$field$", f)
             new_m
           }
@@ -149,6 +149,54 @@ object OuroborosSynthesize {
               idndef = PIdnDef(s"update_$f"))(
               "$field$", f)
         )
+      case m: PMethod if m.idndef.name == "link_ZOPG_$field" =>
+        fields.map(
+          f =>
+            m.deepCopyWithNameSubstitution(
+              idndef = PIdnDef(s"link_ZOPG_$f"))(
+              "$field$", f)
+        )
+      case m: PMethod if m.idndef.name == "unlink_ZOPG_$field" =>
+        fields.map(
+          f =>
+            m.deepCopyWithNameSubstitution(
+              idndef = PIdnDef(s"unlink_ZOPG_$f"))(
+              "$field$", f)
+        )
+      case m: PMethod if m.idndef.name == "update_ZOPG_$field$" =>
+        fields.map(
+          f =>
+            m.deepCopyWithNameSubstitution(
+              idndef = PIdnDef(s"update_ZOPG_$f"))(
+              "$field$", f)
+        )
+      case m: PMethod if m.idndef.name == "create_node" =>
+        m.body match {
+          case None => Seq(m)
+          case Some(body) =>
+            var fieldName = "$field$"
+            val inhaleExpSynthesizer = StrategyBuilder.Slim[PNode](
+              {
+                case i: PIdnUse if i.name == "$field$" => PIdnUse(fieldName)
+              }
+            ).duplicateEverything
+            val bodySynthesizer = StrategyBuilder.Slim[PNode](
+              {
+                case i: PInhale =>
+                  val synthesizedExp = fields.foldLeft[PExp](PBoolLit(true))((exp, field) => {
+                    fieldName = field
+                    val expToAdd = inhaleExpSynthesizer.execute[PExp](i.e)
+                    PBinExp(exp, "&&", expToAdd)
+                  })
+                  PInhale(synthesizedExp).setPos(i)
+              }
+            )
+            val newBody = bodySynthesizer.execute[PStmt](body)
+            val newM = m.deepCopy(
+              body = Some(newBody)
+            )
+            Seq(newM)
+        }
       case m: PMethod => Seq(m)
     }
   }

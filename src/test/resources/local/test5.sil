@@ -4,10 +4,15 @@ requires xe in g
 {
     var n: Node
     n := new(*)
+    n := new_node()
     var b: Bool
     while(b)
     {
+        var n2: Node
+        n2 := new_node()
 
     }
 xe.next := null // error: scala.MatchError: OurClosedGraph
+//:: ExpectedOutput(assert.failed:assertion.false)
+assert false
 }

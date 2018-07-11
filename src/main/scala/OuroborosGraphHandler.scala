@@ -209,9 +209,9 @@ def NO_NULL(decl: Exp, input: Program)= {
   val noNullInGraph = input.findFunction("NoNullInGraph")
   val noNullErrTrafo = OuroborosErrorTransformers.NullInGraphErrTrafo(Seq(decl))
   val noNullCall = FuncApp(noNullInGraph, Seq(decl))(decl.pos, decl.info, noNullErrTrafo)
-  if (OuroborosNames.macroNames.contains(noNullCall.funcname))
-    OuroborosMemberInliner.inlineFunction(noNullCall, input, noNullCall.pos, noNullCall.info, noNullCall.errT)
-  else
+//  if (OuroborosNames.macroNames.contains(noNullCall.funcname))
+//    OuroborosMemberInliner.inlineFunction(noNullCall, input, noNullCall.pos, noNullCall.info, noNullCall.errT)
+//  else
     noNullCall
 }
 def fold_GRAPH[B](graph: Exp, fields: Seq[Field], input: Program, closed: Boolean, qpsNeeded: Boolean, initialValue: B, foldFunction: ((B, Exp) => B)): B = {
@@ -267,9 +267,9 @@ def GRAPH(graph: Exp, fields: Seq[Field], input: Program, closed: Boolean, qpsNe
     val closed = input.findFunction(OuroborosNames.getIdentifier("CLOSED"))
     val closedCallErrTrafo = OuroborosErrorTransformers.closedGraphErrTrafo(Seq(decl))
     val closedCall = FuncApp(closed, Seq(decl))(decl.pos, decl.info, closedCallErrTrafo)
-    if (OuroborosNames.macroNames.contains(closedCall.funcname))
-      OuroborosMemberInliner.inlineFunction(closedCall, input, closedCall.pos, closedCall.info, closedCallErrTrafo)
-    else
+//    if (OuroborosNames.macroNames.contains(closedCall.funcname))
+//      OuroborosMemberInliner.inlineFunction(closedCall, input, closedCall.pos, closedCall.info, closedCallErrTrafo)
+//    else
       closedCall
 
   }
@@ -286,7 +286,7 @@ def GRAPH(graph: Exp, fields: Seq[Field], input: Program, closed: Boolean, qpsNe
         LocalVar(g0.name)(g0.typ, g0.pos, g0.info, g0.errT),
         LocalVar(x.name)(x.typ, x.pos, x.info, x.errT)
       ))(g0.pos, g0.info, disjointErrTrafo)
-      if (OuroborosNames.macroNames.contains(disjointCall.funcname)) OuroborosMemberInliner.inlineFunction(disjointCall, input, g0.pos, g0.info, disjointErrTrafo) else
+//      if (OuroborosNames.macroNames.contains(disjointCall.funcname)) OuroborosMemberInliner.inlineFunction(disjointCall, input, g0.pos, g0.info, disjointErrTrafo) else
       disjointCall
     })
   }
@@ -332,9 +332,9 @@ def GRAPH(graph: Exp, fields: Seq[Field], input: Program, closed: Boolean, qpsNe
       apply_TCFramingCall
     )(graph1.pos, graph1.info, errTrafo)
 
-    if(OuroborosNames.macroNames.contains(apply_TCFramingCall.funcname))
-      OuroborosMemberInliner.inlineInhaleFunction(inhaleCall, apply_TCFramingCall, input, inhaleCall.pos, inhaleCall.info, inhaleCall.errT)
-    else
+//    if(OuroborosNames.macroNames.contains(apply_TCFramingCall.funcname))
+//      OuroborosMemberInliner.inlineInhaleFunction(inhaleCall, apply_TCFramingCall, input, inhaleCall.pos, inhaleCall.info, inhaleCall.errT)
+//    else
       inhaleCall
   }
 }

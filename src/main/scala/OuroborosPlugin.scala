@@ -30,7 +30,6 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
 
   val graph_handler = new OuroborosGraphDefinition(this)
   val graphAST_handler = new OuroborosGraphHandler()
-  val graph_names_handler = new OuroborosNamesHandler()
   var translatedCode = ""
 
   def reset(): Unit = {
@@ -69,7 +68,7 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
 
     //Collect identifiers
     var invalidIdentifier: Option[Set[PIdnDef]] = None
-    invalidIdentifier = graph_names_handler.collectNames(input)
+    invalidIdentifier = OuroborosNames.collectNames(input)
     //logger.debug("NAMES: " + names)
 
     //If one identifier is "Graph" or "Node", stop
@@ -116,13 +115,13 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
 
 
     //Fresh Name Generation
-    preamble = graph_names_handler.getNewNames(preamble, OuroborosNames.used_names, ref_fields)
+    preamble = OuroborosNames.getNewNames(preamble, OuroborosNames.used_names, ref_fields)
 
-    val macroDefinitivePAST: PProgram = graph_names_handler.getNewNames(macroSynthesizedFile, OuroborosNames.used_names, ref_fields)
+    val macroDefinitivePAST: PProgram = OuroborosNames.getNewNames(macroSynthesizedFile, OuroborosNames.used_names, ref_fields)
 
     preamble = PProgram(
       preamble.imports ++ macroDefinitivePAST.imports,
-      preamble.macros ++ macroDefinitivePAST.macros,
+      Seq(),//preamble.macros ++ macroDefinitivePAST.macros,
       preamble.domains ++ macroDefinitivePAST.domains,
       preamble.fields ++ macroDefinitivePAST.fields,
       preamble.functions ++ macroDefinitivePAST.functions,
@@ -144,13 +143,12 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
 
       case mac => mac
     }
-//    synthesizedMacros = graph_names_handler.getNewNames(synthesizedMacros, names ++ keywords.values, ref_fields)
 
 
     val pprog: PProgram =
       PProgram(
         preamble.imports ++ input.imports,
-        preamble.macros ++ input.macros,
+        Seq(),//preamble.macros ++ input.macros,
         preamble.domains ++ input.domains,
         preamble.fields ++ input.fields,
         preamble.functions ++ input.functions,
@@ -158,20 +156,6 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
         preamble.methods ++ input.methods,
         preamble.errors ++ input.errors
       )
-
-    /*addPreamble(
-        addPreamble(
-          addPreamble(input,
-            "/viper/silver/plugin/TrCloDomain.sil"),
-            "/viper/silver/plugin/TrCloTypes.sil"),
-            "/viper/silver/plugin/TrCloOperations.sil")*/
-
-    //val methodRewriter = new Strategy[PNode, String](
-    //  {
-    //    case (m: PMethod, _) if m.idndef.name == "link_$field$" => m
-    //  }
-    //)
-    //val ppprog = methodRewriter
 
     val ourRewriter = StrategyBuilder.Slim[PNode](
       {
@@ -208,14 +192,6 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
           stmtHandler.handleMethod(graphAST_handler.handleMethod(input, m, graph_defs.get(m.name), ctx), graph_defs.get(m.name), input)
 //        case (fa: FieldAssign, ctx) =>
 //          graph_handler.handleAssignments(input, fa, ctx)
-        case (fc : FuncApp, ctx) if OuroborosNames.macroNames.contains(fc.funcname) => OuroborosMemberInliner.inlineFunction(fc, input, fc.pos, fc.info, fc.errT)
-
-        case (mc: MethodCall, ctx) if OuroborosNames.macroNames.contains(mc.methodName) => OuroborosMemberInliner.inlineMethod(mc, input, mc.pos, mc.info, mc.errT)
-
-        case (inhale: Inhale, ctx) => inhale.exp match {
-          case fc: FuncApp if OuroborosNames.macroNames.contains(fc.funcname) => OuroborosMemberInliner.inlineInhaleFunction(inhale, fc, input, inhale.pos, inhale.info, inhale.errT)
-          case _ => inhale
-        }
       },
       "", // default context
       {
@@ -223,17 +199,25 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
       }
     )
 
-    var inputPrime = ourRewriter.execute[Program](input)
+    val ourInliner = StrategyBuilder.Context[Node, mutable.Set[Declaration]]({
+      case (fc : FuncApp, ctx) if OuroborosNames.macroNames.contains(fc.funcname) => OuroborosMemberInliner.inlineFunction(fc, input, fc.pos, fc.info, fc.errT)
+
+      case (mc: MethodCall, ctx) if OuroborosNames.macroNames.contains(mc.methodName) =>
+        OuroborosMemberInliner.inlineMethod(mc, input, mc.pos, mc.info, mc.errT)
+
+      case (inhale: Inhale, ctx) => inhale.exp match {
+        case fc: FuncApp if OuroborosNames.macroNames.contains(fc.funcname) => OuroborosMemberInliner.inlineInhaleFunction(inhale, fc, input, inhale.pos, inhale.info, inhale.errT)
+        case _ => inhale
+      }
+    }, mutable.Set.empty[Declaration])
+
+    var inputPrime = ourInliner/*.traverse(Traverse.BottomUp)*/.execute[Program](ourRewriter.execute[Program](input))
 
     inputPrime = Program(inputPrime.domains, inputPrime.fields,
       inputPrime.functions.filter(function => !OuroborosNames.macroNames.contains(function.name)),
       inputPrime.predicates,
       inputPrime.methods.filter(method => !OuroborosNames.macroNames.contains(method.name))
     )(inputPrime.pos, inputPrime.info, inputPrime.errT)
-
-/*    inputPrime = Program(inputPrime.domains, inputPrime.fields, inputPrime.functions, inputPrime.predicates,
-          if(containsAssignment) inputPrime.methods else inputPrime.methods.filter(method => !methodKeyWords.contains(method.name)) //TODO user cannot use identifiers containing "link_"
-        )(inputPrime.pos, inputPrime.info, inputPrime.errT)*/
 
     translatedCode = inputPrime.toString()
     logger.debug(s"Complete Viper program:\n${inputPrime.toString()}")

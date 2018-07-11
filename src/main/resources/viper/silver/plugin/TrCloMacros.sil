@@ -36,10 +36,22 @@ function apply_TCFraming(g0:Set[Ref], g1:Set[Ref]): Bool
     //ensures forall u:Ref, v:Ref :: { exists_path($$(g0),u,v) }{ exists_path($$(g0 union g1),u,v) } u in g0 && v in g0 && !exists_path($$(g0),u,v) ==> !exists_path($$(g0 union g1),u,v)
     //ensures forall u:Ref, v:Ref :: { exists_path($$(g1),u,v) }{ exists_path($$(g0 union g1),u,v) } u in g1 && v in g1 && !exists_path($$(g1),u,v) ==> !exists_path($$(g1 union g0),u,v)
 
+method new_node() returns (node: Ref)
+method create_node(u: Set[Ref]) returns (node: Ref)
+{
+    var lhs_node: Ref //when inlining, remove lhs_node declaration, and replace lhs_node occurences by name of node
+    var fresh_x: Ref
+    var singleton_graph: Set[Ref] //fresh_x and singleton_graph should be added on top of the method
+    assume !(fresh_x in u)
+    assume fresh_x in singleton_graph && forall n: Ref:: fresh_x != n ==> !(n in singleton_graph)
+    lhs_node := fresh_x
+    inhale acc(lhs_node.$field$) && lhs_node.$field$ == null
+}
 
 method link_$field$(g:Set[Ref], x:Ref, y:Ref)
     requires x in g
     requires y != null ==> y in g
+    //requires !(edge($$(g), x, y))
     requires PROTECTED_GRAPH(g,x,$field$)
     ensures PROTECTED_GRAPH(g,x,$field$)
     ensures x.$field$ == y
@@ -61,11 +73,29 @@ method unlink_$field$(g:Set[Ref], x:Ref)
     ensures old(x.$field$) != null ==> forall v1:Ref, v2:Ref ::
         { edge($$(g),v1,v2) }
             edge($$(g),v1,v2) <==> edge(old($$(g)),v1,v2) && !(v1==x && v2==old(x.$field$))
-    ensures old(x.$field$) != null ==> (forall v1:Ref, v2:Ref ::
-        { exists_path($$(g),v1,v2) }
-            (v1 != v2) ==> (
-                exists_path($$(g),v1,v2) <==>
-                    exists_path(old($$(g)),v1,v2) && !(exists_path(old($$(g)),v1,x) && exists_path(old($$(g)),old(x.$field$),v2))))
+    ensures old(x.$field$) != null ==> forall v1: Ref, v2:Ref ::
+        { exists_path($$(g),v1, v2)}
+            ( exists_path($$(g), v1, v2)) <==> (v1 == v2) ||
+            ( exists n: Ref :: edge($$(g), v1, n) && exists_path($$(g), n, v2))
+//    ensures old(x.$field$) != null ==> (forall v1:Ref, v2:Ref ::
+//        { exists_path($$(g),v1,v2) }
+//            (v1 != v2) ==> (
+//                exists_path($$(g),v1,v2) <==>
+//                    exists_path(old($$(g)),v1,v2) && !(exists_path(old($$(g)),v1,x) && exists_path(old($$(g)),old(x.$field$),v2))))
+
+/*TODO for unlink DAGS*/
+//    ensures old(x.$field$) != null ==> forall v1:Ref, v2:Ref ::
+//        { exists_path($$(g),v1,v2) }
+//            //v1 != v2 ==>
+//            ( exists_path($$(g),v1,v2) <==> (v1==v2) || (v1!=v2 && (
+//                ( exists n:Ref :: exists_path(old($$(g)),v1,n) && exists_path(old($$(g)),n,v2) && ( !exists_path(old($$(g)),n,x) && !exists_path(old($$(g)),x,n) || !exists_path(old($$(g)),n,old(x.$field$)) && !exists_path(old($$(g)),old(x.$field$),n) ) )
+//                ||
+//                ( exists n:Ref :: n != x && n != old(x.$field$) && exists_path(old($$(g)),x,n) && exists_path(old($$(g)),n,old(x.$field$)) )
+//                ||
+//                ( exists u:Ref, v:Ref :: (u != x || v != old(x.$field$)) && edge(old($$(g)),u,v) && exists_path(old($$(g)),v1,u) && exists_path(old($$(g)),u,x) && exists_path(old($$(g)),old(x.$field$),v) && exists_path(old($$(g)),v,v2) )
+//            ) ) )
+
+
 /*
 method unlink_ZOPG_$field$(g:Set[Ref], node:Ref)
     requires node in g
@@ -85,26 +115,6 @@ method unlink_ZOPG_$field$(g:Set[Ref], node:Ref)
                     (
                         DEP(old($$(g)), x, y, u, v) && !DEP(old($$(g)), x, y, node, old(node.$field$)) ==> DEP($$(g), x, y, u, v)    // trigger wisdom: ax_UnrollFromHead
                     )
-    // ensures let from==(node) in let to==(old(node.$field$)) in (to != null ==>
-    //         forall x:Ref, y:Ref, u:Ref, v:Ref ::
-    //             { DEP(old($$(g)), x, y, u, v) }
-    //             { DEP($$(g), x, y, u, v) }
-    //                 (from != to) ==> (
-    //                     DEP($$(g), x, y, u, v)
-    //                     || (x==from && u==from && y==to && v==to)
-    //                     || ( exists w:Ref, z:Ref :: __psi__($$(g), from,to, x,y, u,v, w,z) )
-    //                     || ( exists U:Ref, V:Ref :: __psi__($$(g), from,to, x,y, U,V, u,v) )
-    //                     || u==from && v==to && ( exists U:Ref, V:Ref, w:Ref, z:Ref :: __psi__($$(g), from,to, x,y, U,V, w,z) )
-    //                         ==> DEP(old($$(g)), x, y, u, v)))
-
-    // ensures forall n:Ref :: { DEP($$(g), n, node, n, n.$field$) }{ exists_path($$(g), n, node) } n in g && n != node ==> __learn_trigger__(DEP(old($$(g)), n, node, n, n.$field$))
-    // ensures forall n:Ref :: { DEP($$(g), n, node, n, n.$field$) } n in g              ==> __learn_trigger__(exists_path(old($$(g)), n, node))
-
-    // ensures forall n:Ref :: { exists_path($$(g), n, to.$field$) }{ exists_path($$(g), n, from.$field$) } n in g && n != from.$field$ ==>  __learn_trigger__(DEP($$(g), n, from.$field$, from, from.$field$))
-    // ensures forall n:Ref :: { exists_path($$(g), n, to.$field$) }{ exists_path($$(g), n, from.$field$) } n in g && n != from.$field$ ==>  __learn_trigger__(DEP($$(g), n, to.$field$, to, to.$field$))
-
-    // ensures forall n:Ref :: { exists_path($$(g), n, node) }{ DEP($$(g), n, node, n, n.$field$) }{ DEP(old($$(g)), n, node, n, n.$field$) } n in g              ==> __learn_trigger__(exists_path(old($$(g)), n, node))
-    // ensures forall n:Ref :: { exists_path($$(g), n, node) }{ DEP($$(g), n, node, n, n.$field$) }{ DEP(old($$(g)), n, node, n, n.$field$) } n in g && n != node ==> __learn_trigger__(DEP(old($$(g)), n, node, n, n.$field$))
 
 method link_01PG_$field$(g:Set[Ref], from:Ref, to:Ref)
     requires from in g
@@ -142,21 +152,153 @@ method link_01PG_$field$(g:Set[Ref], from:Ref, to:Ref)
     ensures forall n:Ref :: { exists_path($$(g), to, n) }{ exists_path($$(g), from, n) } n in g && n != from ==> __learn_trigger__(DEP($$(g), from, n, from, from.$field$))
     ensures forall n:Ref :: { exists_path($$(g), to, n) }{ exists_path($$(g), from, n) } n in g && n != to   ==> __learn_trigger__(DEP($$(g),   to, n,   to,   to.$field$))
     ensures forall n:Ref :: { exists_path($$(g), n, to) }{ exists_path($$(g), n, from) } n in g && n != from ==> __learn_trigger__(DEP($$(g), n, from, n, n.$field$))
-    // ensures forall n:Ref :: { exists_path($$(g), n, to) }{ exists_path($$(g), n, from) } n in g && n != to   ==> __learn_trigger__(DEP($$(g), n, to,   n, n.$field$)) // never helped so far
-
-    // ensures forall n:Ref :: { DEP($$(g), to, n, to, to.$field$) }{ DEP($$(g), from, n, from, from.$field$) } n in g ==> __learn_trigger__(exists_path($$(g), from, n)) // never helped so far
     ensures forall n:Ref :: { DEP($$(g), to, n, to, to.$field$) }{ DEP($$(g), from, n, from, from.$field$) } n in g ==> __learn_trigger__(exists_path($$(g), to, n))   && __learn_trigger__(exists_path(old($$(g)), to, n))
-    // ensures forall n:Ref :: { DEP($$(g), n, to, n, n.$field$) }{ DEP($$(g), n, from, n, n.$field$) }         n in g ==> __learn_trigger__(exists_path($$(g), n, from))     // never helped so far
-    // ensures forall n:Ref :: { DEP($$(g), n, to, n, n.$field$) }{ DEP($$(g), n, from, n, n.$field$) }         n in g ==> __learn_trigger__(exists_path($$(g), n, to))         // never helped so far
-
-
-    // ensures forall n:Ref :: { exists_path($$(g), n, to.$field$) }{ exists_path($$(g), n, from.$field$) } n in g && n != from.$field$ ==>  __learn_trigger__(DEP($$(g), n, from.$field$, from, from.$field$))
-    // ensures forall n:Ref :: { exists_path($$(g), n, to.$field$) }{ exists_path($$(g), n, from.$field$) } n in g && n != from.$field$ ==>  __learn_trigger__(DEP($$(g), n, to.$field$, to, to.$field$))
-
-    // ensures forall n:Ref :: { DEP($$(g), n, to.$field$, to, to.$field$) }{ DEP($$(g), n, from.$field$, from, from.$field$) } n in g ==> __learn_trigger__(exists_path($$(g), n, to.$field$))
-    // ensures forall n:Ref :: { DEP($$(g), n, to.$field$, to, to.$field$) }{ DEP($$(g), n, from.$field$, from, from.$field$) } n in g ==> __learn_trigger__(exists_path($$(g), n, from.$field$))
-
 */
+
+//define __psi__(EG, alpha,beta, x,y,u,v,w,z) (
+//    ( forall u_:Ref, v_:Ref :: { DEP(EG,x,y,u_,v_) } !DEP(EG,x,y,u_,v_) ) &&  // !exists_path(EG,x,y) -- ?
+//    ( DEP(EG,x,alpha,u,v) && x!=alpha || (x==u && u==alpha && v==beta) ) &&
+//    ( DEP(EG,beta,y,w,z)  && beta!=y  || (alpha==w && beta==z && z==y) )
+//)
+//
+//
+//
+//
+//domain ZeroOnePathGraphTCs {
+//
+//    function DEP(EG:Set[Edge], x:Ref, y:Ref, u:Ref, v:Ref): Bool
+//    function DEP_(EG:Set[Edge], x:Ref, y:Ref, u:Ref, v:Ref): Bool
+//
+//    axiom ax_DEP_alias {
+//        forall EG:Set[Edge], x:Ref, y:Ref, u:Ref, v:Ref ::
+//            { DEP(EG,x,y,u,v) }
+//                DEP(EG,x,y,u,v) <==> DEP_(EG,x,y,u,v)
+//    }
+//
+//    // axiom ax_DEP_0 { -- somehow, it also causes unsoundness...
+//    //     forall EG:Set[Edge], x:Ref, y:Ref, u:Ref, v:Ref ::
+//    //         { DEP(EG,x,y,u,v) }
+//    //         { exists_path(EG,x,u), exists_path(EG,v,y) }
+//    //             exists_path_(EG,x,u) && edge(EG,u,v) && exists_path_(EG,v,y) ==> DEP_(EG,x,y,u,v)
+//    // }
+//
+//    axiom ax_DEP_0_2 {
+//        forall EG:Set[Edge], x:Ref, y:Ref ::
+//            { DEP(EG,x,y,x,y) }
+//            { edge(EG,x,y) }
+//                edge(EG, x, y) <==> DEP_(EG,x,y,x,y)
+//    }
+//
+//    axiom ax_HeadTriangleImposable {
+//        forall EG:Set[Edge], x:Ref, y:Ref, v:Ref ::
+//            { DEP(EG,x,y,x,v) }
+//            { exists_path_(EG,x,y), exists_path(EG,v,y) }
+//            { edge(EG,x,v), exists_path_(EG,v,y) }
+//                exists_path_(EG,x,y) && edge(EG,x,v) && exists_path_(EG,v,y) ==> DEP_(EG,x,y,x,v)
+//    }
+//
+//    axiom ax_TailTriangleImposable {
+//        forall EG:Set[Edge], x:Ref, y:Ref, u:Ref ::
+//            { DEP(EG,x,y,u,y) }
+//            { exists_path_(EG,x,y), exists_path(EG,x,u) }
+//            { edge(EG,u,y), exists_path_(EG,x,u) }
+//                exists_path_(EG,x,y) && exists_path_(EG,x,u) && edge(EG,u,y) ==> DEP_(EG,x,y,u,y)
+//    }
+//
+//    axiom ax_NoEdgeNoDEP {
+//        forall EG:Set[Edge], x:Ref, y:Ref, u:Ref, v:Ref ::
+//            { DEP(EG,x,y,u,v) }
+//                !edge(EG,u,v) ==> !DEP_(EG,x,y,u,v)
+//    }
+//
+//    /*axiom ax_TriangleImposable_Neg {
+//        forall EG:Set[Edge], x:Ref, y:Ref, u:Ref, v:Ref ::
+//            { DEP(EG,x,y,u,v) }
+//            //{ exists_path_(EG,x,y), exists_path(EG,v,y) }
+//            //{ edge(EG,x,v), exists_path_(EG,v,y) }
+//                //BLABLA BLA exists_path_(EG,x,y) && edge(EG,x,v) && exists_path_(EG,v,y) ==> !DEP_(EG,x,y,u,v)
+//    }*/
+//
+//    /*
+//    axiom ax_DEP_0_1 {
+//        forall EG:Set[Edge], x:Ref, y:Ref, u:Ref, v:Ref ::
+//            { DEP(EG,x,y,u,v) }
+//            { exists_path(EG,x,u), exists_path(EG,v,y) }
+//                exists_path(EG,x,u) && edge(EG,u,v) && exists_path(EG,v,y) ==> DEP(EG,x,y,u,v)
+//    }*/
+//
+//    /*axiom ax_DEP_1 { -- incorrect
+//        forall EG:Set[Edge], x:Ref, y:Ref, u:Ref, v:Ref ::
+//            { DEP(EG,x,y,u,v) }
+//            { exists_path(EG,x,u), exists_path(EG,v,y) }
+//                DEP(EG,x,y,u,v) <==> exists_path(EG,x,u) && edge(EG,u,v) && exists_path(EG,v,y)
+//    }*/
+//
+//    /*axiom ax_DEP_2 { -- also incorrect
+//        forall EG:Set[Edge], x:Ref, y:Ref, u:Ref, v:Ref ::
+//            { DEP(EG,x,y,u,v) }
+//            { exists_path(EG,x,y), edge(EG,u,v) }
+//                DEP(EG,x,y,u,v) <==> exists_path(EG,x,y) && edge(EG,u,v)
+//    }*/
+//
+//    // axiom ax_DEP_3 {
+//    //     forall EG:Set[Edge], x:Ref, y:Ref ::
+//    //         { exists_path(EG,x,y) }
+//    //             exists_path_(EG,x,y) <==>
+//    //                 x == y ||
+//    //                     !forall u:Ref, v:Ref ::
+//    //                         { DEP(EG,x,y,u,v) }
+//    //                         { exists_path(EG,x,y), edge(EG,u,v) }
+//    //                             !DEP_(EG,x,y,u,v)
+//    // }
+//    /*
+//    axiom ax_DEP_4 {
+//        forall EG:Set[Edge], x:Ref, y:Ref, u:Ref, v:Ref ::
+//            //{ DEP(EG,x,y,u,v) }
+//            { exists_path(EG,x,y), edge(EG,u,v) }
+//            { exists_path(EG,x,y), exists_path(EG,u,v) }
+//                DEP_(EG,x,y,u,v) ==> exists_path_(EG,x,y) && edge_(EG,u,v)
+//    }*/
+//
+//    /*axiom ax_DEP_5 { less general than ax_DEP_3
+//        forall EG:Set[Edge], u:Ref, v:Ref ::
+//            { exists_path(EG,u,v) }
+//                !exists_path_(EG,u,v) ==> forall x:Ref, y:Ref :: { DEP(EG,x,y,u,v) } !DEP_(EG,x,y,u,v)
+//    }*/
+//
+//    axiom ax_DEP_trigger_magic {
+//        forall EG:Set[Edge], x:Ref, y:Ref, u:Ref, v:Ref ::
+//            { DEP(EG, x, y, u, v) }
+//                DEP(EG, x, y, u, v) ==> exists_path(EG, x, y) && edge(EG, u, v)
+//    }
+//
+//    axiom ax_DEP_6_head { // could be a cool lemma that needs a cool proof! :-)
+//        forall EG:Set[Edge], x:Ref, y:Ref, n:Ref ::
+//            { DEP(EG, y, n, x, y) }
+//                /*edge(EG, x, y) &&*/ n != y ==> !DEP_(EG, y, n, x, y)
+//    }
+//
+//    axiom ax_DEP_6_tail { // could be a cool lemma that needs a cool proof! :-)
+//        forall EG:Set[Edge], x:Ref, y:Ref, n:Ref ::
+//            { DEP(EG, n, x, x, y) }
+//                /*edge(EG, x, y) &&*/ n != x ==> !DEP_(EG, n, x, x, y)
+//    }
+//
+//    axiom ax_DEP_7 {
+//        forall EG:Set[Edge], nu:Ref, n:Ref, mu:Ref, sigma:Ref ::
+//            { DEP(EG, nu, n, mu, sigma) }
+//                nu != n && n != sigma && nu != mu && edge(EG, nu, sigma) && edge(EG, mu, sigma)
+//                    ==> !DEP_(EG, nu, n, mu, sigma)
+//    }
+//
+//    /* -- Isn't being triggered without the right term. (Needs manual assertions?)
+//    axiom ax_UnrollFromHead {
+//        forall EG:Set[Edge], x:Ref, y:Ref, n:Ref ::
+//            //{ exists_path(EG, x, n), edge(EG, x, y) }
+//            { DEP(EG, x, n, x, y) }
+//                DEP(EG, x, n, x, y) ==> exists_path(EG, x, n)
+//    }*/
+//}
 
 function GRAPH_decl(g: Set[Ref]): Bool
 
@@ -167,3 +309,4 @@ function ZOPG_decl(g: Set[Ref]): Bool
 function ClosedZOPG_decl(g: Set[Ref]): Bool
 
 method update_$field$(g:Set[Ref], x:Ref, y:Ref)
+

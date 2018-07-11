@@ -33,10 +33,28 @@ case object OurClosedZOPG extends OurType
 case object OurForest extends OurType
 case object OurClosedForest extends OurType
 
+//sealed trait Topology
+//sealed trait DAG extends Topology
+//sealed trait ZOPG extends Topology
+//sealed trait Forest extends DAG with ZOPG
+//
+//sealed trait Closedness
+//sealed trait Closed extends Closedness
+//
+//case object OurGraph extends Topology with Closedness
+//case object OurClosedGrpah extends Topology with Closed
+//case object OurDAG extends DAG with Closedness
+//case object OurClosedDAG extends DAG with Closed
+//case object OurZOPG extends ZOPG with Closedness
+//case object OurClosedZOPG extends ZOPG with Closed
+//case object OurForest extends Forest with Closedness
+//case object OurClosedForest extends Forest with Closed
+
+
 object OurTypes {
   //val ourTypes = Seq("Graph", "ClosedGraph", "List")
 
-  def getOurObject(ourType : String) : Option[OurType] = ourType match {
+  def getOurObject(ourType : PDomainType) : Option[OurType] = ourType.domain.name match {
     case "Graph" => Some(OurGraph)
     case "ClosedGraph" => Some(OurClosedGraph)
     case "DAG" => Some(OurDAG)
@@ -78,13 +96,11 @@ trait OurOperation
 //case class OurLink(name: String) extends OurOperation
 //case class OurUnlink(name: String) extends OurOperation
 case class OurOperPair(name: String) extends OurOperation
-case class OurGraphSpec(inputs: Seq[OurObject]/*, locals: Seq[OurObject]*/, outputs: Seq[OurObject])
+case class OurGraphSpec(inputs: Seq[OurObject], outputs: Seq[OurObject])
 
 class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
 
-/*  case class OurGraphSpec(inputs: Seq[OurObject], outputs: Seq[OurObject])*/
   val graph_definitions: mutable.Map[String, OurGraphSpec] = mutable.Map.empty[String, OurGraphSpec]
-  //var graph_keywords: mutable.Map[String, String] = mutable.Map.empty[String, String]
 
   def handlePFormalArgDecl(input: PProgram, decl: PFormalArgDecl): PFormalArgDecl =
     //PFormalArgDecl(decl.idndef, getSilverType(decl.typ)).setPos(decl) //TODO Only duplicate if needed, PDEFINE cannot be duplicated
@@ -272,7 +288,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
 
     def collect_objects(collection: Seq[PFormalArgDecl]): Seq[OurObject] = collection.flatMap {
       case x:PFormalArgDecl => x.typ match {
-        case d: PDomainType => OurTypes.getOurObject(d.domain.name) match {
+        case d: PDomainType => OurTypes.getOurObject(d) match {
           case None => Seq()
           case Some(ourType) => Seq(OurObject(x.idndef.name, ourType))
         }
@@ -308,8 +324,8 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
       case l: PLocalVarDecl => l.typ match {
         case d: PDomainType => d.domain.name match {
           case "Node" => Seq(PLocalVarDecl(l.idndef, TypeHelper.Ref, l.init).setPos(l))
-          case name =>
-            OurTypes.getOurObject(name) match {
+          case _ =>
+            OurTypes.getOurObject(d) match {
               case None => Seq(l)
               case Some(ourType) =>
                   Seq(
@@ -564,22 +580,22 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
           val unlinkMethodCall = MethodCall(getIdentifier(s"unlink_${fa.lhs.field.name}"), Seq(local_g, fa.lhs.rcv), Seq())(fa.pos, fa.info, unlinkErrTrafo)
           val linkMethodCall = MethodCall(getIdentifier(s"link_${fa.lhs.field.name}"), Seq(local_g, fa.lhs.rcv, fa.rhs), Seq())(fa.pos, fa.info, linkErrTrafo)
 
-          val unlinkInlined =
-            if (OuroborosNames.macroNames.contains(unlinkMethodCall.methodName))
-              OuroborosMemberInliner.inlineMethod(unlinkMethodCall, input, unlinkMethodCall.pos, unlinkMethodCall.info, unlinkMethodCall.errT)
-            else
-              unlinkMethodCall
-          val linkInlined =
-            if (OuroborosNames.macroNames.contains(linkMethodCall.methodName))
-              OuroborosMemberInliner.inlineMethod(linkMethodCall, input, linkMethodCall.pos, linkMethodCall.info, linkMethodCall.errT)
-            else
-              linkMethodCall
+//          val unlinkInlined =
+////            if (OuroborosNames.macroNames.contains(unlinkMethodCall.methodName))
+////              OuroborosMemberInliner.inlineMethod(unlinkMethodCall, input, unlinkMethodCall.pos, unlinkMethodCall.info, unlinkMethodCall.errT)
+////            else
+//              unlinkMethodCall
+//          val linkInlined =
+////            if (OuroborosNames.macroNames.contains(linkMethodCall.methodName))
+////              OuroborosMemberInliner.inlineMethod(linkMethodCall, input, linkMethodCall.pos, linkMethodCall.info, linkMethodCall.errT)
+////            else
+//              linkMethodCall
 
           Seqn(
             Seq(
 //              getOperationalWisdoms(input, m, ctx)(fa.pos, fa.info, unlinkErrTrafo),
-              unlinkInlined,
-              linkInlined),
+              unlinkMethodCall,
+              linkMethodCall),
             Seq())(fa.pos, fa.info, unlinkErrTrafo)
       })
     } flatten, Seq())(fa.pos, fa.info, unlinkErrTrafo)
