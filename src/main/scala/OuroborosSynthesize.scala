@@ -67,7 +67,7 @@ object OuroborosSynthesize {
                   "&&",
                   PBinExp(PIdnUse("s"), "in", PIdnUse("nodes"))),
                 "&&",
-                fields.foldLeft[PExp](PBoolLit(true))( (expr, f) => PBinExp(expr, "||", PBinExp(
+                fields.foldLeft[PExp](PBoolLit(false))( (expr, f) => PBinExp(expr, "||", PBinExp(
                   PFieldAccess(PIdnUse("p"),PIdnUse(f) ), "==", PIdnUse("s"))))),
               "&&",
               PBinExp(PIdnUse("p"), "!=", PIdnUse("s"))),
@@ -149,14 +149,14 @@ object OuroborosSynthesize {
               idndef = PIdnDef(s"update_$f"))(
               "$field$", f)
         )
-      case m: PMethod if m.idndef.name == "link_ZOPG_$field" =>
+      case m: PMethod if m.idndef.name == "link_ZOPG_$field$" =>
         fields.map(
           f =>
             m.deepCopyWithNameSubstitution(
               idndef = PIdnDef(s"link_ZOPG_$f"))(
               "$field$", f)
         )
-      case m: PMethod if m.idndef.name == "unlink_ZOPG_$field" =>
+      case m: PMethod if m.idndef.name == "unlink_ZOPG_$field$" =>
         fields.map(
           f =>
             m.deepCopyWithNameSubstitution(

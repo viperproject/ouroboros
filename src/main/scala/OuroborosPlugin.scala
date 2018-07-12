@@ -31,6 +31,7 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
   val graph_handler = new OuroborosGraphDefinition(this)
   val graphAST_handler = new OuroborosGraphHandler()
   var translatedCode = ""
+  var zOPGdomainNames : Seq[String] = Seq()
 
   def reset(): Unit = {
     OuroborosNames reset()
@@ -99,7 +100,12 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
 
     val macroFile : PProgram = preLoadSilFile("/viper/silver/plugin/TrCloMacros.sil") match {
       case None => PProgram(Seq(), Seq(), Seq(), Seq(), Seq(), Seq(), Seq(), Seq())
-      case Some(pProgram) => pProgram
+      case Some(p) => PProgram(p.imports, Seq(), p.domains, p.fields, p.functions, p.predicates, p.methods, p.errors)
+    }
+
+    val zOPGDomain: PProgram  = preLoadSilFile("/viper/silver/plugin/TrCloZOPGDomain.sil") match {
+      case None => PProgram(Seq(), Seq(), Seq(), Seq(), Seq(), Seq(), Seq(), Seq())
+      case Some(p) => PProgram(p.imports, Seq(), p.domains, p.fields, p.functions, p.predicates, p.methods, p.errors)
     }
 
     /*  val synthesized = OuroborosSynthesize.synthesize(macros, ref_fields)
@@ -112,21 +118,23 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
     //logger.debug("MethodKeyWords: " + methodKeyWords)
 
     val macroSynthesizedFile = OuroborosSynthesize.synthesize(macroFile, ref_fields)
-
+    val zOPGDomainSynthesized = OuroborosSynthesize.synthesize(zOPGDomain, ref_fields)
 
     //Fresh Name Generation
-    preamble = OuroborosNames.getNewNames(preamble, OuroborosNames.used_names, ref_fields)
+    preamble = OuroborosNames.getNewNames(preamble, ref_fields)
+    val macroDefinitivePAST: PProgram = OuroborosNames.getNewNames(macroSynthesizedFile, ref_fields)
+    val zOPGDomainDefinitive = OuroborosNames.getNewNames(zOPGDomainSynthesized, ref_fields)
 
-    val macroDefinitivePAST: PProgram = OuroborosNames.getNewNames(macroSynthesizedFile, OuroborosNames.used_names, ref_fields)
+    zOPGdomainNames ++= (zOPGDomainDefinitive.domains ++ zOPGDomainDefinitive.methods).map(d => d.idndef.name)
 
     preamble = PProgram(
       preamble.imports ++ macroDefinitivePAST.imports,
       Seq(),//preamble.macros ++ macroDefinitivePAST.macros,
-      preamble.domains ++ macroDefinitivePAST.domains,
+      preamble.domains ++ macroDefinitivePAST.domains ++ zOPGDomainDefinitive.domains,
       preamble.fields ++ macroDefinitivePAST.fields,
       preamble.functions ++ macroDefinitivePAST.functions,
       preamble.predicates ++ macroDefinitivePAST.predicates,
-      preamble.methods ++ macroDefinitivePAST.methods,
+      preamble.methods ++ macroDefinitivePAST.methods ++ zOPGDomainDefinitive.methods,
       preamble.errors ++ macroDefinitivePAST.errors
     )
 
@@ -212,13 +220,16 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
     }, mutable.Set.empty[Declaration])
 
     var inputPrime = ourInliner/*.traverse(Traverse.BottomUp)*/.execute[Program](ourRewriter.execute[Program](input))
-
-    inputPrime = Program(inputPrime.domains, inputPrime.fields,
+    //OuroborosMemberInliner.ZOPGused = false
+    inputPrime = Program(
+      if(OuroborosMemberInliner.zopgUsed) inputPrime.domains else inputPrime.domains.filter(domain => !zOPGdomainNames.contains(domain.name)),
+      inputPrime.fields,
       inputPrime.functions.filter(function => !OuroborosNames.macroNames.contains(function.name)),
       inputPrime.predicates,
-      inputPrime.methods.filter(method => !OuroborosNames.macroNames.contains(method.name))
+      inputPrime.methods.filter(method => !OuroborosNames.macroNames.contains(method.name)  && (OuroborosMemberInliner.zopgUsed || !zOPGdomainNames.contains(method.name)))
     )(inputPrime.pos, inputPrime.info, inputPrime.errT)
 
+    OuroborosMemberInliner.zopgUsed = false
     translatedCode = inputPrime.toString()
     logger.debug(s"Complete Viper program:\n${inputPrime.toString()}")
     inputPrime

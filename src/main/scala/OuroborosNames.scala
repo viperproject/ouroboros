@@ -9,7 +9,7 @@ import viper.silver.parser._
 import scala.collection.mutable
 
 object OuroborosNames {
-  val reserved_keywords = Set("CLOSED_ZOPG", "ZOPG", "CLOSED_GRAPH", "GRAPH", "ACYCLIC", "FUNCTIONAL", "Graph", "ClosedGraph", "ZOPG", "ClosedZOPG", "Node", "CLOSED", "DISJOINT", "UPDATE", "apply_TCFraming", "new_node")
+  val reserved_keywords = Set("CLOSED_ZOPG", "ZOPG", "CLOSED_GRAPH", "GRAPH", "ACYCLIC", "FUNCTIONAL", "Graph", "ClosedGraph", "ZOPG", "ClosedZOPG", "Node", "CLOSED", "DISJOINT", "UPDATE", "UPDATE_ZOPG", "apply_TCFraming", "new_node")
 
 
   var graph_keywords: mutable.Map[String, String] = mutable.Map.empty[String, String]
@@ -74,7 +74,7 @@ object OuroborosNames {
     invalidIdentifier
   }
 
-  def getNewNames(input : PProgram, usedNames : Set[String], fields: Seq[String]): PProgram = {
+  def getNewNames(input : PProgram, fields: Seq[String]): PProgram = {
 
     //OuroborosNames.graph_keywords = mutable.Map.empty[String, String]
     val rewriter = StrategyBuilder.Slim[PNode](

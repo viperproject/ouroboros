@@ -1,18 +1,19 @@
 field next: Node
-method test5(g:ClosedGraph, g2: Graph, xe:Node) returns (y:Node)
-requires xe in g
+method test5(g:ClosedGraph, xe:Node, x2: Node) returns (y:Node)
+requires xe in g && x2 in g
 {
-    var n: Node
-    n := new(*)
-    n := new_node()
-    var b: Bool
-    while(b)
-    {
-        var n2: Node
-        n2 := new_node()
+//     var n: Node
+//     //n := new(*)
+//     n := new_node()
+//     var b: Bool
+//     while(b)
+//     {
+//         var n2: Node
+//         n2 := new_node()
 
-    }
-xe.next := null // error: scala.MatchError: OurClosedGraph
+//     }
+// xe.next := null // error: scala.MatchError: OurClosedGraph
+UPDATE_ZOPG(next, g, xe, x2)
 //:: ExpectedOutput(assert.failed:assertion.false)
 assert false
 }

@@ -198,7 +198,7 @@ class OuroborosGraphHandler {
       allGraphs match {
         case Some(graphs) => {
           val qps: Seq[Exp] = collectQPsForRefFields(fields, graphs, FullPerm()())
-          val qp: Exp = qps.foldLeft[Exp](BoolLit(true)())((foldedExps, exp) => And(foldedExps, exp)(exp.pos, exp.info, OuroborosErrorTransformers.qpsForRefFieldErrTrafo(exp.toString())))
+          val qp: Exp = qps.foldLeft[Exp](TrueLit()())((foldedExps, exp) => And(foldedExps, exp)(exp.pos, exp.info, OuroborosErrorTransformers.qpsForRefFieldErrTrafo(exp.toString())))
           qp +: additionalPostConditions
         }
         case None => Seq()
@@ -293,14 +293,13 @@ def GRAPH(graph: Exp, fields: Seq[Field], input: Program, closed: Boolean, qpsNe
 
   private def handleMethodBody(input: Program, maybeBody: Option[Seqn], inputGraphs: Seq[LocalVarDecl], outputGraphs: Seq[LocalVarDecl]): Option[Seqn] = maybeBody match{
     case None => maybeBody
-    case Some(body) => {
+    case Some(body) =>
       inputGraphs.size match {
         case a if a > 1 => Some(Seqn(getFramingAxioms(input, inputGraphs) ++ body.ss, body.scopedDecls)(
           body.pos, body.info, body.errT
         ))
         case _ => Some(body)
       }
-    }
   }
 
   private def getFramingAxioms(input: Program, inputGraphs: Seq[LocalVarDecl]): Seq[Stmt] = {

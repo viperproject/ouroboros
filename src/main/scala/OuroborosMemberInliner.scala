@@ -6,7 +6,7 @@ import viper.silver.ast.utility.Rewriter.{ContextC, StrategyBuilder}
 import scala.collection.mutable
 
 object OuroborosMemberInliner {
-
+  var zopgUsed: Boolean = false
   def inlineFunction(fc: FuncApp, input: Program, pos: Position, info: Info, errT: ErrorTrafo): Exp = {
     val func = input.findFunction(fc.funcname)
     func.body match {

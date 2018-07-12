@@ -145,8 +145,9 @@ class OuroborosStmtHandler {
 
   def handleMethodCall(call: MethodCall, wrapper: OuroborosStmtWrapper): Stmt = {
     val input = wrapper.input
-    val updateMethodNames: mutable.Map[String, Field] = mutable.Map.empty
-    input.fields.map(field => updateMethodNames.put(OuroborosNames.getIdentifier(s"update_${field.name}"), field))
+    val genericUpdateNames: mutable.Map[String, Field] = mutable.Map.empty
+    input.fields.map(field => genericUpdateNames.put(OuroborosNames.getIdentifier(s"update_${field.name}"), field))
+    val ZOPGUpdateNames: mutable.Map[String, Field] = mutable.Map.empty[String, Field] ++ input.fields.map(field => /*genericUpdateNames.put*/(OuroborosNames.getIdentifier(s"update_ZOPG_${field.name}"), field))
     call.methodName match {
       case x if x == "new_node" =>
         val universe = wrapper.allExistingGraphs().foldLeft[Exp](EmptySet(Ref)())((exp, graph) => AnySetUnion(exp, LocalVar(graph)(SetType(Ref)))())
@@ -163,7 +164,7 @@ class OuroborosStmtHandler {
           }
         else
           call
-      case x => updateMethodNames.get(x) match {
+      case x => genericUpdateNames.get(x) match {
         case Some(field) =>
           //TODO need to find out, which update method to use
           val copier = StrategyBuilder.Slim[Node](PartialFunction.empty).duplicateEverything
@@ -194,7 +195,39 @@ class OuroborosStmtHandler {
             ),
             Seq()
           )(call.pos, call.info, call.errT)
-        case None => call
+        case None => ZOPGUpdateNames.get(x) match {
+          case Some(field) =>
+            OuroborosMemberInliner.zopgUsed = true
+            val copier = StrategyBuilder.Slim[Node](PartialFunction.empty).duplicateEverything
+            val fieldName = field.name
+            val unlinkMethodName = OuroborosNames.getIdentifier(s"unlink_ZOPG_$fieldName")
+            val linkMethodName = OuroborosNames.getIdentifier(s"link_ZOPG_$fieldName")
+            val unlinkMethod = input.findMethod(unlinkMethodName)
+            val linkMethod = input.findMethod(linkMethodName)
+            val unlinkMethodCall = MethodCall(
+              unlinkMethod,
+              call.args.collect({
+                case arg if call.args.indexOf(arg) + 1 < call.args.size => copier.execute[Exp](arg)
+              }),
+              Seq()
+            )(call.pos, call.info, call.errT) //TODO own errT
+
+            val linkMethodCall = MethodCall(
+              linkMethod,
+              call.args.map(arg => copier.execute[Exp](arg)),
+              Seq()
+            )(call.pos, call.info, call.errT)
+
+            Seqn(
+              Seq(
+                unlinkMethodCall,
+                linkMethodCall
+              ),
+              Seq()
+            )(call.pos, call.info, call.errT)
+
+          case None => call
+        }
       }
     }
   }

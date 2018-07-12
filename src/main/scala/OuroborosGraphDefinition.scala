@@ -422,12 +422,13 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
 
   def handlePMethodCall(input: PProgram, m: PMethodCall): PNode = {
     m.method.name match {
-      case "UPDATE" if m.args.length == 4 => field_update(input, m)
+      case "UPDATE" if m.args.length == 4 => genericUpdate(input, m)
+      case "UPDATE_ZOPG" if m.args.length == 4 => zopgUpdate(input, m)
       case _ => m
     }
   }
 
-  def field_update(input: PProgram, m: PMethodCall): PStmt = {
+  def genericUpdate(input: PProgram, m: PMethodCall): PStmt = {
     m.args.head match {
       case field: PIdnUse =>
         val fieldName = field.name
@@ -444,6 +445,23 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
 
         updateMethodCall
       case _ => m //TODO throw error
+    }
+  }
+
+  def zopgUpdate(input: PProgram, m: PMethodCall): PStmt = {
+    m.args.head match {
+      case field: PIdnUse =>
+        val fieldName = field.name
+        val updateMethodName = OuroborosNames.getIdentifier(s"update_ZOPG_$fieldName")
+        val copier = StrategyBuilder.Slim[PNode](PartialFunction.empty).duplicateEverything
+        val updateMethodCall = PMethodCall(
+          Seq(),
+          PIdnUse(updateMethodName),
+          m.args.tail.map(arg => copier.execute[PExp](arg).setPos(arg)) //TODO needed?
+        ).setPos(m)
+
+        updateMethodCall
+      case _ => m
     }
   }
 
