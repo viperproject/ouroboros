@@ -1,7 +1,7 @@
 field next: Node
 
 
-method reverse(g: ClosedGraph, xe: Node) returns (y: Node)
+method reverse(g: Graph[_,Closed], xe: Node) returns (y: Node)
 
 requires xe in g
 

@@ -2,4 +2,4 @@
 
 field next: Ref
 
-method test1(g0: Graph, g1: Graph, n: Node) // error java.lang.RuntimeException: Internal Error: variable n is already defined.
+method test1(g0: Graph[_,_], g1: Graph[_,_], n: Node) // error java.lang.RuntimeException: Internal Error: variable n is already defined.

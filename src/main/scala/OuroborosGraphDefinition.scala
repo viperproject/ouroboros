@@ -22,63 +22,86 @@ import viper.silver.verifier.errors.PreconditionInCallFalse
 import viper.silver.verifier.reasons.{AssertionFalse, InsufficientPermission, InternalReason}
 
 
-sealed trait OurType //extends PDomainType
-//case object OurNode extends OurType
-case object OurGraph extends OurType
-case object OurClosedGraph extends OurType
-case object OurDAG extends OurType
-case object OurClosedDAG extends OurType
-case object OurZOPG extends OurType
-case object OurClosedZOPG extends OurType
-case object OurForest extends OurType
-case object OurClosedForest extends OurType
+//sealed trait OurType //extends PDomainType
+////case object OurNode extends OurType
+//case object OurGraph extends OurType
+//case object OurClosedGraph extends OurType
+//case object OurDAG extends OurType
+//case object OurClosedDAG extends OurType
+//case object OurZOPG extends OurType
+//case object OurClosedZOPG extends OurType
+//case object OurForest extends OurType
+//case object OurClosedForest extends OurType
 
-//sealed trait Topology
-//sealed trait DAG extends Topology
-//sealed trait ZOPG extends Topology
-//sealed trait Forest extends DAG with ZOPG
-//
-//sealed trait Closedness
-//sealed trait Closed extends Closedness
-//
-//case object OurGraph extends Topology with Closedness
-//case object OurClosedGrpah extends Topology with Closed
-//case object OurDAG extends DAG with Closedness
-//case object OurClosedDAG extends DAG with Closed
-//case object OurZOPG extends ZOPG with Closedness
-//case object OurClosedZOPG extends ZOPG with Closed
-//case object OurForest extends Forest with Closedness
-//case object OurClosedForest extends Forest with Closed
+sealed trait Topology
+sealed trait DAG extends Topology
+sealed trait ZOPG extends Topology
+sealed trait Forest extends DAG with ZOPG
+
+sealed trait Closedness
+sealed trait Closed extends Closedness
+
+case object OurGraph extends Topology with Closedness
+case object OurClosedGraph extends Topology with Closed
+case object OurDAG extends DAG with Closedness
+case object OurClosedDAG extends DAG with Closed
+case object OurZOPG extends ZOPG with Closedness
+case object OurClosedZOPG extends ZOPG with Closed
+case object OurForest extends Forest with Closedness
+case object OurClosedForest extends Forest with Closed
 
 
 object OurTypes {
   //val ourTypes = Seq("Graph", "ClosedGraph", "List")
 
-  def getOurObject(ourType : PDomainType) : Option[OurType] = ourType.domain.name match {
-    case "Graph" => Some(OurGraph)
-    case "ClosedGraph" => Some(OurClosedGraph)
-    case "DAG" => Some(OurDAG)
-    case "ClosedDAG" => Some(OurClosedDAG)
-    case "ZOPG" => Some(OurZOPG)
-    case "ClosedZOPG" => Some(OurClosedZOPG)
-    case "Forest" => Some(OurForest)
-    case "OurClosedForest" => Some(OurClosedForest)
+  def getOurObject(ourType : PDomainType) : Option[Topology with Closedness] = ourType.domain.name match {
+    case "Graph" =>
+      assert(ourType.typeArguments.size == 2) //TODO need to do errorReporting instead of assert false
+      assert(ourType.typeArguments.head.isInstanceOf[PDomainType])
+      assert(ourType.typeArguments.last.isInstanceOf[PDomainType])
+      ourType.typeArguments.last match {
+        case clos:PDomainType if clos.typeArguments.isEmpty => clos.domain.name match {
+          case "Closed" => ourType.typeArguments.head match {
+            case topo: PDomainType if topo.typeArguments.isEmpty => topo.domain.name match {
+              case "Forest" => Some(OurClosedForest)
+              case "DAG" => Some(OurClosedDAG)
+              case "ZOPG" => Some(OurClosedZOPG)
+              case "_" => Some(OurClosedGraph)
+              case _ => assert(false); None //TODO need to report Error
+            }
+            case _ => assert(false); None //TODO need to report Error
+          }
+
+          case "_" => ourType.typeArguments.head match {
+            case topo: PDomainType if topo.typeArguments.isEmpty => topo.domain.name match {
+              case "Forest" => Some(OurForest)
+              case "DAG" => Some(OurDAG)
+              case "ZOPG" => Some(OurZOPG)
+              case "_" => Some(OurGraph)
+              case _ => assert(false); None //TODO need to report Error
+            }
+            case _ => assert(false); None //TODO need to report Error
+          }
+          case _  => assert(false); None
+        }
+        case _ => assert(false); None
+      }
     case _ => None
       //TODO more types
   }
 
-  def getOurTypeName(ourType: OurType): String = ourType match {
-    case OurClosedGraph => "ClosedGraph"
-    case OurGraph => "Graph"
-    case OurDAG => "DAG"
-    case OurClosedDAG => "ClosedDAG"
-    case OurZOPG => "ZOPG"
-    case OurClosedZOPG => "ClosedZOPG"
-    case OurForest => "Forest"
-    case OurClosedForest => "ClosedForest"
-  }
+//  def getOurTypeName(ourType: Topology with Closedness): String = ourType match {
+//    case OurClosedGraph => "ClosedGraph"
+//    case OurGraph => "Graph"
+//    case OurDAG => "DAG"
+//    case OurClosedDAG => "ClosedDAG"
+//    case OurZOPG => "ZOPG"
+//    case OurClosedZOPG => "ClosedZOPG"
+//    case OurForest => "Forest"
+//    case OurClosedForest => "ClosedForest"
+//  }
 
-  def getTypeDeclFunctionName(ourType: OurType): String = ourType match{
+  def getTypeDeclFunctionName(ourType: Topology with Closedness): String = ourType match{
     case OurGraph => OuroborosNames.getIdentifier("GRAPH_decl")
     case OurClosedGraph => OuroborosNames.getIdentifier("CLOSED_GRAPH_decl")
     case OurDAG => OuroborosNames.getIdentifier("DAG_decl")
@@ -90,7 +113,7 @@ object OurTypes {
   }
 }
 
-case class OurObject(name: String, typ: OurType)
+case class OurObject(name: String, typ: Topology with Closedness)
 
 trait OurOperation
 //case class OurLink(name: String) extends OurOperation
@@ -109,8 +132,6 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
       d.domain.name match {
         case "Node" => PFormalArgDecl(decl.idndef, TypeHelper.Ref).setPos(decl)
         case "Graph" => PFormalArgDecl(decl.idndef, PSetType(TypeHelper.Ref)).setPos(decl)
-        case "ClosedGraph" => PFormalArgDecl(decl.idndef, PSetType(TypeHelper.Ref)).setPos(decl)
-        case "ZOPG" | "ClosedZOPG" => PFormalArgDecl(decl.idndef, PSetType(TypeHelper.Ref)).setPos(decl)
         case _ => decl
       }
     case d: PSetType =>
@@ -188,13 +209,13 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
       concatInGraphForallsForRefFields(prog.fields, graph_exp.deepCopyAll[PExp])))
   */
 
-  private def GRAPH(prog: PProgram, graph_exp: PExp, fields: Seq[String], c: PCall, closed: Boolean) = seqOfPExpToPExp(
+  private def GRAPH(prog: PProgram, graph_exp: PExp, fields: Seq[String], c: PCall, closed: Boolean) = OuroborosHelper.ourFold[PExp](
     (PUnExp("!", PBinExp(PNullLit(), "in", graph_exp.deepCopyAll[PExp])) +:
-    collectQPsForRefFields(fields, graph_exp, PFullPerm())) :+
-      (if (closed) collectInGraphForallsForRefFields(fields, graph_exp) else Seq())
-          .foldLeft[PExp](PBoolLit(true))(
-          (exp0, exp1) => PBinExp(exp0, "&&", exp1)
-        ), "&&", PBoolLit(true)).setPos(c)
+      collectQPsForRefFields(fields, graph_exp, PFullPerm())) ++
+      (if (closed) Seq(OuroborosHelper.ourFold[PExp](
+        collectInGraphForallsForRefFields(fields, graph_exp)
+        ,PBoolLit(true), (exp1, exp2) => PBinExp(exp1, "&&", exp2)))
+      else Seq()), PBoolLit(true), (exp1, exp2) => PBinExp(exp1, "&&", exp2)).setPos(c)
 
   private def PROTECTED_GRAPH(prog: PProgram, graph_exp: PExp, fields: Seq[String], mutable_node_exp: PExp, mutable_field: String, c: PCall) = seqOfPExpToPExp(Seq(
     PUnExp("!", PBinExp(PNullLit(), "in", graph_exp.deepCopyAll[PExp])),
@@ -204,11 +225,10 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
         PAccPred(PFieldAccess(mutable_node_exp.deepCopyAll[PExp], PIdnUse(f)), PFullPerm())
       else
         PAccPred(PFieldAccess(mutable_node_exp.deepCopyAll[PExp], PIdnUse(f)), PBinExp(PIntLit(1), "/", PIntLit(2)))) ++
-    collectQPsForRefFieldsProtected(fields, mutable_node_exp, graph_exp) :+
-        collectInGraphForallsForRefFields(fields, graph_exp)
-          .foldLeft[PExp](PBoolLit(true))(
-          (exp0, exp1) => PBinExp(exp0, "&&", exp1)
-        ), "&&", PBoolLit(true)).setPos(c)
+    collectQPsForRefFieldsProtected(fields, mutable_node_exp, graph_exp) :+ //TODO do Protected Graphs need to be closed?
+    OuroborosHelper.ourFold[PExp](
+      collectInGraphForallsForRefFields(fields, graph_exp)
+      ,PBoolLit(true), (exp1, exp2) => PBinExp(exp1, "&&", exp2)), "&&", PBoolLit(true)).setPos(c)
 
 
    /*

@@ -1,6 +1,6 @@
 field next: Node
-method test5(g:ClosedGraph, xe:Node, x2: Node) returns (y:Node)
-requires xe in g && x2 in g
+method test5(g:Graph[_, Closed], xe:Node, x2: Node) returns (y:Node)
+requires xe in g && x2 in g && xe != x2
 {
 //     var n: Node
 //     //n := new(*)

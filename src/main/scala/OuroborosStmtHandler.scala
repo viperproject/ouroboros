@@ -31,10 +31,10 @@ class OuroborosStmtHandler {
 
   def handleBody(seqn: Seqn, method: Method, spec: Option[OurGraphSpec], input: Program): Seqn = {
 
-      val inputGraphs : Map[String, OurType] = spec match {
-        case None => Map.empty[String, OurType]
-        case Some(graphSpec) => {
-          val inputs: mutable.Map[String, OurType]= mutable.Map.empty[String, OurType]
+      val inputGraphs : Map[String, Topology with Closedness] = spec match {
+        case None => Map.empty[String, Topology with Closedness]
+        case Some(graphSpec) =>
+          val inputs: mutable.Map[String, Topology with Closedness]= mutable.Map.empty[String, Topology with Closedness]
           graphSpec.inputs.map(obj =>
           {
             val objDecls = method.formalArgs.filter(p => p.name == obj.name)
@@ -46,12 +46,11 @@ class OuroborosStmtHandler {
             }
             obj
           })
-          Map.empty[String, OurType] ++ inputs
-        }
+          Map.empty[String, Topology with Closedness] ++ inputs
       }
 
 
-      var existingGraphs : mutable.Map[String, OurType] = mutable.Map.empty[String, OurType]
+      var existingGraphs : mutable.Map[String, Topology with Closedness] = mutable.Map.empty[String, Topology with Closedness]
       existingGraphs ++= inputGraphs //TODO if we have fields of graph type, it will be more complex
     val wrapper: OuroborosStmtWrapper = OuroborosStmtWrapper(input, inputGraphs, existingGraphs, mutable.Set.empty[String], mutable.Set.empty[Declaration])
     handleStmt(seqn, wrapper) match {
@@ -115,8 +114,10 @@ class OuroborosStmtHandler {
     val userDefiniedGraphs = wrapper.userDefinedGraphs
     val graphInvs = userDefiniedGraphs.flatMap(a => TYPE(a, wrapper.input, stmt))
     val closed = wrapper.input.findFunction(OuroborosNames.getIdentifier("CLOSED"))
-    val allExistingGraphsExp : Exp = wrapper.allExistingGraphs().foldLeft[Exp](EmptySet(Ref)())(
-      (foldedGraphs, graphName) => AnySetUnion(foldedGraphs, LocalVar(graphName)(SetType(Ref)))()
+    val allExistingGraphsExp : Exp = OuroborosHelper.transformAndFold[String, Exp](
+        wrapper.allExistingGraphs().toSeq,
+        EmptySet(Ref)(),(foldedGraphs, graph) => AnySetUnion(foldedGraphs, graph)(),
+        graphName => LocalVar(graphName)(SetType(Ref))
     )
     val closednessSpec : Exp = FuncApp(closed, Seq(allExistingGraphsExp))()
 
@@ -150,7 +151,13 @@ class OuroborosStmtHandler {
     val ZOPGUpdateNames: mutable.Map[String, Field] = mutable.Map.empty[String, Field] ++ input.fields.map(field => /*genericUpdateNames.put*/(OuroborosNames.getIdentifier(s"update_ZOPG_${field.name}"), field))
     call.methodName match {
       case x if x == "new_node" =>
-        val universe = wrapper.allExistingGraphs().foldLeft[Exp](EmptySet(Ref)())((exp, graph) => AnySetUnion(exp, LocalVar(graph)(SetType(Ref)))())
+        val universe = OuroborosHelper.transformAndFold[String, Exp](
+          wrapper.allExistingGraphs().toSeq,
+          EmptySet(Ref)(),
+          (exp1, exp2) => AnySetUnion(exp1, exp2)(),
+          graphName => LocalVar(graphName)(SetType(Ref))
+        )
+
         val newCall = MethodCall(OuroborosNames.getIdentifier("create_node"), Seq(universe), call.targets)(call.pos, call.info, call.errT)
         if (OuroborosNames.macroNames.contains(newCall.methodName))
           {
@@ -169,10 +176,20 @@ class OuroborosStmtHandler {
           //TODO need to find out, which update method to use
           val copier = StrategyBuilder.Slim[Node](PartialFunction.empty).duplicateEverything
           val fieldName = field.name
+          val $$Name = OuroborosNames.getIdentifier("$$")
           val unlinkMethodName = OuroborosNames.getIdentifier(s"unlink_$fieldName")
+          val applyNoExitName = OuroborosNames.getIdentifier(s"apply_noExit")
           val linkMethodName = OuroborosNames.getIdentifier(s"link_$fieldName")
+          val $$Function = input.findFunction($$Name)
           val unlinkMethod = input.findMethod(unlinkMethodName)
+          val applyNoExitFunction = input.findDomainFunction(applyNoExitName)
           val linkMethod = input.findMethod(linkMethodName)
+          val universe = OuroborosHelper.transformAndFold[String, Exp](
+              wrapper.allExistingGraphs().toSeq,
+              EmptySet(Ref)(),
+              (foldedGraphs, graph) => AnySetUnion(foldedGraphs, graph)(),
+              graphName => LocalVar(graphName)(SetType(Ref))
+          )
 
           val unlinkMethodCall = MethodCall(
             unlinkMethod,
@@ -181,6 +198,14 @@ class OuroborosStmtHandler {
             }),
             Seq()
           )(call.pos, call.info, call.errT) //TODO own errT
+
+          val applyNoExitFuncInhale = Inhale(
+            DomainFuncApp(applyNoExitFunction, Seq(
+              FuncApp($$Function, Seq(copier.execute[Exp](universe)))(call.pos, call.info, call.errT),
+              universe,
+              ExplicitSet(Seq(copier.execute[Exp](call.args(1))))()
+            ), Map.empty[TypeVar, Type])(call.pos, call.info, call.errT)
+          )(call.pos, call.info, call.errT)
 
           val linkMethodCall = MethodCall(
             linkMethod,
@@ -191,6 +216,7 @@ class OuroborosStmtHandler {
           Seqn(
             Seq(
               unlinkMethodCall,
+              applyNoExitFuncInhale,
               linkMethodCall
             ),
             Seq()
@@ -200,10 +226,20 @@ class OuroborosStmtHandler {
             OuroborosMemberInliner.zopgUsed = true
             val copier = StrategyBuilder.Slim[Node](PartialFunction.empty).duplicateEverything
             val fieldName = field.name
+            val $$Name = OuroborosNames.getIdentifier("$$")
             val unlinkMethodName = OuroborosNames.getIdentifier(s"unlink_ZOPG_$fieldName")
+            val applyNoExitName = OuroborosNames.getIdentifier(s"apply_noExit")
             val linkMethodName = OuroborosNames.getIdentifier(s"link_ZOPG_$fieldName")
+            val $$Function = input.findFunction($$Name)
             val unlinkMethod = input.findMethod(unlinkMethodName)
+            val applyNoExitFunction = input.findDomainFunction(applyNoExitName)
             val linkMethod = input.findMethod(linkMethodName)
+            val universe = OuroborosHelper.transformAndFold[String, Exp](
+                wrapper.allExistingGraphs().toSeq,
+                EmptySet(Ref)(),
+                (foldedGraphs, graph) => AnySetUnion(foldedGraphs, graph)(),
+                graphName => LocalVar(graphName)(SetType(Ref))
+              )
             val unlinkMethodCall = MethodCall(
               unlinkMethod,
               call.args.collect({
@@ -211,6 +247,14 @@ class OuroborosStmtHandler {
               }),
               Seq()
             )(call.pos, call.info, call.errT) //TODO own errT
+
+            val applyNoExitFuncInhale = Inhale(
+              DomainFuncApp(applyNoExitFunction, Seq(
+                FuncApp($$Function, Seq(copier.execute[Exp](universe)))(call.pos, call.info, call.errT),
+                universe,
+                ExplicitSet(Seq(copier.execute[Exp](call.args(1))))()
+              ), Map.empty[TypeVar, Type])(call.pos, call.info, call.errT)
+            )(call.pos, call.info, call.errT)
 
             val linkMethodCall = MethodCall(
               linkMethod,
@@ -221,6 +265,7 @@ class OuroborosStmtHandler {
             Seqn(
               Seq(
                 unlinkMethodCall,
+                applyNoExitFuncInhale,
                 linkMethodCall
               ),
               Seq()
@@ -343,9 +388,12 @@ class OuroborosStmtHandler {
       })
     }
 
-    val allExistingGraphsExp : Exp = wrapper.allExistingGraphs().foldLeft[Exp](EmptySet(Ref)())(
-      (foldedGraphs, graphName) => AnySetUnion(foldedGraphs, LocalVar(graphName)(SetType(Ref)))()
-    )
+    val allExistingGraphsExp : Exp = OuroborosHelper.transformAndFold[String, Exp](
+        wrapper.allExistingGraphs().toSeq,
+        EmptySet(Ref)(),
+        (foldedGraphs, graph) => AnySetUnion(foldedGraphs, graph)(),
+        graphName => LocalVar(graphName)(SetType(Ref))
+      )
 
     val unlinkMethodCall = MethodCall(OuroborosNames.getIdentifier(s"unlink_${fa.lhs.field.name}"), Seq(allExistingGraphsExp, fa.lhs.rcv), Seq())(fa.pos, fa.info, unlinkErrTrafo)
     val linkMethodCall = MethodCall(OuroborosNames.getIdentifier(s"link_${fa.lhs.field.name}"), Seq(allExistingGraphsExp, fa.lhs.rcv, fa.rhs), Seq())(fa.pos, fa.info, linkErrTrafo)
@@ -381,9 +429,9 @@ class OuroborosStmtHandler {
     case _ => stmt
   }
 
-  def TYPE(tuple: (String, OurType), input: Program, pos: Infoed with Positioned with TransformableErrors): Seq[Exp] = {
+  def TYPE(tuple: (String, Topology with Closedness), input: Program, pos: Infoed with Positioned with TransformableErrors): Seq[Exp] = {
     //TODO Type Invariance Checking
-    val ourType: OurType = tuple._2
+    val ourType: Topology with Closedness = tuple._2
     val name: String = tuple._1
     val fields = input.fields
     ourType match {
@@ -404,11 +452,11 @@ class OuroborosStmtHandler {
 
 }
 
-case class OuroborosStmtWrapper(input: Program, inputGraphs: Map[String, OurType], userDefinedGraphs: mutable.Map[String, (OurType)], singletonGraphs: mutable.Set[String], newlyDeclaredVariables: mutable.Set[Declaration])
+case class OuroborosStmtWrapper(input: Program, inputGraphs: Map[String, Topology with Closedness], userDefinedGraphs: mutable.Map[String, Topology with Closedness], singletonGraphs: mutable.Set[String], newlyDeclaredVariables: mutable.Set[Declaration])
 {
   def copy(): OuroborosStmtWrapper = {
-    val inputCopy: Map[String, OurType] = Map.empty ++ inputGraphs
-    val existingCopy: mutable.Map[String, OurType] = mutable.Map.empty ++ userDefinedGraphs
+    val inputCopy: Map[String, Topology with Closedness] = Map.empty ++ inputGraphs
+    val existingCopy: mutable.Map[String, Topology with Closedness] = mutable.Map.empty ++ userDefinedGraphs
     val singletonCopy: mutable.Set[String] = mutable.Set.empty[String] ++ singletonGraphs
     val newlyDeclaredCopy: mutable.Set[Declaration] = mutable.Set.empty[Declaration] ++ newlyDeclaredVariables
     OuroborosStmtWrapper(input, inputCopy, existingCopy, singletonCopy, newlyDeclaredCopy)

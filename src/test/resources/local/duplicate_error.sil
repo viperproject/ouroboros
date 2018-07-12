@@ -1,6 +1,6 @@
 
 // define TEST(test)(  //If this macro is uncommented, we get a duplicate error, and every other subsequent test fails
-//     forall v: Node, g: Graph/*Set[Int]*/ :: v in g
+//     forall v: Node, g: Graph[_,_]/*Set[Int]*/ :: v in g
 // )
 
 /*method a()

@@ -1,6 +1,6 @@
 //similar to two_graph_arguments.sil
 field next:Ref
-method three_graphs(g0: Graph, g1:Graph, g2:Graph) returns (g:Graph)
+method three_graphs(g0: Graph[_,_], g1:Graph[_,_], g2:Graph[_,_]) returns (g:Graph[_,_])
 {
     g := g0 union g1 union g2
     assert true

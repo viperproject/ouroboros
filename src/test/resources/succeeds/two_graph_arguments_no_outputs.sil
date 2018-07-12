@@ -1,6 +1,6 @@
 //More than one output graphs are not possible
 field next:Node
-method test(g0: Graph, g1: Graph)
+method test(g0: Graph[_,_], g1: Graph[_,_])
 {
 assert true
 }

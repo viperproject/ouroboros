@@ -1,6 +1,6 @@
 field next: Node
 //Need to add CLOSED(g0 union g1) automatically in the beginning
-method test4(g0: Graph, g1: Graph, x: Node, y: Node) 
+method test4(g0: Graph[_,_], g1: Graph[_,_], x: Node, y: Node) 
 //requires CLOSED(g0 union g1)
 requires x in g0 && y in g1
  

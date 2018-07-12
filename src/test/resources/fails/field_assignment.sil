@@ -1,8 +1,8 @@
 field n1: Node
-method test(g: Graph)
+method test(g: Graph[_,_])
 
 {
-    var g2: Graph := Set()
+    var g2: Graph[_,_] := Set()
     while(false)
     {
 

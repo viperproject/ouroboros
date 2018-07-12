@@ -1,5 +1,5 @@
 field n1:Node
-method test2(g0: Graph, g1: Graph, x: Node, y: Node) returns (g: Graph)
+method test2(g0: Graph[_,_], g1: Graph[_,_], x: Node, y: Node) returns (g: Graph[_,_])
 requires x in g0 && y in g1
  
 // -- doesn't work with type Node in the quantifier

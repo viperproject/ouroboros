@@ -167,9 +167,9 @@ class OuroborosGraphHandler {
                       CLOSED(LocalVar(decl.name)(decl.typ, decl.pos, decl.info, decl.errT), input))*/
                   GRAPH(LocalVar(decl.name)(decl.typ, decl.pos, decl.info, decl.errT), fields, input, true, false)
 
-                  additionalPostConditions = additionalPostConditions :+ postConditions.foldLeft[Exp](TrueLit()())(
-                    (foldedExp, exp) => And(foldedExp, exp)(exp.pos, exp.info, graphErrTrafo))
-                case OurGraph => {
+                  additionalPostConditions = additionalPostConditions :+
+                    OuroborosHelper.ourFold[Exp](postConditions, TrueLit()(), (foldedExp, exp) => And(foldedExp, exp)(exp.pos, exp.info, graphErrTrafo))
+                case OurGraph =>
                   allGraphs match {
                     case None => allGraphs = Some(
                       LocalVar(
@@ -186,7 +186,6 @@ class OuroborosGraphHandler {
                     )
                   }
                   additionalPostConditions = additionalPostConditions :+ FuncApp(noNullInGraph, Seq(LocalVar(decl.name)(decl.typ, decl.pos, decl.info, graphErrTrafo)))(decl.pos, decl.info, graphErrTrafo)
-                }
                 //case OurList => //TODO
               }
             }
@@ -198,7 +197,7 @@ class OuroborosGraphHandler {
       allGraphs match {
         case Some(graphs) => {
           val qps: Seq[Exp] = collectQPsForRefFields(fields, graphs, FullPerm()())
-          val qp: Exp = qps.foldLeft[Exp](TrueLit()())((foldedExps, exp) => And(foldedExps, exp)(exp.pos, exp.info, OuroborosErrorTransformers.qpsForRefFieldErrTrafo(exp.toString())))
+          val qp: Exp = OuroborosHelper.ourFold[Exp](qps, TrueLit()(), (foldedExps, exp) => And(foldedExps, exp)(exp.pos, exp.info, OuroborosErrorTransformers.qpsForRefFieldErrTrafo(exp.toString())))
           qp +: additionalPostConditions
         }
         case None => Seq()
@@ -214,9 +213,13 @@ def NO_NULL(decl: Exp, input: Program)= {
 //  else
     noNullCall
 }
-def fold_GRAPH[B](graph: Exp, fields: Seq[Field], input: Program, closed: Boolean, qpsNeeded: Boolean, initialValue: B, foldFunction: ((B, Exp) => B)): B = {
-    GRAPH(graph, fields, input, closed, qpsNeeded).foldLeft[B](initialValue)(
-      (x, y) => foldFunction(x, y))
+
+def foldAndTransformGRAPH[B](graph: Exp, fields: Seq[Field], input: Program, closed: Boolean, qpsNeeded: Boolean, initialValue: B, transformFunction: (Exp => B), foldFunction: ((B, B) => B)): B = {
+  OuroborosHelper.transformAndFold[Exp, B](GRAPH(graph, fields, input, closed, qpsNeeded), initialValue, foldFunction, transformFunction)
+}
+
+def fold_GRAPH(graph: Exp, fields: Seq[Field], input: Program, closed: Boolean, qpsNeeded: Boolean, initialValue: Exp, foldFunction: ((Exp, Exp) => Exp)): Exp = {
+  OuroborosHelper.ourFold[Exp](GRAPH(graph, fields, input, closed, qpsNeeded), initialValue, foldFunction)
 }
 
 def GRAPH(graph: Exp, fields: Seq[Field], input: Program, closed: Boolean, qpsNeeded: Boolean): Seq[Exp] = {

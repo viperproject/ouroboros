@@ -1,7 +1,7 @@
 field next:Ref
 //field boohoo: Ref
 
-method swap(g:Graph, x:Node, i:Int, j:Int)
+method swap(g:Graph[_,_], x:Node, i:Int, j:Int)
     // value parameters
     requires 0 <= i && i < j
 

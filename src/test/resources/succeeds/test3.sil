@@ -2,7 +2,7 @@
 
 field next: Ref
 
-method test3(g0: Graph, g1: Graph, x: Node, y: Node) 
+method test3(g0: Graph[_,_], g1: Graph[_,_], x: Node, y: Node) 
 requires x in g0 && y in g1
  
 requires forall n:Ref, m:Ref :: n in g0 && m in g0 ==> EXISTS_PATH(g0,n,m)

@@ -1,6 +1,6 @@
 //Assume TC_Framing does not work, if there is no assignment of a union
 field next:Ref //Node
-method join(g1 : Graph, g2 : Graph) returns (g:Graph)
+method join(g1 : Graph[_,_], g2 : Graph[_,_]) returns (g:Graph[_,_])
 ensures g == g1 union g2
 ensures forall n:Ref, n2:Ref :: n in g1 && n2 in g1 && exists_path($$(old(g1)), n, n2) ==> exists_path($$(g), n, n2)
 {

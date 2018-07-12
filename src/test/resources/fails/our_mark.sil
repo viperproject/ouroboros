@@ -7,7 +7,7 @@ function get(s: Set[Ref]): Ref
     requires |s| > 0
     ensures result in s
 
-method mark(g:Graph, roots:Set[Ref]) returns (marked:Set[Ref])
+method mark(g:Graph[_,_], roots:Set[Ref]) returns (marked:Set[Ref])
     requires |roots| > 0
     requires roots subset g
     //ensures roots subset marked

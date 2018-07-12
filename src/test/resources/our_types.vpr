@@ -1,10 +1,10 @@
 field left:Ref
 field right:Ref
 
-//method test_types(g0:Graph, n0:Node, g1:Graph, l0:List) returns (g_res:Graph, n_res:Node)
+//method test_types(g0:Graph[_,_], n0:Node, g1:Graph[_,_], l0:List) returns (g_res:Graph[_,_], n_res:Node)
 
 /*
-method test_link(g0:Graph, x1:Node, x2:Node, x3:Node, g1:Graph)
+method test_link(g0:Graph[_,_], x1:Node, x2:Node, x3:Node, g1:Graph[_,_])
     requires x1 in g0
     //requires
 {
@@ -20,7 +20,7 @@ method test_link(g0:Graph, x1:Node, x2:Node, x3:Node, g1:Graph)
 
 
 
-method test_link_1(g0:Graph, x:Node)
+method test_link_1(g0:Graph[_,_], x:Node)
     requires x in g0
 {
     x.left := x.right
@@ -28,7 +28,7 @@ method test_link_1(g0:Graph, x:Node)
 }
 
 /*
-method test_link_2(g0:Graph, g1:Graph, x:Node)
+method test_link_2(g0:Graph[_,_], g1:Graph[_,_], x:Node)
     requires x in g0
 {
     x.left := x.right
@@ -37,7 +37,7 @@ method test_link_2(g0:Graph, g1:Graph, x:Node)
 
 
 /*
-method test_link_3(g0:Graph, g1:Graph, g2:Graph, x:Node)
+method test_link_3(g0:Graph[_,_], g1:Graph[_,_], g2:Graph[_,_], x:Node)
     requires x in g0
 {
     x.left := x.right
@@ -45,7 +45,7 @@ method test_link_3(g0:Graph, g1:Graph, g2:Graph, x:Node)
 }*/
 
 /*
-method test_link_4(g0:Graph, g1:Graph, g2:Graph, g3: Graph, x:Node)
+method test_link_4(g0:Graph[_,_], g1:Graph[_,_], g2:Graph[_,_], g3: Graph[_,_], x:Node)
     requires x in g0
 {
     x.left := x.right
@@ -53,7 +53,7 @@ method test_link_4(g0:Graph, g1:Graph, g2:Graph, g3: Graph, x:Node)
 }*/
 
 /*
-method test_link_3(g0:Graph, g1:Graph, g2:Graph, x:Node, y:Node)
+method test_link_3(g0:Graph[_,_], g1:Graph[_,_], g2:Graph[_,_], x:Node, y:Node)
     requires x in g0
 {
     x.left := x.right
@@ -61,7 +61,7 @@ method test_link_3(g0:Graph, g1:Graph, g2:Graph, x:Node, y:Node)
 }*/
 
 /*
-method test_link_4(g0:Graph, g1:Graph, g2:Graph, g3:Graph, x:Node, y:Node)
+method test_link_4(g0:Graph[_,_], g1:Graph[_,_], g2:Graph[_,_], g3:Graph[_,_], x:Node, y:Node)
     requires x in g0
 {
     x.left := x.right
@@ -71,7 +71,7 @@ method test_link_4(g0:Graph, g1:Graph, g2:Graph, g3:Graph, x:Node, y:Node)
 
 
 /*
-method connect_DAGs(g0:Graph, g1:Graph, x0:Node, x1:Node, x:Node)
+method connect_DAGs(g0:Graph[_,_], g1:Graph[_,_], x0:Node, x1:Node, x:Node)
     requires ACYCLIC(g0)
     requires x0 in g0
     requires x in g0
@@ -103,7 +103,7 @@ method connect_DAGs(g0:Graph, g1:Graph, x0:Node, x1:Node, x:Node)
 
 /*
 field next:Ref
-method join(g0:Graph, g1:Graph, x0:Node, x1:Node) returns (x:Ref, last:Ref)
+method join(g0:Graph[_,_], g1:Graph[_,_], x0:Node, x1:Node) returns (x:Ref, last:Ref)
     requires x0 in g0
     requires x1 in g1
     requires ACYCLIC_LIST_SEGMENT(g0)

@@ -10,7 +10,7 @@
 //postcondition "ensures g1 union g2 == g" is always inserted, if two graphs are taken as arguments,
 // and one graph is returned.
 field next:Node
-method test(g0: Graph, g1: Graph) returns  (g: Graph)
+method test(g0: Graph[_,_], g1: Graph[_,_]) returns  (g: Graph[_,_])
 {
     g := g0 union g1
     assert true

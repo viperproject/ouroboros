@@ -67,8 +67,8 @@ object OuroborosSynthesize {
                   "&&",
                   PBinExp(PIdnUse("s"), "in", PIdnUse("nodes"))),
                 "&&",
-                fields.foldLeft[PExp](PBoolLit(false))( (expr, f) => PBinExp(expr, "||", PBinExp(
-                  PFieldAccess(PIdnUse("p"),PIdnUse(f) ), "==", PIdnUse("s"))))),
+                OuroborosHelper.transformAndFold[String, PExp](fields, PBoolLit(false), (expr1, expr2) => PBinExp(expr1, "||", expr2), f => PBinExp(
+                  PFieldAccess(PIdnUse("p"),PIdnUse(f) ), "==", PIdnUse("s")))),
               "&&",
               PBinExp(PIdnUse("p"), "!=", PIdnUse("s"))),
             "<==>",
@@ -94,16 +94,16 @@ object OuroborosSynthesize {
         ).duplicateEverything
 
         function.deepCopy(
-          pres = function.pres.map(p => fields.foldLeft[PExp](PBoolLit(true))((exp, field) => {
-            fieldName = field
-            val expToAdd = bodySynthesizer.execute[PExp](p)
-            PBinExp(exp, "&&", expToAdd)
-          })),
-          body = Some(fields.foldLeft[PExp](PBoolLit(true))((exp, field) => {
-            fieldName = field
-            val expToAdd = bodySynthesizer.execute[PExp](body)
-            PBinExp(exp, "&&", expToAdd)
-          }))
+          pres = function.pres.map(p =>
+            OuroborosHelper.transformAndFold[String, PExp](fields, PBoolLit(true), (exp1, exp2) => PBinExp(exp1, "&&", exp2), f => {
+              fieldName = f
+              bodySynthesizer.execute[PExp](p)
+            })),
+          body = Some(
+            OuroborosHelper.transformAndFold[String, PExp](fields, PBoolLit(true), (exp1, exp2) => PBinExp(exp1, "&&", exp2), f => {
+              fieldName = f
+              bodySynthesizer.execute[PExp](body)
+            }))
         )
     }
 
@@ -183,11 +183,13 @@ object OuroborosSynthesize {
             val bodySynthesizer = StrategyBuilder.Slim[PNode](
               {
                 case i: PInhale =>
-                  val synthesizedExp = fields.foldLeft[PExp](PBoolLit(true))((exp, field) => {
-                    fieldName = field
-                    val expToAdd = inhaleExpSynthesizer.execute[PExp](i.e)
-                    PBinExp(exp, "&&", expToAdd)
-                  })
+                  val synthesizedExp =
+                    OuroborosHelper.transformAndFold[String, PExp](
+                      fields, PBoolLit(true),(exp1, exp2) => PBinExp(exp1, "&&", exp2), f => {
+                        fieldName = f
+                        inhaleExpSynthesizer.execute[PExp](i.e)
+                      }
+                    )
                   PInhale(synthesizedExp).setPos(i)
               }
             )
