@@ -116,4 +116,20 @@ object OuroborosErrorTransformers {
       )
     )
   })
+
+  def closedGraphParametersErrTrafo(methodName: String, graph: Node, pre: Boolean): ErrTrafo = ErrTrafo(
+    {
+      case x if x.reason.isInstanceOf[AssertionFalse] => OuroborosGraphSpecificactionError(
+        graph.toString(),
+        x.offendingNode,
+        OpenGraphReason(
+          x.offendingNode,
+          if (pre) s"The union of the input of method $methodName might not be closed in the beginning."
+          else
+            s"The union of the input and output graphs of method $methodName might not be closed in the end."
+        ),
+        x.cached
+      )
+    }
+  )
 }

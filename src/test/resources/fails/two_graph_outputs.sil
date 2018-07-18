@@ -1,6 +1,19 @@
 //More than one output graphs are not possible
 field next:Node
-method test(g0: Graph[_,_], g1: Graph[_,_]) returns  (g: Graph[_,_], gg: Graph[_,_])
+method test(g0: Graph[_,Closed], g1: Graph[_,Closed]) returns  (g: Graph[ZOPG,_], gg: Graph[DAG,Closed])
 {
-assert true
+    //:: ExpectedOutput(assert.failed:assertion.false)
+    assert CLOSED(g)
+    g := g0
+    //gg := g1
+    assert CLOSED(g)
+    assert CLOSED(g0 union g1 union g union gg)
+    //:: ExpectedOutput(assert.failed:assertion.false)
+    assert false
+}
+
+//:: ExpectedOutput(graph.specification:graph.not.closed)
+method test2(g0: Graph[_,_], g1: Graph[_,_]) returns  (g: Graph[_,_], gg: Graph[_,_])
+{
+
 }

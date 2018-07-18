@@ -184,3 +184,9 @@ domain TrClo {
                     exists f:Ref :: f in from && exists_path(EG,f,to)
         }
 }
+
+/*domain SetAxioms {
+  axiom ax_Associativity {
+    forall g: Set[Ref], g1: Set[Ref], g2: Set[Ref] :: {g union (g1 union g2)} {(g union g1) union g2} (g union (g1 union g2)) == ((g union g1) union g2)
+  }
+}*/

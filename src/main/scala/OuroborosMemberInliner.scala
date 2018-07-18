@@ -16,8 +16,8 @@ object OuroborosMemberInliner {
         StrategyBuilder.Slim[Node](
           {
             case x: LocalVar if funcArgs.contains(x.name) =>
-              callArgs(funcArgs.indexOf(x.name)).duplicateMeta((pos, info, errT))
-            case n => n.duplicateMeta((pos, info, errT))
+              callArgs(funcArgs.indexOf(x.name)).duplicateMeta((pos, NoInfo, errT))
+            case n => n.duplicateMeta((pos, NoInfo, errT))
           }
         ).duplicateEverything.execute[Exp](macro_def) //TODO CLOSED: "graph might not be closed" and not wellformed => insufficient permission
 
@@ -92,14 +92,14 @@ object OuroborosMemberInliner {
     func.body match {
       case Some(_) => inhale //TODO
 
-      case None => {
+      case None =>
         var contractsInlined : Seq[Stmt] = Seq()
 
         val contractsRewriter = StrategyBuilder.Slim[Node](
           {
             case x: LocalVar if funcArgs.contains(x.name) =>
-              callArgs(funcArgs.indexOf(x.name)).duplicateMeta((pos, info, errT))
-            case n => n.duplicateMeta((pos, info, errT))
+              callArgs(funcArgs.indexOf(x.name)).duplicateMeta((pos, NoInfo, errT))
+            case n => n.duplicateMeta((pos, NoInfo, errT))
           }
         ).duplicateEverything
 
@@ -107,14 +107,13 @@ object OuroborosMemberInliner {
         contractsInlined ++= func.pres.collect({
           case exp: Exp if exp.isPure => {
             //if (!exp.isPure) impureExps :+= Inhale(contractsRewriter.execute[Exp](exp))(pos, info, errT)
-            Exhale(contractsRewriter.execute[Exp](exp))(pos, info, errT)
+            Exhale(contractsRewriter.execute[Exp](exp))(pos, NoInfo, errT)
           }
         }
         )
-       // contractsInlined ++= impureExps
-        contractsInlined ++= func.posts.map(exp => Inhale(contractsRewriter.execute[Exp](exp))(pos, info, errT))
+        // contractsInlined ++= impureExps
+        contractsInlined ++= func.posts.map(exp => Inhale(contractsRewriter.execute[Exp](exp))(pos, NoInfo, errT))
         Seqn(contractsInlined, Seq())(pos, info, errT)
-      }
     }
   }
 }

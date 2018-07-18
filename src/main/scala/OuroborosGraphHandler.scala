@@ -16,11 +16,12 @@ class OuroborosGraphHandler {
 
   def handleMethod(input: Program, m: Method, s: Option[OurGraphSpec], ctx: ContextC[Node, String]): Method = s match {
     case None => m
-    case Some(ss) => {
-      val inputObjects: Seq[(OurObject, Seq[LocalVarDecl])] = ss.inputs.map(obj => (obj,m.formalArgs.filter(arg => arg.name == obj.name)))
-      val outputObjects: Seq[(OurObject, Seq[LocalVarDecl])] = ss.outputs.map(obj => (obj,m.formalReturns.filter(arg => arg.name == obj.name)))
+    case Some(ss) =>
+      val inputObjects: Seq[(OurObject, LocalVarDecl)] = ss.inputs.map(obj => (obj,m.formalArgs.filter(arg => arg.name == obj.name).head))
+      val outputObjects: Seq[(OurObject, LocalVarDecl)] = ss.outputs.map(obj => (obj,m.formalReturns.filter(arg => arg.name == obj.name).head))
       val inputGraphs = {
-        m.formalArgs.filter(x => ss.inputs.map(y => y.name).contains(x.name))
+        val ssInputNames = ss.inputs.map(y => y.name)
+        m.formalArgs.filter(x => ssInputNames.contains(x.name))
       }
       val outputGraphs = m.formalReturns.filter(x => ss.outputs.map(y => y.name).contains(x.name))
       Method(
@@ -29,9 +30,8 @@ class OuroborosGraphHandler {
         m.formalReturns,
         disjointGraphs(inputGraphs, input) ++ inputTypesAndClosed(inputObjects, input.fields, input, m) ++ m.pres,
         outputTypes(outputObjects ++ inputObjects, input.fields, input, m) ++ m.posts,
-        handleMethodBody(input, m.body, inputGraphs, outputGraphs) /* ++ TCFraming*/
+        handleMethodBody(input, m.body, inputGraphs, outputGraphs, inputObjects) /* ++ TCFraming*/
       ) (m.pos, m.info, m.errT)
-    }
   }
 
 /*  def handleFuncApp(input: Program, fc: FuncApp, args: Seq[String], ctx: ContextC[Node, String]): Exp = {
@@ -58,7 +58,7 @@ class OuroborosGraphHandler {
   }*/
 
 
-  def inputTypesAndClosed(objects: Seq[(OurObject, Seq[LocalVarDecl])], fields: Seq[Field], input: Program, method: Method): Seq[Exp] = {
+  def inputTypesAndClosed(objects: Seq[(OurObject, LocalVarDecl)], fields: Seq[Field], input: Program, method: Method): Seq[Exp] = {
     def foldFunction(graphName: String, pos: Infoed with Positioned): (Exp, Exp) => Exp = {
       val graphErrTrafo = OuroborosErrorTransformers.graphErrTrafo(graphName)
       (foldedExp, exp) => And(foldedExp, exp)(pos.pos, pos.info, graphErrTrafo)
@@ -68,56 +68,47 @@ class OuroborosGraphHandler {
     val toReturn : Seq[Exp] = objects.flatMap(
       mapping => {
         val obj = mapping._1
-        val decls = mapping._2
-        decls.size match {
-          case 1 =>
-            val decl = decls.head
-            val graphErrTrafo = OuroborosErrorTransformers.graphErrTrafo(decl.name)
-            obj.typ match {
-              case OurClosedGraph => {
-                allGraphs match {
-                  case None => allGraphs = Some(
-                    LocalVar(
-                      decl.name
-                    )(decl.typ, decl.pos, decl.info, graphErrTrafo)
-                  )
-                  case Some(prev) => allGraphs = Some(
-                    AnySetUnion(
-                      prev,
-                      LocalVar(
-                        decl.name
-                      )(decl.typ, decl.pos, decl.info, graphErrTrafo)
-                    )(decl.pos, decl.info, graphErrTrafo)
-                  )
-                }
-
-                val localVar = LocalVar(decl.name)(decl.typ, decl.pos, decl.info, decl.errT)
-                Seq(fold_GRAPH(localVar, fields, input, true, true, TrueLit()(), foldFunction(decl.name, localVar)))
-              }
-              case OurGraph => {
-                allGraphs match {
-                  case None => allGraphs = Some(
-                    LocalVar(
-                      decl.name
-                    )(decl.typ, decl.pos, decl.info, graphErrTrafo)
-                  )
-                  case Some(prev) => allGraphs = Some(
-                    AnySetUnion(
-                      prev,
-                      LocalVar(
-                        decl.name
-                      )(decl.typ, decl.pos, decl.info, graphErrTrafo)
-                    )(decl.pos, decl.info, graphErrTrafo)
-                  )
-                }
-
-                val localVar = LocalVar(decl.name)(decl.typ, decl.pos, decl.info, decl.errT)
-                Seq(fold_GRAPH(localVar, fields, input, false, true, TrueLit()(), foldFunction(decl.name, localVar)))
-              }
-              //case OurList => //TODO
-              case _ => Seq()
+        val decl = mapping._2
+        val graphErrTrafo = OuroborosErrorTransformers.graphErrTrafo(decl.name)
+        obj.typ match {
+          case _:Closed =>
+            allGraphs match {
+              case None => allGraphs = Some(
+                LocalVar(
+                  decl.name
+                )(decl.typ, decl.pos, decl.info, graphErrTrafo)
+              )
+              case Some(prev) => allGraphs = Some(
+                AnySetUnion(
+                  prev,
+                  LocalVar(
+                    decl.name
+                  )(decl.typ, decl.pos, decl.info, graphErrTrafo)
+                )(decl.pos, decl.info, graphErrTrafo)
+              )
             }
-          case 0 => Seq()
+
+            val localVar = LocalVar(decl.name)(decl.typ, decl.pos, decl.info, decl.errT)
+            Seq(fold_GRAPH(localVar, fields, input, true, true, TrueLit()(), foldFunction(decl.name, localVar)))
+          case _:Closedness =>
+            allGraphs match {
+              case None => allGraphs = Some(
+                LocalVar(
+                  decl.name
+                )(decl.typ, decl.pos, decl.info, graphErrTrafo)
+              )
+              case Some(prev) => allGraphs = Some(
+                AnySetUnion(
+                  prev,
+                  LocalVar(
+                    decl.name
+                  )(decl.typ, decl.pos, decl.info, graphErrTrafo)
+                )(decl.pos, decl.info, graphErrTrafo)
+              )
+            }
+
+            val localVar = LocalVar(decl.name)(decl.typ, decl.pos, decl.info, decl.errT)
+            Seq(fold_GRAPH(localVar, fields, input, false, true, TrueLit()(), foldFunction(decl.name, localVar)))
         }
 
       }
@@ -125,13 +116,12 @@ class OuroborosGraphHandler {
 
     allGraphs match {
       case None => toReturn
-      case Some(graphs) => {
-        toReturn :+ CLOSED(graphs, input)
-      }
+      case Some(graphs) =>
+        toReturn :+ closedGraphParameters(graphs, input, method, true)
     }
   }
 
-  def outputTypes(objects: Seq[(OurObject, Seq[LocalVarDecl])], fields: Seq[Field], input: Program, method: Method): Seq[Exp] =
+  def outputTypes(objects: Seq[(OurObject, LocalVarDecl)], fields: Seq[Field], input: Program, method: Method): Seq[Exp] =
     {
       val noNullInGraph = input.findFunction(OuroborosNames.getIdentifier("NoNullInGraph"))
       var additionalPostConditions : Seq[Exp] = Seq()
@@ -139,67 +129,60 @@ class OuroborosGraphHandler {
       objects.map(
         mapping => {
           val obj = mapping._1
-          val decls = mapping._2
-          decls.size match {
-            case 1 => {
-              val decl = decls.head
-              val graphErrTrafo = OuroborosErrorTransformers.graphErrTrafo(decl.name)
-              obj.typ match {
-                case OurClosedGraph =>
-                  allGraphs match {
-                    case None => allGraphs = Some(
-                      LocalVar(
-                        decl.name
-                      )(decl.typ, decl.pos, decl.info, graphErrTrafo)
-                    )
-                    case Some(prev) => allGraphs = Some(
-                      AnySetUnion(
-                        prev,
-                        LocalVar(
-                          decl.name
-                        )(decl.typ, decl.pos, decl.info, graphErrTrafo)
-                      )(decl.pos, decl.info, graphErrTrafo) //TODO other position?
-                    )
-                  }
-                  val postConditions : Seq[Exp] =
-                    /*Seq(
-                      NO_NULL(LocalVar(decl.name)(decl.typ, decl.pos, decl.info, decl.errT), input),
-                      CLOSED(LocalVar(decl.name)(decl.typ, decl.pos, decl.info, decl.errT), input))*/
-                  GRAPH(LocalVar(decl.name)(decl.typ, decl.pos, decl.info, decl.errT), fields, input, true, false)
-
-                  additionalPostConditions = additionalPostConditions :+
-                    OuroborosHelper.ourFold[Exp](postConditions, TrueLit()(), (foldedExp, exp) => And(foldedExp, exp)(exp.pos, exp.info, graphErrTrafo))
-                case OurGraph =>
-                  allGraphs match {
-                    case None => allGraphs = Some(
-                      LocalVar(
-                        decl.name
-                      )(decl.typ, decl.pos, decl.info, graphErrTrafo)
-                    )
-                    case Some(prev) => allGraphs = Some(
-                      AnySetUnion(
-                        prev,
-                        LocalVar(
-                          decl.name
-                        )(decl.typ, decl.pos, decl.info, graphErrTrafo)
-                      )(decl.pos, decl.info, graphErrTrafo)
-                    )
-                  }
-                  additionalPostConditions = additionalPostConditions :+ FuncApp(noNullInGraph, Seq(LocalVar(decl.name)(decl.typ, decl.pos, decl.info, graphErrTrafo)))(decl.pos, decl.info, graphErrTrafo)
-                //case OurList => //TODO
+          val decl = mapping._2
+          val graphErrTrafo = OuroborosErrorTransformers.graphErrTrafo(decl.name)
+          obj.typ match {
+            case _:Closed =>
+              allGraphs match {
+                case None => allGraphs = Some(
+                  LocalVar(
+                    decl.name
+                  )(decl.typ, decl.pos, decl.info, graphErrTrafo)
+                )
+                case Some(prev) => allGraphs = Some(
+                  AnySetUnion(
+                    prev,
+                    LocalVar(
+                      decl.name
+                    )(decl.typ, decl.pos, decl.info, graphErrTrafo)
+                  )(decl.pos, decl.info, graphErrTrafo) //TODO other position?
+                )
               }
-            }
-            case 0 => Seq()
+              val postConditions : Seq[Exp] =
+                /*Seq(
+                  NO_NULL(LocalVar(decl.name)(decl.typ, decl.pos, decl.info, decl.errT), input),
+                  CLOSED(LocalVar(decl.name)(decl.typ, decl.pos, decl.info, decl.errT), input))*/
+              GRAPH(LocalVar(decl.name)(decl.typ, decl.pos, decl.info, decl.errT), fields, input, true, false)
+
+              additionalPostConditions = additionalPostConditions :+
+                OuroborosHelper.ourFold[Exp](postConditions, TrueLit()(), (foldedExp, exp) => And(foldedExp, exp)(exp.pos, exp.info, graphErrTrafo))
+            case _:Closedness =>
+              allGraphs match {
+                case None => allGraphs = Some(
+                  LocalVar(
+                    decl.name
+                  )(decl.typ, decl.pos, decl.info, graphErrTrafo)
+                )
+                case Some(prev) => allGraphs = Some(
+                  AnySetUnion(
+                    prev,
+                    LocalVar(
+                      decl.name
+                    )(decl.typ, decl.pos, decl.info, graphErrTrafo)
+                  )(decl.pos, decl.info, graphErrTrafo)
+                )
+              }
+              additionalPostConditions = additionalPostConditions :+ FuncApp(noNullInGraph, Seq(LocalVar(decl.name)(decl.typ, decl.pos, decl.info, graphErrTrafo)))(decl.pos, decl.info, graphErrTrafo)
+            //case OurList => //TODO
           }
           mapping
         }
       )
       allGraphs match {
-        case Some(graphs) => {
+        case Some(graphs) =>
           val qps: Seq[Exp] = collectQPsForRefFields(fields, graphs, FullPerm()())
           val qp: Exp = OuroborosHelper.ourFold[Exp](qps, TrueLit()(), (foldedExps, exp) => And(foldedExps, exp)(exp.pos, exp.info, OuroborosErrorTransformers.qpsForRefFieldErrTrafo(exp.toString())))
-          qp +: additionalPostConditions
-        }
+          qp +: additionalPostConditions :+ closedGraphParameters(graphs, input, method, false)
         case None => Seq()
       }
     }
@@ -266,6 +249,12 @@ def GRAPH(graph: Exp, fields: Seq[Field], input: Program, closed: Boolean, qpsNe
     )(graph.pos, graph.info, qpsForRefFieldErrTrafo)
   }
 
+  private def closedGraphParameters(decl: Exp, input: Program, method: Method, pre:Boolean): Exp = {
+    CLOSED(decl, input).duplicateMeta(
+      (method.pos, method.info, OuroborosErrorTransformers.closedGraphParametersErrTrafo(method.name, decl, pre))
+    ).asInstanceOf[Exp]
+  }
+
   private def CLOSED( decl: Exp, input: Program): Exp ={
     val closed = input.findFunction(OuroborosNames.getIdentifier("CLOSED"))
     val closedCallErrTrafo = OuroborosErrorTransformers.closedGraphErrTrafo(Seq(decl))
@@ -294,11 +283,11 @@ def GRAPH(graph: Exp, fields: Seq[Field], input: Program, closed: Boolean, qpsNe
     })
   }
 
-  private def handleMethodBody(input: Program, maybeBody: Option[Seqn], inputGraphs: Seq[LocalVarDecl], outputGraphs: Seq[LocalVarDecl]): Option[Seqn] = maybeBody match{
+  private def handleMethodBody(input: Program, maybeBody: Option[Seqn], inputGraphs: Seq[LocalVarDecl], outputGraphs: Seq[LocalVarDecl], inputObjects:Seq[(OurObject, LocalVarDecl)] ): Option[Seqn] = maybeBody match{
     case None => maybeBody
     case Some(body) =>
       inputGraphs.size match {
-        case a if a > 1 => Some(Seqn(getFramingAxioms(input, inputGraphs) ++ body.ss, body.scopedDecls)(
+        case a if a > 1 => Some(Seqn(getFramingAxioms(input, inputGraphs) ++ getNoExitAxioms(input, inputObjects, inputGraphs) ++ body.ss, body.scopedDecls)(
           body.pos, body.info, body.errT
         ))
         case _ => Some(body)
@@ -332,11 +321,37 @@ def GRAPH(graph: Exp, fields: Seq[Field], input: Program, closed: Boolean, qpsNe
     )(graph1.pos, graph1.info, TCFraming.typ, TCFraming.formalArgs, errTrafo)
     val inhaleCall = Inhale(
       apply_TCFramingCall
-    )(graph1.pos, graph1.info, errTrafo)
+    )(graph1.pos, SimpleInfo(Seq("", s"Apply TC Framing for input graphs ${graph1.name} and ${graph2.name} \n")), errTrafo)
 
 //    if(OuroborosNames.macroNames.contains(apply_TCFramingCall.funcname))
 //      OuroborosMemberInliner.inlineInhaleFunction(inhaleCall, apply_TCFramingCall, input, inhaleCall.pos, inhaleCall.info, inhaleCall.errT)
 //    else
       inhaleCall
+  }
+
+  private def getNoExitAxioms(input: Program, inputObjects: Seq[(OurObject, LocalVarDecl)], inputGraphs: Seq[LocalVarDecl]): Seq[Stmt] = {
+    val closedGraphs = inputObjects.collect({
+      case x if x._1.typ.isInstanceOf[Closed] => x._2
+    })
+
+    closedGraphs.flatMap(closedGraph => inputObjects.collect({
+      case p if !(p._2 == closedGraph) =>
+        assumeNoExitClosed(input, closedGraph, p._2, inputGraphs)
+    })
+    )
+  }
+
+  private def assumeNoExitClosed(input: Program, closedGraph: LocalVarDecl, graph2: LocalVarDecl, inputGraphs: Seq[LocalVarDecl]): Stmt = {
+    val NoExitClosed = input.findFunction(OuroborosNames.getIdentifier("apply_no_exit_closed"))
+    val purificationFunction = input.findFunction(OuroborosNames.getIdentifier("$$"))
+    val unionGraphs = OuroborosHelper.transformAndFold[LocalVarDecl, Exp](inputGraphs, EmptySet(Ref)(), (foldedGraphs, graph) => AnySetUnion(foldedGraphs, graph)(), graphDecl => LocalVar(graphDecl.name)(SetType(Ref)))
+    val universeEdges = FuncApp(purificationFunction, Seq(unionGraphs))()
+    Inhale(
+      FuncApp(NoExitClosed, Seq(
+        universeEdges,
+        LocalVar(closedGraph.name)(SetType(Ref)),
+        LocalVar(graph2.name)(SetType(Ref))
+      ))()
+    )(closedGraph.pos, SimpleInfo(Seq("", s"Assume there are no paths from closed Graph ${closedGraph.name} to disjoint ${graph2.name} \n")))
   }
 }

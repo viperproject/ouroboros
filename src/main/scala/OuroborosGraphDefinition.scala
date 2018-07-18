@@ -50,6 +50,8 @@ case object OurClosedZOPG extends ZOPG with Closed
 case object OurForest extends Forest with Closedness
 case object OurClosedForest extends Forest with Closed
 
+case class GraphType[T <: Topology, C <: Closedness]()
+
 
 object OurTypes {
   //val ourTypes = Seq("Graph", "ClosedGraph", "List")
@@ -110,6 +112,18 @@ object OurTypes {
     case OurClosedZOPG => OuroborosNames.getIdentifier("CLOSED_ZOPG_decl")
     case OurForest => OuroborosNames.getIdentifier("FOREST_decl")
     case OurClosedForest => OuroborosNames.getIdentifier("CLOSED_FOREST_decl")
+  }
+
+  def getOurTypeFromFunction(functionName: String): Option[Topology with Closedness] = functionName match {
+    case x if x == OuroborosNames.getIdentifier("GRAPH_decl") => Some(OurGraph)
+    case x if x == OuroborosNames.getIdentifier("CLOSED_GRAPH_decl") => Some(OurClosedGraph)
+    case x if x == OuroborosNames.getIdentifier("DAG_decl") => Some(OurDAG)
+    case x if x == OuroborosNames.getIdentifier("CLOSED_DAG_decl") => Some(OurClosedDAG)
+    case x if x == OuroborosNames.getIdentifier("ZOPG_decl") => Some(OurZOPG)
+    case x if x == OuroborosNames.getIdentifier("CLOSED_ZOPG_decl") => Some(OurClosedZOPG)
+    case x if x == OuroborosNames.getIdentifier("FOREST_decl") => Some(OurForest)
+    case x if x == OuroborosNames.getIdentifier("CLOSED_FOREST_decl") => Some(OurClosedForest)
+    case _ => None
   }
 }
 
@@ -260,6 +274,13 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
     }
     ???
   }*/
+
+  private def PROTECTED_GRAPH(prog: PProgram, graph_exp: PExp, fields: Seq[String]): PExp = {
+    OuroborosHelper.ourFold[PExp](PUnExp("!", PBinExp(PNullLit(), "in", graph_exp.deepCopyAll[PExp])) +:
+    collectQPsForRefFields(fields, graph_exp, PBinExp(PIntLit(1), "/", PIntLit(2))),
+      PBoolLit(false),
+      (exp1, exp2) => PBinExp(exp1, "&&", exp2))
+  }
 
   private def EDGE(prog: PProgram, graph_exp: PExp, lhs_node_exp: PExp, rhs_node_exp: PExp, c: PCall): PExp = PCall(
     PIdnUse(getIdentifier("edge")),
@@ -426,6 +447,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
           PROTECTED_GRAPH(input, m.args.head, ref_fields(input), m.args(1), f_name, m)
         case _ => m
       }
+      case "PROTECTED_GRAPH" if m.args.length == 1 => PROTECTED_GRAPH(input, m.args.head, ref_fields(input))
 
       case "EDGE" if m.args.length == 3 => EDGE(input, m.args.head, m.args(1), m.args(2), m)
       case "EXISTS_PATH" if m.args.length == 3 => EXISTS_PATH(input, m.args.head, m.args(1), m.args(2), m)

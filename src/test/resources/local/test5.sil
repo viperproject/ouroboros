@@ -6,14 +6,17 @@ requires xe in g && x2 in g && xe != x2
 //     //n := new(*)
 //     n := new_node()
 //     var b: Bool
-//     while(b)
-//     {
-//         var n2: Node
-//         n2 := new_node()
+     while(b)
+     {
+         var n2: Node
+         n2 := new_node()
 
-//     }
+     }
+//    xe.next := x2
 // xe.next := null // error: scala.MatchError: OurClosedGraph
 UPDATE_ZOPG(next, g, xe, x2)
 //:: ExpectedOutput(assert.failed:assertion.false)
 assert false
 }
+
+//method hi(galskfjsaldjald:Graph[ZOPG, Closed]) returns (zsdalfj: Graph[_,_])

@@ -7,7 +7,6 @@ object OuroborosHelper {
       case Nil =>
         initial
     }
-    //newFald[A](toFaldTransformed, initial, faldFunction)
   }
 
   def ourFold[A](toFold: Seq[A], initial: A, foldFunction: ((A,A)=> A)): A ={

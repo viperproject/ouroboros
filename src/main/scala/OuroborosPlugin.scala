@@ -210,7 +210,7 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
     val ourInliner = StrategyBuilder.Context[Node, mutable.Set[Declaration]]({
       case (fc : FuncApp, ctx) if OuroborosNames.macroNames.contains(fc.funcname) => OuroborosMemberInliner.inlineFunction(fc, input, fc.pos, fc.info, fc.errT)
 
-      case (mc: MethodCall, ctx) if OuroborosNames.macroNames.contains(mc.methodName) =>
+      case (mc: MethodCall, ctx) if OuroborosNames.macroNames.contains(mc.methodName) || zOPGdomainNames.contains(mc.methodName) =>
         OuroborosMemberInliner.inlineMethod(mc, input, mc.pos, mc.info, mc.errT)
 
       case (inhale: Inhale, ctx) => inhale.exp match {
@@ -219,14 +219,15 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
       }
     }, mutable.Set.empty[Declaration])
 
-    var inputPrime = ourInliner/*.traverse(Traverse.BottomUp)*/.execute[Program](ourRewriter.execute[Program](input))
+    val rewrittenProgram = ourRewriter.execute[Program](input)
+    var inputPrime = ourInliner.execute[Program](rewrittenProgram)
     //OuroborosMemberInliner.ZOPGused = false
     inputPrime = Program(
       if(OuroborosMemberInliner.zopgUsed) inputPrime.domains else inputPrime.domains.filter(domain => !zOPGdomainNames.contains(domain.name)),
       inputPrime.fields,
       inputPrime.functions.filter(function => !OuroborosNames.macroNames.contains(function.name)),
       inputPrime.predicates,
-      inputPrime.methods.filter(method => !OuroborosNames.macroNames.contains(method.name)  && (OuroborosMemberInliner.zopgUsed || !zOPGdomainNames.contains(method.name)))
+      inputPrime.methods.filter(method => !OuroborosNames.macroNames.contains(method.name)  && !zOPGdomainNames.contains(method.name))
     )(inputPrime.pos, inputPrime.info, inputPrime.errT)
 
     OuroborosMemberInliner.zopgUsed = false

@@ -2,7 +2,15 @@ field n1: Node
 method test(g: Graph[_,_])
 
 {
-    var g2: Graph[_,_] := Set()
+    var g2: Graph[DAG,_] //:= Set()
+
+    g2 := g
+
+    inhale DISJOINT(g, g2)
+    //exhale GRAPH(g2)
+
+    //assert false
+    
     while(false)
     {
 
