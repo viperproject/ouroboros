@@ -120,39 +120,45 @@ method join(g1: Set[Ref], g2: Set[Ref]) returns (g: Set[Ref])
   requires (forall n: Ref :: { (n in g1),(n in g2) } (n in g1) ==> !((n in g2))) && (forall n: Ref :: { (n in g1),(n in g2) } (n in g2) ==> !((n in g1)))
   requires !((null in g1)) && ((forall n: Ref :: { n.next } (n in g1) ==> acc(n.next, write)) && (forall n: Ref :: { (n.next in g1) } { (n in g1),n.next } (n in g1) && n.next != null ==> (n.next in g1)))
   requires !((null in g2)) && (forall n: Ref :: { n.next } (n in g2) ==> acc(n.next, write))
-  requires (forall n: Ref :: { (n.next in g1 union g2) } { (n in g1 union g2),n.next } (n in g1 union g2) && n.next != null ==> (n.next in g1 union g2))
-  ensures (forall n: Ref :: { n.next } (n in g union g1 union g2) ==> acc(n.next, write))
+  requires (forall n: Ref :: { (n.next in (g1 union g2)) } { (n in (g1 union g2)),n.next } (n in (g1 union g2)) && n.next != null ==> (n.next in (g1 union g2)))
+  ensures (forall n: Ref :: { n.next } (n in ((g union g1) union g2)) ==> acc(n.next, write))
   ensures !((null in g))
   ensures !((null in g1)) && (forall n: Ref :: { (n.next in g1) } { (n in g1),n.next } (n in g1) && n.next != null ==> (n.next in g1))
   ensures !((null in g2))
-  ensures (forall n: Ref :: { (n.next in g union g1 union g2) } { (n in g union g1 union g2),n.next } (n in g union g1 union g2) && n.next != null ==> (n.next in g union g1 union g2))
+  ensures (forall n: Ref :: { (n.next in ((g union g1) union g2)) } { (n in ((g union g1) union g2)),n.next } (n in ((g union g1) union g2)) && n.next != null ==> (n.next in ((g union g1) union g2)))
 {
   
   // Apply TC Framing for input graphs g1 and g2 
 exhale (forall n: Ref :: { (n in g1),(n in g2) } (n in g1) ==> !((n in g2)))
   exhale (forall n: Ref :: { (n in g1),(n in g2) } (n in g2) ==> !((n in g1)))
-  inhale g1 union g2 == g2 union g1
-  inhale (forall u: Ref, v: Ref :: { exists_path($$(g1), u, v) } { exists_path($$(g1 union g2), u, v) } (u in g1) && ((v in g1) && exists_path($$(g1), u, v)) ==> exists_path($$(g1 union g2), u, v))
-  inhale (forall u: Ref, v: Ref :: { exists_path($$(g2), u, v) } { exists_path($$(g2 union g1), u, v) } (u in g2) && ((v in g2) && exists_path($$(g2), u, v)) ==> exists_path($$(g2 union g1), u, v))
+  inhale (g1 union g2) == (g2 union g1)
+  inhale (forall u: Ref, v: Ref :: { exists_path($$(g1), u, v) } { exists_path($$((g1 union g2)), u, v) } (u in g1) && ((v in g1) && exists_path($$(g1), u, v)) ==> exists_path($$((g1 union g2)), u, v))
+  inhale (forall u: Ref, v: Ref :: { exists_path($$(g2), u, v) } { exists_path($$((g2 union g1)), u, v) } (u in g2) && ((v in g2) && exists_path($$(g2), u, v)) ==> exists_path($$((g2 union g1)), u, v))
+  inhale (forall u: Ref, v: Ref :: { exists_path($$(g1), u, v) } { exists_path($$((g1 union g2)), u, v) } (u in g1) && ((v in g1) && !exists_path($$((g1 union g2)), u, v)) ==> !exists_path($$(g1), u, v))
+  inhale (forall u: Ref, v: Ref :: { exists_path($$(g2), u, v) } { exists_path($$((g2 union g1)), u, v) } (u in g2) && ((v in g2) && !exists_path($$((g2 union g1)), u, v)) ==> !exists_path($$(g2), u, v))
   
   // Assume there are no paths from closed Graph g1 to disjoint g2 
-inhale (forall v1: Ref, v2: Ref :: { exists_path($$(g1 union g2), v1, v2) } (v1 in g1) && (v2 in g2) ==> !exists_path($$(g1 union g2), v1, v2))
+inhale (forall v1: Ref, v2: Ref :: { exists_path($$((g1 union g2)), v1, v2) } (v1 in g1) && (v2 in g2) ==> !exists_path($$((g1 union g2)), v1, v2))
   
   // Register that g is of type OurGraph, inhale GRAPH(g) and CLOSED(g)
 inhale !((null in g)) && (forall n: Ref :: { n.next } (n in g) ==> acc(n.next, write))
   
   // Apply TC Framing for g2 and g setminus g2
-exhale (forall n: Ref :: { (n in g2),(n in g setminus g2) } (n in g2) ==> !((n in g setminus g2)))
-  exhale (forall n: Ref :: { (n in g2),(n in g setminus g2) } (n in g setminus g2) ==> !((n in g2)))
-  inhale g2 union g setminus g2 == g setminus g2 union g2
-  inhale (forall u: Ref, v: Ref :: { exists_path($$(g2), u, v) } { exists_path($$(g2 union g setminus g2), u, v) } (u in g2) && ((v in g2) && exists_path($$(g2), u, v)) ==> exists_path($$(g2 union g setminus g2), u, v))
-  inhale (forall u: Ref, v: Ref :: { exists_path($$(g setminus g2), u, v) } { exists_path($$(g setminus g2 union g2), u, v) } (u in g setminus g2) && ((v in g setminus g2) && exists_path($$(g setminus g2), u, v)) ==> exists_path($$(g setminus g2 union g2), u, v))
+exhale (forall n: Ref :: { (n in g2),(n in (g setminus g2)) } (n in g2) ==> !((n in (g setminus g2))))
+  exhale (forall n: Ref :: { (n in g2),(n in (g setminus g2)) } (n in (g setminus g2)) ==> !((n in g2)))
+  inhale (g2 union (g setminus g2)) == ((g setminus g2) union g2)
+  inhale (forall u: Ref, v: Ref :: { exists_path($$(g2), u, v) } { exists_path($$((g2 union (g setminus g2))), u, v) } (u in g2) && ((v in g2) && exists_path($$(g2), u, v)) ==> exists_path($$((g2 union (g setminus g2))), u, v))
+  inhale (forall u: Ref, v: Ref :: { exists_path($$((g setminus g2)), u, v) } { exists_path($$(((g setminus g2) union g2)), u, v) } (u in (g setminus g2)) && ((v in (g setminus g2)) && exists_path($$((g setminus g2)), u, v)) ==> exists_path($$(((g setminus g2) union g2)), u, v))
+  inhale (forall u: Ref, v: Ref :: { exists_path($$(g2), u, v) } { exists_path($$((g2 union (g setminus g2))), u, v) } (u in g2) && ((v in g2) && !exists_path($$((g2 union (g setminus g2))), u, v)) ==> !exists_path($$(g2), u, v))
+  inhale (forall u: Ref, v: Ref :: { exists_path($$((g setminus g2)), u, v) } { exists_path($$(((g setminus g2) union g2)), u, v) } (u in (g setminus g2)) && ((v in (g setminus g2)) && !exists_path($$(((g setminus g2) union g2)), u, v)) ==> !exists_path($$((g setminus g2)), u, v))
   
   // Apply TC Framing for g1 and g setminus g1
-exhale (forall n: Ref :: { (n in g1),(n in g setminus g1) } (n in g1) ==> !((n in g setminus g1)))
-  exhale (forall n: Ref :: { (n in g1),(n in g setminus g1) } (n in g setminus g1) ==> !((n in g1)))
-  inhale g1 union g setminus g1 == g setminus g1 union g1
-  inhale (forall u: Ref, v: Ref :: { exists_path($$(g1), u, v) } { exists_path($$(g1 union g setminus g1), u, v) } (u in g1) && ((v in g1) && exists_path($$(g1), u, v)) ==> exists_path($$(g1 union g setminus g1), u, v))
-  inhale (forall u: Ref, v: Ref :: { exists_path($$(g setminus g1), u, v) } { exists_path($$(g setminus g1 union g1), u, v) } (u in g setminus g1) && ((v in g setminus g1) && exists_path($$(g setminus g1), u, v)) ==> exists_path($$(g setminus g1 union g1), u, v))
-  g := g1 union g2
+exhale (forall n: Ref :: { (n in g1),(n in (g setminus g1)) } (n in g1) ==> !((n in (g setminus g1))))
+  exhale (forall n: Ref :: { (n in g1),(n in (g setminus g1)) } (n in (g setminus g1)) ==> !((n in g1)))
+  inhale (g1 union (g setminus g1)) == ((g setminus g1) union g1)
+  inhale (forall u: Ref, v: Ref :: { exists_path($$(g1), u, v) } { exists_path($$((g1 union (g setminus g1))), u, v) } (u in g1) && ((v in g1) && exists_path($$(g1), u, v)) ==> exists_path($$((g1 union (g setminus g1))), u, v))
+  inhale (forall u: Ref, v: Ref :: { exists_path($$((g setminus g1)), u, v) } { exists_path($$(((g setminus g1) union g1)), u, v) } (u in (g setminus g1)) && ((v in (g setminus g1)) && exists_path($$((g setminus g1)), u, v)) ==> exists_path($$(((g setminus g1) union g1)), u, v))
+  inhale (forall u: Ref, v: Ref :: { exists_path($$(g1), u, v) } { exists_path($$((g1 union (g setminus g1))), u, v) } (u in g1) && ((v in g1) && !exists_path($$((g1 union (g setminus g1))), u, v)) ==> !exists_path($$(g1), u, v))
+  inhale (forall u: Ref, v: Ref :: { exists_path($$((g setminus g1)), u, v) } { exists_path($$(((g setminus g1) union g1)), u, v) } (u in (g setminus g1)) && ((v in (g setminus g1)) && !exists_path($$(((g setminus g1) union g1)), u, v)) ==> !exists_path($$((g setminus g1)), u, v))
+  g := (g1 union g2)
 }
