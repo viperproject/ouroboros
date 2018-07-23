@@ -163,7 +163,12 @@ method unlink_ZOPG_$field$(g:Set[Ref], node:Ref)
 method link_ZOPG_$field$(g:Set[Ref], from:Ref, to:Ref)
     requires from in g
     requires to != null
-    requires PROTECTED_GRAPH(g,from, $field$) && from.$field$ == null && !exists_path($$(g), from, to)
+    requires PROTECTED_GRAPH(g,from, $field$) && from.$field$ == null &&
+            (forall u: Ref, v:Ref ::
+                {exists_path($$(g),u,from), exists_path($$(g), to, v)}
+                    u in g && v in g && u != v && exists_path($$(g), u, v) ==>
+                        !(exists_path($$(g), u, from)) ||
+                            !(exists_path($$(g), to, v))) //!exists_path($$(g), from, to)
     ensures PROTECTED_GRAPH(g,from, $field$)
     ensures from.$field$ == to
     ensures to == null ==> $$(g) == old($$(g))

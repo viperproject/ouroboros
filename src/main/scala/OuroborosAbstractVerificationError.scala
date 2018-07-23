@@ -67,6 +67,13 @@ object reasons {
 
     def withNode(offendingNode: errors.ErrorNode = this.offendingNode) = NotDisjointGraphsReason(offendingNode, this.explanation)
   }
+
+  case class CyclicGraphReason(offendingNode: ErrorNode, explanation: String) extends AbstractErrorReason {
+    val id = "graph.not.acyclic"
+    val readableMessage = explanation
+
+    def withNode(offendingNode: errors.ErrorNode = this.offendingNode) = CyclicGraphReason(offendingNode, this.explanation)
+  }
 }
 
 abstract class OuroborosAbstractError extends AbstractError { }

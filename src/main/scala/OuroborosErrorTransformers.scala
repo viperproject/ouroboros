@@ -1,11 +1,11 @@
 package viper.silver.plugin
 
-import viper.silver.ast.{ErrTrafo, Exp, Node}
-import viper.silver.plugin.errors.OuroborosGraphSpecificactionError
-import viper.silver.plugin.reasons.{InsufficientGraphPermission, NotDisjointGraphsReason, NullInGraphReason, OpenGraphReason}
+import viper.silver.ast.{ErrTrafo, Exp, FieldAssign, Node}
+import viper.silver.plugin.errors.{OuroborosAssignmentError, OuroborosGraphSpecificactionError, OuroborosInternalEncodingError}
+import viper.silver.plugin.reasons._
 import viper.silver.verifier.AbstractVerificationError
-import viper.silver.verifier.errors.{ContractNotWellformed, LoopInvariantNotEstablished, LoopInvariantNotPreserved, PostconditionViolated}
-import viper.silver.verifier.reasons.{AssertionFalse, InsufficientPermission}
+import viper.silver.verifier.errors._
+import viper.silver.verifier.reasons.{AssertionFalse, InsufficientPermission, InternalReason}
 
 object OuroborosErrorTransformers {
 
@@ -132,4 +132,64 @@ object OuroborosErrorTransformers {
       )
     }
   )
+
+  def acyclicGraphErrTrafo(graph: Node) = ErrTrafo(
+    {
+      case x if x.reason.isInstanceOf[AssertionFalse] => OuroborosGraphSpecificactionError(
+        graph.toString(),
+        x.offendingNode,
+        CyclicGraphReason(
+          x.offendingNode,
+          s"Graph $graph might not be acyclic."
+        )
+      )
+      case x if x.reason.isInstanceOf[InsufficientPermission] => OuroborosInternalEncodingError(
+        x.offendingNode,
+        InsufficientGraphPermission(
+          x.offendingNode,
+          s"Might have insufficient permission to access all fields of $graph."
+        )
+      )
+    }
+  )
+
+  def unlinkErrTrafo(fa: FieldAssign): ErrTrafo = {
+    //TODO improve Error messages
+    ErrTrafo({
+      case x: PreconditionInCallFalse =>
+        x.reason match {
+          case r: InsufficientPermission => OuroborosAssignmentError(x.offendingNode,
+            InsufficientGraphPermission(x.offendingNode, s"There might be insufficient permissiion to get read access to the ${fa.lhs.field.name} fields of all elements in ${x.offendingNode.args.head} " +
+              s"and write access to the ${fa.lhs.field.name} field of ${x.offendingNode.args(1)}. Original message: " + x.reason.readableMessage),
+            x.cached)
+
+          case r: AssertionFalse => OuroborosAssignmentError(x.offendingNode,
+            NotInGraphReason(x.offendingNode, s"${x.offendingNode.args(1)} might not be in ${x.offendingNode.args.head}" +
+              s" or null might be in ${x.offendingNode.args.head}. Original message: " + x.reason.readableMessage),
+            x.cached)
+
+          case _ => OuroborosAssignmentError(x.offendingNode,
+            InternalReason(x.offendingNode, "internal error in unlink: " + x.reason.readableMessage),
+            x.cached)
+        }
+      case x => x
+    })
+  }
+
+  def linkErrTrafo(fa: FieldAssign): ErrTrafo = {
+    ErrTrafo({
+      case x: PreconditionInCallFalse =>
+        x.reason match {
+          case r: AssertionFalse => OuroborosAssignmentError(x.offendingNode,
+            NotInGraphReason(x.offendingNode, s"Assignment Error: ${x.offendingNode.args(2)} might not be in ${x.offendingNode.args.head}. " +
+              s"Original Message: ${x.reason.readableMessage}"),
+            x.cached)
+
+          case xy => OuroborosAssignmentError(x.offendingNode,
+            InternalReason(x.offendingNode, "internal error in link: " + x.reason.readableMessage),
+            x.cached)
+        }
+      case x => x
+    })
+  }
 }

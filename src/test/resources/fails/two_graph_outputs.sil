@@ -7,7 +7,7 @@ method test(g0: Graph[_,Closed], g1: Graph[_,Closed]) returns  (g: Graph[ZOPG,_]
     g := g0
     //gg := g1
     assert CLOSED(g)
-    assert CLOSED(g0 union g1 union g union gg)
+    assert CLOSED(g0 union g1 union g /*union gg*/)
     //:: ExpectedOutput(assert.failed:assertion.false)
     assert false
 }

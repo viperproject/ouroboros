@@ -56,16 +56,16 @@ define RING(nodes)
 
 
 
-field next:Ref
-//field val:Int
+field next:Node
+field val:Int
 
 
-/*
-method ringInsert(g:Graph, start:Node, x:Int)
-    returns (new_g:Graph, new_node:Node, new_start:Node)
+method ringInsert(g:Graph[ZOPG, Closed], start:Node, x:Int)
+    returns (new_g:Graph[ZOPG, Closed], new_node2:Node, new_start:Node)
 
-    requires RING(g)
-    requires UNSHARED_CONNECTED(g)
+    //requires RING(g)
+    requires FUNCTIONAL(g) && UNSHARED(g) && (forall u: Ref, v: Ref :: {exists_path($$(g), v, u)}{exists_path($$(g), u, v)} u in g && v in g ==> exists_path($$(g), u, v) || exists_path($$(g), v, u)) //&& CONNECTED(g)
+    requires forall n: Ref :: {n.next} n in g ==> n.next in g && n.next != null
     requires start in g
 
     requires forall n:Node, m:Node ::
@@ -74,25 +74,31 @@ method ringInsert(g:Graph, start:Node, x:Int)
 
     requires forall n:Ref :: { n.val } n in g ==> acc(n.val)
 
-    ensures RING(new_g)
-    ensures UNSHARED_CONNECTED(new_g)
+   // ensures RING(new_g)
+    ensures UNSHARED(new_g)
     ensures new_start in new_g
-    ensures !(new_node in g) && new_node in new_g
+    ensures !(new_node2 in g) && new_node2 in new_g
 
     // ensures forall n:Ref, m:Ref ::
     //     { exists_path($$(new_g),n,m) }
     //         n in new_g && m in new_g
     //             ==> exists_path($$(new_g),n,m) && exists_path($$(new_g),m,n)
 {
-    new_g, new_node := create_node(g, x)
+    //var n:Node := new_node2()
+    //new_g, 
+    new_node2 := new_node()//create_node(g/*, x*/)
+    inhale acc(new_node2.val, write)
+    new_g := g union Set(new_node2)//UNIVERSE
 
-    var node:Ref := start
+    var node:Node := start
 
     while ( !( node.val <= x && x < node.next.val
                || node.next == start && ( node.val <= x || x < start.val ) ) )
 
-        invariant RING(g)
-        invariant UNSHARED_CONNECTED(g)
+        //invariant RING(g)
+        invariant FUNCTIONAL(g) && UNSHARED(g) && (forall u: Ref, v: Ref :: {exists_path($$(g), v, u)}{exists_path($$(g), u, v)} u in g && v in g ==> exists_path($$(g), u, v) || exists_path($$(g), v, u)) //&& CONNECTED(g)
+        invariant forall n: Ref :: {n.next} n in g ==> n.next in g && n.next != null
+        invariant forall n: Ref :: {n.val} n in new_g ==> acc(n.val, write)
         invariant node in g
 
         invariant forall n:Node, m:Node ::
@@ -103,11 +109,10 @@ method ringInsert(g:Graph, start:Node, x:Int)
     }
 
     if ( node.next == start && x < start.val ) {
-        new_start := new_node
+        new_start := new_node2
     } else {
         new_start := start
     }
-
-    new_node.next := node.next
-    node.next := new_node
-*/
+}
+    // new_node2.next := node.next
+    // node.next := new_node2

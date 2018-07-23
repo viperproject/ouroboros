@@ -88,17 +88,46 @@ method unlink_$field$(g:Set[Ref], x:Ref)
 //                exists_path($$(g),v1,v2) <==>
 //                    exists_path(old($$(g)),v1,v2) && !(exists_path(old($$(g)),v1,x) && exists_path(old($$(g)),old(x.$field$),v2))))
 
-/*TODO for unlink DAGS*/
-//    ensures old(x.$field$) != null ==> forall v1:Ref, v2:Ref ::
-//        { exists_path($$(g),v1,v2) }
-//            //v1 != v2 ==>
-//            ( exists_path($$(g),v1,v2) <==> (v1==v2) || (v1!=v2 && (
-//                ( exists n:Ref :: exists_path(old($$(g)),v1,n) && exists_path(old($$(g)),n,v2) && ( !exists_path(old($$(g)),n,x) && !exists_path(old($$(g)),x,n) || !exists_path(old($$(g)),n,old(x.$field$)) && !exists_path(old($$(g)),old(x.$field$),n) ) )
-//                ||
-//                ( exists n:Ref :: n != x && n != old(x.$field$) && exists_path(old($$(g)),x,n) && exists_path(old($$(g)),n,old(x.$field$)) )
-//                ||
-//                ( exists u:Ref, v:Ref :: (u != x || v != old(x.$field$)) && edge(old($$(g)),u,v) && exists_path(old($$(g)),v1,u) && exists_path(old($$(g)),u,x) && exists_path(old($$(g)),old(x.$field$),v) && exists_path(old($$(g)),v,v2) )
-//            ) ) )
+//Discussed and looked into the paper and seems to be sound on 18 july 2018
+method unlink_DAG_$field$(g: Set[Ref], x:Ref)
+    requires x in g
+    requires PROTECTED_GRAPH(g,x,$field$)// && acyclic_graph($$(g))
+    ensures PROTECTED_GRAPH(g,x,$field$)
+    ensures x.$field$ == null
+    ensures old(x.$field$) == null ==> $$(g) == old($$(g))
+    ensures old(x.$field$) != null ==> forall v1:Ref, v2:Ref ::
+        { edge($$(g),v1,v2) }
+            edge($$(g),v1,v2) <==> edge(old($$(g)),v1,v2) && !(v1==x && v2==old(x.$field$))
+    ensures old(x.$field$) != null ==> forall v1:Ref, v2:Ref ::
+        { exists_path($$(g),v1,v2) }
+             exists_path($$(g),v1,v2) <==> (v1==v2) ||
+                ( exists n:Ref :: exists_path(old($$(g)),v1,n) && exists_path(old($$(g)),n,v2) &&
+                    ( !exists_path(old($$(g)),n,x) && !exists_path(old($$(g)),x,n) ||
+                      !exists_path(old($$(g)),n,old(x.$field$)) && !exists_path(old($$(g)),old(x.$field$),n) )
+                )
+                ||
+                ( exists n:Ref :: n != x && n != old(x.$field$) && exists_path(old($$(g)),x,n) && exists_path(old($$(g)),n,old(x.$field$)) )
+                ||
+                ( exists u:Ref, v:Ref :: (u != x || v != old(x.$field$)) && edge(old($$(g)),u,v) && exists_path(old($$(g)),v1,u) &&
+                                                                            exists_path(old($$(g)),u,x) && exists_path(old($$(g)),old(x.$field$),v) &&
+                                                                            exists_path(old($$(g)),v,v2) )
+    //ensures acyclic_graph($$(g))
+
+
+method link_DAG_$field$(g:Set[Ref], x:Ref, y:Ref)
+    requires x in g
+    requires y != null ==> y in g
+    requires PROTECTED_GRAPH(g,x,$field$) && !(exists_path($$(g), y, x))
+    ensures PROTECTED_GRAPH(g,x,$field$)
+    ensures x.$field$ == y
+    ensures y == null ==> $$(g) == old($$(g))
+    ensures y != null ==> forall v1:Ref, v2:Ref ::
+        { edge(old($$(g)),v1,v2) }
+            edge($$(g),v1,v2) <==> edge(old($$(g)),v1,v2) || (v1==x && v2==y)
+    ensures y != null ==> forall v1:Ref, v2:Ref ::
+        { exists_path($$(g),v1,v2) }
+            exists_path($$(g),v1,v2) <==> exists_path(old($$(g)),v1,v2) || (exists_path(old($$(g)),v1,x) && exists_path(old($$(g)),y,v2))
+    ensures acyclic_graph($$(g))
 
 function apply_no_exit_closed(EG: Set[Edge], g1: Set[Ref], g2: Set[Ref]): Bool
     requires PROTECTED_GRAPH(g1) && CLOSED(g1)
@@ -124,4 +153,7 @@ function FOREST_decl(g:Set[Ref]): Bool
 function CLOSED_FOREST_decl(g: Set[Ref]): Bool
 
 method update_$field$(g:Set[Ref], x:Ref, y:Ref)
+
+method update_DAG_$field$(g:Set[Ref], x:Ref, y:Ref)
+
 

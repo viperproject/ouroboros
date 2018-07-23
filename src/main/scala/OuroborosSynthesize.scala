@@ -170,6 +170,27 @@ object OuroborosSynthesize {
               idndef = PIdnDef(s"update_ZOPG_$f"))(
               "$field$", f)
         )
+      case m: PMethod if m.idndef.name == "link_DAG_$field$" =>
+        fields.map(
+          f =>
+            m.deepCopyWithNameSubstitution(
+              idndef = PIdnDef(s"link_DAG_$f"))(
+              "$field$", f)
+        )
+      case m: PMethod if m.idndef.name == "unlink_DAG_$field$" =>
+        fields.map(
+          f =>
+            m.deepCopyWithNameSubstitution(
+              idndef = PIdnDef(s"unlink_DAG_$f"))(
+              "$field$", f)
+        )
+      case m: PMethod if m.idndef.name == "update_DAG_$field$" =>
+        fields.map(
+          f =>
+            m.deepCopyWithNameSubstitution(
+              idndef = PIdnDef(s"update_DAG_$f"))(
+              "$field$", f)
+        )
       case m: PMethod if m.idndef.name == "create_node" =>
         m.body match {
           case None => Seq(m)

@@ -7,7 +7,7 @@ import scala.collection.mutable
 
 object OuroborosMemberInliner {
   var zopgUsed: Boolean = false
-  def inlineFunction(fc: FuncApp, input: Program, pos: Position, info: Info, errT: ErrorTrafo): Exp = {
+  def inlineFunctionApp(fc: FuncApp, input: Program, pos: Position, info: Info, errT: ErrorTrafo): Exp = {
     val func = input.findFunction(fc.funcname)
     func.body match {
       case Some(macro_def) =>
@@ -25,7 +25,7 @@ object OuroborosMemberInliner {
     }
   }
 
-  def inlineMethod(mc: MethodCall, input: Program, pos: Position, info: Info, errT: ErrorTrafo): Stmt = {
+  def inlineMethodCall(mc: MethodCall, input: Program, pos: Position, info: Info, errT: ErrorTrafo): Stmt = {
     val calledMethod = input.findMethod(mc.methodName)
     val methodArgs = calledMethod.formalArgs.map(arg => arg.name)
     val callArgs = mc.args
@@ -85,7 +85,7 @@ object OuroborosMemberInliner {
     }
   }
 
-  def inlineInhaleFunction(inhale: Inhale, fc: FuncApp,  input: Program, pos: Position, info: Info, errT: ErrorTrafo): Stmt = {
+  def inlineFunctionAppInhale(inhale: Inhale, fc: FuncApp, input: Program, pos: Position, info: Info, errT: ErrorTrafo): Stmt = {
     val func = input.findFunction(fc.funcname)
     val funcArgs = func.formalArgs.map(arg => arg.name)
     val callArgs = fc.getArgs

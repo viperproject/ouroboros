@@ -13,10 +13,14 @@ import scala.collection.mutable
 class OuroborosGraphHandler {
 
   //var graph_keywords: mutable.Map[String, String] = mutable.Map.empty[String, String]
+  def ref_fields(fields: Seq[Field]): Seq[Field] = {
+    fields.filter(f => OuroborosNames.ref_fields.contains(f.name))
+  }
 
   def handleMethod(input: Program, m: Method, s: Option[OurGraphSpec], ctx: ContextC[Node, String]): Method = s match {
     case None => m
     case Some(ss) =>
+      val refFields = ref_fields(input.fields)
       val inputObjects: Seq[(OurObject, LocalVarDecl)] = ss.inputs.map(obj => (obj,m.formalArgs.filter(arg => arg.name == obj.name).head))
       val outputObjects: Seq[(OurObject, LocalVarDecl)] = ss.outputs.map(obj => (obj,m.formalReturns.filter(arg => arg.name == obj.name).head))
       val inputGraphs = {
@@ -28,8 +32,8 @@ class OuroborosGraphHandler {
         m.name,
         m.formalArgs,
         m.formalReturns,
-        disjointGraphs(inputGraphs, input) ++ inputTypesAndClosed(inputObjects, input.fields, input, m) ++ m.pres,
-        outputTypes(outputObjects ++ inputObjects, input.fields, input, m) ++ m.posts,
+        disjointGraphs(inputGraphs, input) ++ inputTypesAndClosed(inputObjects, refFields, input, m) ++ m.pres,
+        outputTypes(outputObjects ++ inputObjects, refFields, input, m) ++ m.posts,
         handleMethodBody(input, m.body, inputGraphs, outputGraphs, inputObjects) /* ++ TCFraming*/
       ) (m.pos, m.info, m.errT)
   }
@@ -255,7 +259,7 @@ def GRAPH(graph: Exp, fields: Seq[Field], input: Program, closed: Boolean, qpsNe
     ).asInstanceOf[Exp]
   }
 
-  private def CLOSED( decl: Exp, input: Program): Exp ={
+  def CLOSED( decl: Exp, input: Program): Exp ={
     val closed = input.findFunction(OuroborosNames.getIdentifier("CLOSED"))
     val closedCallErrTrafo = OuroborosErrorTransformers.closedGraphErrTrafo(Seq(decl))
     val closedCall = FuncApp(closed, Seq(decl))(decl.pos, decl.info, closedCallErrTrafo)
@@ -352,6 +356,6 @@ def GRAPH(graph: Exp, fields: Seq[Field], input: Program, closed: Boolean, qpsNe
         LocalVar(closedGraph.name)(SetType(Ref)),
         LocalVar(graph2.name)(SetType(Ref))
       ))()
-    )(closedGraph.pos, SimpleInfo(Seq("", s"Assume there are no paths from closed Graph ${closedGraph.name} to disjoint ${graph2.name} \n")))
+    )(closedGraph.pos, SimpleInfo(Seq("", s"Assume there are no paths from closed Graph ${closedGraph.name} to disjoint Graph ${graph2.name} \n")))
   }
 }

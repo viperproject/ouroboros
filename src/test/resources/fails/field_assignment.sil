@@ -1,12 +1,16 @@
 field n1: Node
-method test(g: Graph[_,_])
-
+method test(g: Graph[_,_], x: Node)
+requires x in g
 {
     var g2: Graph[DAG,_] //:= Set()
 
-    g2 := g
+    //g2 := g
 
-    inhale DISJOINT(g, g2)
+    //inhale DISJOINT(g, g2)
+    // assert g2 == g
+    // assert DISJOINT(g, g2)
+    // assert |g| == 0
+    // assert |g2| == 0
     //exhale GRAPH(g2)
 
     //assert false
@@ -17,6 +21,7 @@ method test(g: Graph[_,_])
     }
     var n: Node
     n := new(*)
+    UPDATE_DAG(n1, g2 union Set(n), x, n)
     var n4: Node
     var n2: Node
     var n3: Node

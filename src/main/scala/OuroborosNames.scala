@@ -9,17 +9,19 @@ import viper.silver.parser._
 import scala.collection.mutable
 
 object OuroborosNames {
-  val reserved_keywords = Set("CLOSED_ZOPG", "ZOPG", "CLOSED_GRAPH", "GRAPH", "ACYCLIC", "FUNCTIONAL", "Graph", "ClosedGraph", "ZOPG", "ClosedZOPG", "Node", "CLOSED", "DISJOINT", "UPDATE", "UPDATE_ZOPG", "apply_TCFraming", "new_node")
+  val reserved_keywords = Set("CLOSED_ZOPG", "ZOPG", "CLOSED_GRAPH", "GRAPH", "ACYCLIC", "FUNCTIONAL", "Graph", "ClosedGraph", "ZOPG", "ClosedZOPG", "Node", "CLOSED", "DISJOINT", "UPDATE", "UPDATE_ZOPG", "apply_TCFraming", "new_node", "UNIVERSE")
 
 
   var graph_keywords: mutable.Map[String, String] = mutable.Map.empty[String, String]
   var used_names: Set[String] = Set[String]()
   var macroNames: mutable.Map[String, Option[ErrorTrafo]] = mutable.Map.empty[String, Option[ErrorTrafo]]//Set()
+  var ref_fields: Seq[String] = Seq[String]()
 
   def reset() = {
     graph_keywords = mutable.Map.empty[String, String]
     used_names = Set[String]()
     macroNames = mutable.Map.empty[String, Option[ErrorTrafo]]
+    ref_fields = Seq[String]()
   }
 
   def getIdentifier(name : String): String = graph_keywords.get(name) match{
@@ -91,10 +93,9 @@ object OuroborosNames {
             u
           } else {
             OuroborosNames.graph_keywords.get(u.name) match {
-              case None => {
+              case None =>
                 val newName = OuroborosNames.getNewName(u.name)
                 PIdnUse(newName)
-              }
               case Some(newName) => PIdnUse(newName)
             }
           }

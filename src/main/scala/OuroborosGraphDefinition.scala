@@ -318,11 +318,12 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
     ACYCLIC(prog, graph_exp.deepCopyAll[PExp], c), "&&", PBinExp(FUNCTIONAL(prog, graph_exp.deepCopyAll[PExp], c), "&&", UNSHARED(prog, graph_exp.deepCopyAll[PExp], c))).setPos(c)
 
   def ref_fields(prog: PProgram): Seq[String] = prog.fields.collect {
-    case PField(f, t) if t == TypeHelper.Ref => f.name
+    case PField(f, t) if t == TypeHelper.Ref => Seq(f.name)
     case x:PField => x.typ match {
-      case d: PDomainType if d.domain.name == "Node" => x.idndef.name
+      case d: PDomainType if d.domain.name == "Node" => Seq(x.idndef.name)
+      case _ => Seq()
     }
-  }
+  }.flatten
 
 
   def handlePMethod(input: PProgram, m: PMethod): PNode = {
@@ -466,6 +467,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
     m.method.name match {
       case "UPDATE" if m.args.length == 4 => genericUpdate(input, m)
       case "UPDATE_ZOPG" if m.args.length == 4 => zopgUpdate(input, m)
+      case "UPDATE_DAG" if m.args.length == 4 => dagUpdate(input, m)
       case _ => m
     }
   }
@@ -495,6 +497,23 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
       case field: PIdnUse =>
         val fieldName = field.name
         val updateMethodName = OuroborosNames.getIdentifier(s"update_ZOPG_$fieldName")
+        val copier = StrategyBuilder.Slim[PNode](PartialFunction.empty).duplicateEverything
+        val updateMethodCall = PMethodCall(
+          Seq(),
+          PIdnUse(updateMethodName),
+          m.args.tail.map(arg => copier.execute[PExp](arg).setPos(arg)) //TODO needed?
+        ).setPos(m)
+
+        updateMethodCall
+      case _ => m
+    }
+  }
+
+  def dagUpdate(input: PProgram, m:PMethodCall): PStmt = {
+    m.args.head match {
+      case field: PIdnUse =>
+        val fieldName = field.name
+        val updateMethodName = OuroborosNames.getIdentifier(s"update_DAG_$fieldName")
         val copier = StrategyBuilder.Slim[PNode](PartialFunction.empty).duplicateEverything
         val updateMethodCall = PMethodCall(
           Seq(),

@@ -82,11 +82,12 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
 
     //Get Ref Fields
     val ref_fields: Seq[String] = input.fields.collect {
-      case PField(f, t) if t == TypeHelper.Ref => f.name
+      case PField(f, t) if t == TypeHelper.Ref => Seq(f.name)
       case x:PField => x.typ match {
-        case d: PDomainType if d.domain.name == "Node" => x.idndef.name
+        case d: PDomainType if d.domain.name == "Node" => Seq(x.idndef.name)
+        case _ => Seq()
       }
-    }
+    }.flatten
     //logger.debug("REF_FIELDS: " + ref_fields)
 
     var preamble: PProgram =
@@ -168,6 +169,7 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
     val ourRewriter = StrategyBuilder.Slim[PNode](
       {
         //case p: PProgram => graph_handler.synthesizeParametricEntities(pprog)
+        case i: PProgram => OuroborosNames.ref_fields = graph_handler.ref_fields(i); i
         case m: PMethod => graph_handler.handlePMethod(pprog, m)
         case m: PCall => graph_handler.handlePCall(pprog, m)
         case m: PMethodCall => graph_handler.handlePMethodCall(pprog, m)
@@ -208,13 +210,13 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
     )
 
     val ourInliner = StrategyBuilder.Context[Node, mutable.Set[Declaration]]({
-      case (fc : FuncApp, ctx) if OuroborosNames.macroNames.contains(fc.funcname) => OuroborosMemberInliner.inlineFunction(fc, input, fc.pos, fc.info, fc.errT)
+      case (fc : FuncApp, ctx) if OuroborosNames.macroNames.contains(fc.funcname) => OuroborosMemberInliner.inlineFunctionApp(fc, input, fc.pos, fc.info, fc.errT)
 
       case (mc: MethodCall, ctx) if OuroborosNames.macroNames.contains(mc.methodName) || zOPGdomainNames.contains(mc.methodName) =>
-        OuroborosMemberInliner.inlineMethod(mc, input, mc.pos, mc.info, mc.errT)
+        OuroborosMemberInliner.inlineMethodCall(mc, input, mc.pos, mc.info, mc.errT)
 
       case (inhale: Inhale, ctx) => inhale.exp match {
-        case fc: FuncApp if OuroborosNames.macroNames.contains(fc.funcname) => OuroborosMemberInliner.inlineInhaleFunction(inhale, fc, input, inhale.pos, inhale.info, inhale.errT)
+        case fc: FuncApp if OuroborosNames.macroNames.contains(fc.funcname) => OuroborosMemberInliner.inlineFunctionAppInhale(inhale, fc, input, inhale.pos, inhale.info, inhale.errT)
         case _ => inhale
       }
     }, mutable.Set.empty[Declaration])
