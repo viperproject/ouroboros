@@ -74,47 +74,27 @@ class OuroborosGraphHandler {
         val obj = mapping._1
         val decl = mapping._2
         val graphErrTrafo = OuroborosErrorTransformers.graphErrTrafo(decl.name)
-        obj.typ match {
-          case _:Closed =>
-            allGraphs match {
-              case None => allGraphs = Some(
-                LocalVar(
-                  decl.name
-                )(decl.typ, decl.pos, decl.info, graphErrTrafo)
-              )
-              case Some(prev) => allGraphs = Some(
-                AnySetUnion(
-                  prev,
-                  LocalVar(
-                    decl.name
-                  )(decl.typ, decl.pos, decl.info, graphErrTrafo)
-                )(decl.pos, decl.info, graphErrTrafo)
-              )
-            }
-
-            val localVar = LocalVar(decl.name)(decl.typ, decl.pos, decl.info, decl.errT)
-            Seq(fold_GRAPH(localVar, fields, input, true, true, TrueLit()(), foldFunction(decl.name, localVar)))
-          case _:Closedness =>
-            allGraphs match {
-              case None => allGraphs = Some(
-                LocalVar(
-                  decl.name
-                )(decl.typ, decl.pos, decl.info, graphErrTrafo)
-              )
-              case Some(prev) => allGraphs = Some(
-                AnySetUnion(
-                  prev,
-                  LocalVar(
-                    decl.name
-                  )(decl.typ, decl.pos, decl.info, graphErrTrafo)
-                )(decl.pos, decl.info, graphErrTrafo)
-              )
-            }
-
-            val localVar = LocalVar(decl.name)(decl.typ, decl.pos, decl.info, decl.errT)
-            Seq(fold_GRAPH(localVar, fields, input, false, true, TrueLit()(), foldFunction(decl.name, localVar)))
+        val typ = obj.typ
+        val isDag = typ.isInstanceOf[DAG]
+        val isClosed = typ.isInstanceOf[Closed]
+        allGraphs match {
+          case None => allGraphs = Some(
+            LocalVar(
+              decl.name
+            )(decl.typ, decl.pos, decl.info, graphErrTrafo)
+          )
+          case Some(prev) => allGraphs = Some(
+            AnySetUnion(
+              prev,
+              LocalVar(
+                decl.name
+              )(decl.typ, decl.pos, decl.info, graphErrTrafo)
+            )(decl.pos, decl.info, graphErrTrafo)
+          )
         }
 
+        val localVar = LocalVar(decl.name)(decl.typ, decl.pos, decl.info, decl.errT)
+        Seq(fold_GRAPH(localVar, fields, input, isClosed, true, isDag, TrueLit()(), foldFunction(decl.name, localVar)))
       }
     )
 
@@ -135,50 +115,33 @@ class OuroborosGraphHandler {
           val obj = mapping._1
           val decl = mapping._2
           val graphErrTrafo = OuroborosErrorTransformers.graphErrTrafo(decl.name)
-          obj.typ match {
-            case _:Closed =>
-              allGraphs match {
-                case None => allGraphs = Some(
-                  LocalVar(
-                    decl.name
-                  )(decl.typ, decl.pos, decl.info, graphErrTrafo)
-                )
-                case Some(prev) => allGraphs = Some(
-                  AnySetUnion(
-                    prev,
-                    LocalVar(
-                      decl.name
-                    )(decl.typ, decl.pos, decl.info, graphErrTrafo)
-                  )(decl.pos, decl.info, graphErrTrafo) //TODO other position?
-                )
-              }
-              val postConditions : Seq[Exp] =
-                /*Seq(
-                  NO_NULL(LocalVar(decl.name)(decl.typ, decl.pos, decl.info, decl.errT), input),
-                  CLOSED(LocalVar(decl.name)(decl.typ, decl.pos, decl.info, decl.errT), input))*/
-              GRAPH(LocalVar(decl.name)(decl.typ, decl.pos, decl.info, decl.errT), fields, input, true, false)
-
-              additionalPostConditions = additionalPostConditions :+
-                OuroborosHelper.ourFold[Exp](postConditions, TrueLit()(), (foldedExp, exp) => And(foldedExp, exp)(exp.pos, exp.info, graphErrTrafo))
-            case _:Closedness =>
-              allGraphs match {
-                case None => allGraphs = Some(
-                  LocalVar(
-                    decl.name
-                  )(decl.typ, decl.pos, decl.info, graphErrTrafo)
-                )
-                case Some(prev) => allGraphs = Some(
-                  AnySetUnion(
-                    prev,
-                    LocalVar(
-                      decl.name
-                    )(decl.typ, decl.pos, decl.info, graphErrTrafo)
-                  )(decl.pos, decl.info, graphErrTrafo)
-                )
-              }
-              additionalPostConditions = additionalPostConditions :+ FuncApp(noNullInGraph, Seq(LocalVar(decl.name)(decl.typ, decl.pos, decl.info, graphErrTrafo)))(decl.pos, decl.info, graphErrTrafo)
-            //case OurList => //TODO
+          val typ = obj.typ
+          val isDag = typ.isInstanceOf[DAG]
+          val isClosed = typ.isInstanceOf[Closed]
+          allGraphs match {
+            case None => allGraphs = Some(
+              LocalVar(
+                decl.name
+              )(decl.typ, decl.pos, decl.info, graphErrTrafo)
+            )
+            case Some(prev) => allGraphs = Some(
+              AnySetUnion(
+                prev,
+                LocalVar(
+                  decl.name
+                )(decl.typ, decl.pos, decl.info, graphErrTrafo)
+              )(decl.pos, decl.info, graphErrTrafo) //TODO other position?
+            )
           }
+          val postConditions : Seq[Exp] =
+            /*Seq(
+              NO_NULL(LocalVar(decl.name)(decl.typ, decl.pos, decl.info, decl.errT), input),
+              CLOSED(LocalVar(decl.name)(decl.typ, decl.pos, decl.info, decl.errT), input))*/
+          GRAPH(LocalVar(decl.name)(decl.typ, decl.pos, decl.info, decl.errT), fields, input, isClosed, false, isDag)
+
+          additionalPostConditions = additionalPostConditions :+
+            OuroborosHelper.ourFold[Exp](postConditions, TrueLit()(), (foldedExp, exp) => And(foldedExp, exp)(exp.pos, exp.info, graphErrTrafo))
+
           mapping
         }
       )
@@ -201,15 +164,15 @@ def NO_NULL(decl: Exp, input: Program)= {
     noNullCall
 }
 
-def foldAndTransformGRAPH[B](graph: Exp, fields: Seq[Field], input: Program, closed: Boolean, qpsNeeded: Boolean, initialValue: B, transformFunction: (Exp => B), foldFunction: ((B, B) => B)): B = {
-  OuroborosHelper.transformAndFold[Exp, B](GRAPH(graph, fields, input, closed, qpsNeeded), initialValue, foldFunction, transformFunction)
+def foldAndTransformGRAPH[B](graph: Exp, fields: Seq[Field], input: Program, closed: Boolean, qpsNeeded: Boolean, dag: Boolean, initialValue: B, transformFunction: (Exp => B), foldFunction: ((B, B) => B)): B = {
+  OuroborosHelper.transformAndFold[Exp, B](GRAPH(graph, fields, input, closed, qpsNeeded, dag), initialValue, foldFunction, transformFunction)
 }
 
-def fold_GRAPH(graph: Exp, fields: Seq[Field], input: Program, closed: Boolean, qpsNeeded: Boolean, initialValue: Exp, foldFunction: ((Exp, Exp) => Exp)): Exp = {
-  OuroborosHelper.ourFold[Exp](GRAPH(graph, fields, input, closed, qpsNeeded), initialValue, foldFunction)
+def fold_GRAPH(graph: Exp, fields: Seq[Field], input: Program, closed: Boolean, qpsNeeded: Boolean, dag: Boolean, initialValue: Exp, foldFunction: ((Exp, Exp) => Exp)): Exp = {
+  OuroborosHelper.ourFold[Exp](GRAPH(graph, fields, input, closed, qpsNeeded, dag), initialValue, foldFunction)
 }
 
-def GRAPH(graph: Exp, fields: Seq[Field], input: Program, closed: Boolean, qpsNeeded: Boolean): Seq[Exp] = {
+def GRAPH(graph: Exp, fields: Seq[Field], input: Program, closed: Boolean, qpsNeeded: Boolean, dag: Boolean): Seq[Exp] = {
   val qpsForRefFieldErrTrafo = OuroborosErrorTransformers.qpsForRefFieldErrTrafo(graph.toString())
   val unExp : Exp = NO_NULL(graph, input)
   val QPForRefFields : Seq[Exp] = if(qpsNeeded)
@@ -221,8 +184,21 @@ def GRAPH(graph: Exp, fields: Seq[Field], input: Program, closed: Boolean, qpsNe
     )
   else Seq()
 
-  (unExp +: QPForRefFields) ++ InGraphForallsForRefFields
+  val dagProperty = if(dag)
+    Seq(DAG(graph, input))
+  else
+  Seq()
+
+  (unExp +: QPForRefFields) ++ InGraphForallsForRefFields ++ dagProperty
 }
+
+  def DAG(graph: Exp, input: Program): Exp = {
+    val acyclicFunctionName = OuroborosNames.getIdentifier("acyclic_graph")
+    val acyclicFunction = input.findDomainFunction(acyclicFunctionName)
+    val $$FunctionName = OuroborosNames.getIdentifier("$$")
+    val $$Function = input.findFunction($$FunctionName)
+    DomainFuncApp(acyclicFunction, Seq(FuncApp($$Function, Seq(graph))(graph.pos, graph.info, graph.errT)), Map.empty[TypeVar, Type])(graph.pos, graph.info, graph.errT)
+  }
 /*def GRAPH[B](graph: Exp, fields: Seq[Field], input: Program, closed: Boolean, initialValue: B, foldFunction: ((B, Exp) => B)): B = {
   val graphErrTrafo = OuroborosErrorTransformers.graphErrTrafo(graph.toString())
   val qpsForRefFieldErrTrafo = OuroborosErrorTransformers.qpsForRefFieldErrTrafo(graph.toString())

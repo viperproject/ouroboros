@@ -160,15 +160,21 @@ method unlink_ZOPG_$field$(g:Set[Ref], node:Ref)
                         DEP(old($$(g)), x, y, u, v) && !DEP(old($$(g)), x, y, node, old(node.$field$)) ==> DEP($$(g), x, y, u, v)    // trigger wisdom: ax_UnrollFromHead
                     )
 
+function update_ZOPG_invariant(g:Set[Ref], from:Ref, to:Ref): Bool
+//    requires x in g && y in g //Not needed, as this function is only used after unlink, where it is already asserted
+    requires PROTECTED_GRAPH(g)
+{
+    (forall u: Ref, v:Ref ::
+                    {exists_path($$(g),u,from), exists_path($$(g), to, v)}
+                        u in g && v in g && u != v && exists_path($$(g), u, v) ==>
+                            !(exists_path($$(g), u, from)) ||
+                                !(exists_path($$(g), to, v)))
+}
+
 method link_ZOPG_$field$(g:Set[Ref], from:Ref, to:Ref)
     requires from in g
     requires to != null
-    requires PROTECTED_GRAPH(g,from, $field$) && from.$field$ == null &&
-            (forall u: Ref, v:Ref ::
-                {exists_path($$(g),u,from), exists_path($$(g), to, v)}
-                    u in g && v in g && u != v && exists_path($$(g), u, v) ==>
-                        !(exists_path($$(g), u, from)) ||
-                            !(exists_path($$(g), to, v))) //!exists_path($$(g), from, to)
+    requires PROTECTED_GRAPH(g,from, $field$) && from.$field$ == null //!exists_path($$(g), from, to)
     ensures PROTECTED_GRAPH(g,from, $field$)
     ensures from.$field$ == to
     ensures to == null ==> $$(g) == old($$(g))

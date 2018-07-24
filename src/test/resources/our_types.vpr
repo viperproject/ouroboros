@@ -19,16 +19,19 @@ method test_link(g0:Graph[_,_], x1:Node, x2:Node, x3:Node, g1:Graph[_,_])
 
 
 
-
+/*
 method test_link_1(g0:Graph[_,_], x:Node)
     requires x in g0
 {
+    label l
     x.left := x.right
     x.right := null
-}
+    //Doesn't verify because multigraphs are not allowed
+    assert(EDGE(g0, x, old[l](x.right)))
+}*/
 
-/*
-method test_link_2(g0:Graph[_,_], g1:Graph[_,_], x:Node)
+
+/*method test_link_2(g0:Graph[_,_], g1:Graph[_,_], x:Node)
     requires x in g0
 {
     x.left := x.right
@@ -44,7 +47,7 @@ method test_link_3(g0:Graph[_,_], g1:Graph[_,_], g2:Graph[_,_], x:Node)
     x.right := null
 }*/
 
-/*
+/* //The more input graphs there are, the more no exit Axioms are inserted between unlink and link. This makes the verification slower
 method test_link_4(g0:Graph[_,_], g1:Graph[_,_], g2:Graph[_,_], g3: Graph[_,_], x:Node)
     requires x in g0
 {

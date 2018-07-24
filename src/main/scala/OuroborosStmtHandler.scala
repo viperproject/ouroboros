@@ -44,7 +44,6 @@ class OuroborosStmtHandler {
     }
 
     val universeName = OuroborosNames.getIdentifier("UNIVERSE")
-    val universeGraphDecl = LocalVarDecl(universeName, SetType(Ref))()
     val unionInputGraphs = OuroborosHelper.transformAndFold[String, Exp](
       inputGraphs.keySet.toSeq,
       EmptySet(Ref)(),
@@ -60,8 +59,8 @@ class OuroborosStmtHandler {
     //existingGraphs.put(None, mutable.Map.empty /*++ outputGraphs*/) //TODO if we have fields of graph type, it will be more complex
     val wrapper: OuroborosStmtWrapper = OuroborosStmtWrapper(input, inputGraphs, existingGraphs, None, mutable.Map.empty, mutable.Buffer.empty, mutable.Set.empty)
     handleSeqn(seqn, wrapper, true) match {
-      case s: Seqn => Seqn(inputGraphsUniverse +: s.ss, (s.scopedDecls :+ universeGraphDecl) /*++ outputGraphs.values.map(x => x._2)*/)(s.pos, s.info, s.errT)
-      case s => Seqn(Seq(inputGraphsUniverse, s), Seq(universeGraphDecl) /*++ outputGraphs.values.map(x => x._2)*/)(s.pos, s.info, s.errT)
+      case s: Seqn => Seqn(inputGraphsUniverse +: s.ss, (s.scopedDecls) /*++ outputGraphs.values.map(x => x._2)*/)(s.pos, s.info, s.errT)
+      case s => Seqn(Seq(inputGraphsUniverse, s), Seq() /*++ outputGraphs.values.map(x => x._2)*/)(s.pos, s.info, s.errT)
     }
   }
 
@@ -116,7 +115,7 @@ class OuroborosStmtHandler {
     val allScopes = (wrapper.newlyDeclaredVariables.keySet - None) &~ wrapper.dontConsiderScopes
     val allScopeSubsets = allScopes.subsets()
 
-    val universeAccess = graphHandler.GRAPH(universe(stmt.pos), graphHandler.ref_fields(wrapper.input.fields), wrapper.input, true, true)
+    val universeAccess = graphHandler.GRAPH(universe(stmt.pos), graphHandler.ref_fields(wrapper.input.fields), wrapper.input, true, true, false)
 
     val bodyScopeName = OuroborosNames.getNewName("bodyScope")
     val bodyScope = Some(LocalVarDecl(bodyScopeName, Bool)(stmt.pos, stmt.info, stmt.errT))
@@ -253,36 +252,61 @@ class OuroborosStmtHandler {
         }
         else
           call
-      case x => (genericUpdateNames ++ ZOPGUpdateNames ++ DAGUpdateNames).get(x) match {
+      case methodName => (genericUpdateNames ++ ZOPGUpdateNames ++ DAGUpdateNames).get(methodName) match {
         case Some(field) =>
           //TODO need to find out, which update method to use
-          if (ZOPGUpdateNames.contains(x)) OuroborosMemberInliner.zopgUsed = true
+          if (ZOPGUpdateNames.contains(methodName)) OuroborosMemberInliner.zopgUsed = true
           val copier = StrategyBuilder.Slim[Node](PartialFunction.empty).duplicateEverything
           val fieldName = field.name
           val $$Name = OuroborosNames.getIdentifier("$$")
-          val methodNames = if (genericUpdateNames.contains(x))
-            (OuroborosNames.getIdentifier(s"unlink_$fieldName"), OuroborosNames.getIdentifier(s"link_$fieldName"))
-          else if (ZOPGUpdateNames.contains(x))
+          val methodNames = if (genericUpdateNames.contains(methodName))
+            (OuroborosNames.getIdentifier(s"unlink_$fieldName"),
+              OuroborosNames.getIdentifier(s"link_$fieldName"))
+          else if (ZOPGUpdateNames.contains(methodName))
             (OuroborosNames.getIdentifier(s"unlink_ZOPG_$fieldName"),  OuroborosNames.getIdentifier(s"link_ZOPG_$fieldName"))
           else
             (OuroborosNames.getIdentifier(s"unlink_DAG_$fieldName"),  OuroborosNames.getIdentifier(s"link_DAG_$fieldName"))
 
+          val invariantFunctionName = if(ZOPGUpdateNames.contains(methodName))
+            Some(OuroborosNames.getIdentifier("update_ZOPG_invariant"))
+          else if(DAGUpdateNames.contains(methodName))
+            Some(OuroborosNames.getIdentifier("update_DAG_invariant"))
+          else
+            None
+
 
           val unlinkMethod = input.findMethod(methodNames._1)
           val linkMethod = input.findMethod(methodNames._2)
+          val invariantFunction = if(invariantFunctionName.isDefined)
+            Some(input.findFunction(invariantFunctionName.get))
+          else
+            None
 
           val unlinkMethodCall = MethodCall(
             unlinkMethod,
-            call.args.init.map(arg => copier.execute[Exp](arg)), /*
-            call.args.collect({
-              case arg if call.args.indexOf(arg) + 1 < call.args.size => copier.execute[Exp](arg)
-            }),*/
+            call.args.init.map(arg => copier.execute[Exp](arg)),
             Seq()
           )(call.pos, call.info, call.errT) //TODO own errT
 
           val noExitInhale = getNoExitAxioms(ExplicitSet(Seq(copier.execute[Exp](call.args(1))))(), input, wrapper)
 
+
+          val unlinkIfFieldIsNonNull = If(
+            NeCmp(
+              FieldAccess(unlinkMethodCall.args.last, field)(call.pos, call.info, call.errT),
+              NullLit()(call.pos, call.info, call.errT)
+            )(call.pos, call.info, call.errT),
+            Seqn(Seq(unlinkMethodCall, noExitInhale), Seq())(call.pos, call.info, call.errT),
+            Seqn(Seq(), Seq())(call.pos, call.info, call.errT))(call.pos, call.info, call.errT) //TODO own errT
           //val framingAxioms = getFramingAxioms(call.args.head, input, wrapper)
+
+          val invariantFuncAppAssertion = if(invariantFunction.isDefined) Some(Assert(
+            FuncApp(
+              invariantFunction.get,
+              call.args.map(arg => copier.execute[Exp](arg))
+            )()
+          )(call.pos, SimpleInfo(Seq("", s"Inserted invariant that is needed to preserve graph property after update.\n")), call.errT)) //TODO errT
+          else None
 
           val linkMethodCall = MethodCall(
             linkMethod,
@@ -290,11 +314,22 @@ class OuroborosStmtHandler {
             Seq()
           )(call.pos, call.info, call.errT)
 
+          val linkIfRhsIsNonNull = If(
+            NeCmp(
+              copier.execute[Exp](linkMethodCall.args.last),
+              NullLit()(call.pos, call.info, call.errT)
+            )(call.pos, call.info, call.errT),
+            Seqn(Seq(linkMethodCall), Seq())(call.pos, call.info, call.errT),
+            Seqn(Seq(), Seq())(call.pos, call.info, call.errT)
+          )(call.pos, call.info, call.errT) //TODO errTrafo
+
+          val seqOfStmts = if(invariantFuncAppAssertion.isDefined)
+            Seq(unlinkIfFieldIsNonNull, invariantFuncAppAssertion.get, linkIfRhsIsNonNull)
+          else
+            Seq(unlinkIfFieldIsNonNull, linkIfRhsIsNonNull)
+
           Seqn(
-            Seq(unlinkMethodCall,
-              (noExitInhale /*:+
-                framingAxioms */),
-              linkMethodCall),
+            seqOfStmts,
             Seq()
           )(call.pos, call.info, call.errT)
         case None =>

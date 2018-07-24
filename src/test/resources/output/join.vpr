@@ -127,8 +127,8 @@ method join(g1: Set[Ref], g2: Set[Ref]) returns (g: Set[Ref])
   ensures !((null in g2))
   ensures (forall n: Ref :: { (n.next in ((g union g1) union g2)) } { (n in ((g union g1) union g2)),n.next } (n in ((g union g1) union g2)) && n.next != null ==> (n.next in ((g union g1) union g2)))
 {
-  var g_init: Bool
   var UNIVERSE: Set[Ref]
+  var g_init: Bool
   UNIVERSE := (g2 union g1)
   g_init := false
   

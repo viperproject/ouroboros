@@ -27,7 +27,7 @@ method swap(g:Graph[_,_], x:Node, i:Int, j:Int)
         // TODO: memory safety should come from GraphTypes and node-graph relations
         invariant x in g
         // TODO: generate automatically
-        invariant GRAPH(g)
+        //invariant GRAPH(g)
 
         // TODO[handwritten specs]
         // counter variables

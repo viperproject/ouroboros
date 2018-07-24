@@ -126,14 +126,14 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
     val macroDefinitivePAST: PProgram = OuroborosNames.getNewNames(macroSynthesizedFile, ref_fields)
     val zOPGDomainDefinitive = OuroborosNames.getNewNames(zOPGDomainSynthesized, ref_fields)
 
-    zOPGdomainNames ++= (zOPGDomainDefinitive.domains ++ zOPGDomainDefinitive.methods).map(d => d.idndef.name)
+    zOPGdomainNames ++= (zOPGDomainDefinitive.domains ++ zOPGDomainDefinitive.methods ++ zOPGDomainDefinitive.functions).map(d => d.idndef.name)
 
     preamble = PProgram(
       preamble.imports ++ macroDefinitivePAST.imports,
       Seq(),//preamble.macros ++ macroDefinitivePAST.macros,
       preamble.domains ++ macroDefinitivePAST.domains ++ zOPGDomainDefinitive.domains,
       preamble.fields ++ macroDefinitivePAST.fields,
-      preamble.functions ++ macroDefinitivePAST.functions,
+      preamble.functions ++ macroDefinitivePAST.functions ++ zOPGDomainDefinitive.functions,
       preamble.predicates ++ macroDefinitivePAST.predicates,
       preamble.methods ++ macroDefinitivePAST.methods ++ zOPGDomainDefinitive.methods,
       preamble.errors ++ macroDefinitivePAST.errors
@@ -210,7 +210,7 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
     )
 
     val ourInliner = StrategyBuilder.Context[Node, mutable.Set[Declaration]]({
-      case (fc : FuncApp, ctx) if OuroborosNames.macroNames.contains(fc.funcname) => OuroborosMemberInliner.inlineFunctionApp(fc, input, fc.pos, fc.info, fc.errT)
+      case (fc : FuncApp, ctx) if OuroborosNames.macroNames.contains(fc.funcname) || zOPGdomainNames.contains(fc.funcname) => OuroborosMemberInliner.inlineFunctionApp(fc, input, fc.pos, fc.info, fc.errT)
 
       case (mc: MethodCall, ctx) if OuroborosNames.macroNames.contains(mc.methodName) || zOPGdomainNames.contains(mc.methodName) =>
         OuroborosMemberInliner.inlineMethodCall(mc, input, mc.pos, mc.info, mc.errT)
@@ -227,7 +227,7 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
     inputPrime = Program(
       if(OuroborosMemberInliner.zopgUsed) inputPrime.domains else inputPrime.domains.filter(domain => !zOPGdomainNames.contains(domain.name)),
       inputPrime.fields,
-      inputPrime.functions.filter(function => !OuroborosNames.macroNames.contains(function.name)),
+      inputPrime.functions.filter(function => !OuroborosNames.macroNames.contains(function.name) && !zOPGdomainNames.contains(function.name)),
       inputPrime.predicates,
       inputPrime.methods.filter(method => !OuroborosNames.macroNames.contains(method.name)  && !zOPGdomainNames.contains(method.name))
     )(inputPrime.pos, inputPrime.info, inputPrime.errT)

@@ -113,11 +113,18 @@ method unlink_DAG_$field$(g: Set[Ref], x:Ref)
                                                                             exists_path(old($$(g)),v,v2) )
     //ensures acyclic_graph($$(g))
 
+function update_DAG_invariant(g:Set[Ref], x:Ref, y:Ref): Bool
+//    requires x in g && y in g //Not needed, as this function is only used after unlink, where it is already asserted
+    requires PROTECTED_GRAPH(g)
+{
+    !(exists_path($$(g), y, x))
+}
+
 
 method link_DAG_$field$(g:Set[Ref], x:Ref, y:Ref)
     requires x in g
     requires y != null ==> y in g
-    requires PROTECTED_GRAPH(g,x,$field$) && !(exists_path($$(g), y, x))
+    requires PROTECTED_GRAPH(g,x,$field$) //&& !(exists_path($$(g), y, x))
     ensures PROTECTED_GRAPH(g,x,$field$)
     ensures x.$field$ == y
     ensures y == null ==> $$(g) == old($$(g))

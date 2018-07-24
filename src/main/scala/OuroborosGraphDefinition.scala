@@ -350,11 +350,11 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
     }
 
     def handlePMethodBody(body: PStmt): PStmt = body match {
-      case pSeqn: PSeqn => PSeqn( output_graphs.map(f =>
+      case pSeqn: PSeqn => PSeqn(
+        (PLocalVarDecl(PIdnDef(OuroborosNames.getIdentifier("UNIVERSE")), PSetType(TypeHelper.Ref), None) +:
+        output_graphs.map(f =>
           PInhale(PCall(PIdnUse(OurTypes.getTypeDeclFunctionName(f.typ)), Seq(PIdnUse(f.name))))
-        /*handlePStmtInBody(
-          PLocalVarDecl(PIdnDef(f.name), PDomainType(PIdnUse(OurTypes.getOurTypeName(f.typ)), Seq()), None))*/
-      ) ++ pSeqn.ss.flatMap(s => handlePStmtInBody(s)))
+      )) ++ pSeqn.ss.flatMap(s => handlePStmtInBody(s)))
       case _ => body
     }
 
