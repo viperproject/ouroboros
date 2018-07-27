@@ -296,7 +296,7 @@ class OuroborosStmtHandler {
               FieldAccess(unlinkMethodCall.args.last, field)(call.pos, call.info, call.errT),
               NullLit()(call.pos, call.info, call.errT)
             )(call.pos, call.info, call.errT),
-            Seqn(Seq(unlinkMethodCall, noExitInhale), Seq())(call.pos, call.info, call.errT),
+            Seqn(Seq(unlinkMethodCall/*, noExitInhale*/), Seq())(call.pos, call.info, call.errT),
             Seqn(Seq(), Seq())(call.pos, call.info, call.errT))(call.pos, call.info, call.errT) //TODO own errT
           //val framingAxioms = getFramingAxioms(call.args.head, input, wrapper)
 
@@ -324,9 +324,9 @@ class OuroborosStmtHandler {
           )(call.pos, call.info, call.errT) //TODO errTrafo
 
           val seqOfStmts = if(invariantFuncAppAssertion.isDefined)
-            Seq(unlinkIfFieldIsNonNull, invariantFuncAppAssertion.get, linkIfRhsIsNonNull)
+            Seq(unlinkMethodCall/*, noExitInhale*/, invariantFuncAppAssertion.get, linkMethodCall)
           else
-            Seq(unlinkIfFieldIsNonNull, linkIfRhsIsNonNull)
+            Seq(unlinkMethodCall/*, noExitInhale*/, linkMethodCall)
 
           Seqn(
             seqOfStmts,
@@ -378,7 +378,7 @@ class OuroborosStmtHandler {
             val initVarName = OuroborosNames.getNewName(s"${thisGraph}_init")
             val initVarDecl = LocalVarDecl(initVarName, Bool)()
 
-            val framingFunctions = getFramingAxioms(thisGraph, input, wrapper)
+            //val framingFunctions = getFramingAxioms(thisGraph, input, wrapper)
             wrapper.userDefinedGraphs.put(thisGraph.name, (ourType, initVarDecl))
             wrapper.newlyDeclaredInitVariables += initVarDecl
             Seqn(Seq(),Seq())(inhale.pos, inhale.info, inhale.errT)

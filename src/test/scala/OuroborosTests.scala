@@ -12,7 +12,7 @@ import viper.silver.verifier.Verifier
 class OuroborosTests extends SilSuite {
   val fe = new CarbonWithOuroborosFrontend(new StdIOReporter("OuroborosTest"), ViperStdOutLogger.apply("OuroborosTest", "INFO").get)
 
-  override def testDirectories: Seq[String] = Vector("local", "fails","succeeds"
+  override def testDirectories: Seq[String] = Vector("examples"//, "local", "fails","succeeds"
   )
   override def frontend(verifier: Verifier, files: Seq[Path]): Frontend = {
     require(files.length == 1, "tests should consist of exactly one file")

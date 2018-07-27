@@ -138,7 +138,7 @@ domain TrClo {
             { edge(EG,start,end) }
                 exists_path_(EG,start,end) <==>
                     start == end
-                    || exists w:Ref :: edge_(EG,start,w) && exists_path_(EG,w,end)
+                    || exists w:Ref :: edge(EG,start,w) && exists_path_(EG,w,end)
     }
 
     /** Follows from T1 && IND */

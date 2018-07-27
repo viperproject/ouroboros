@@ -221,16 +221,17 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
       }
     }, mutable.Set.empty[Declaration])
 
-    val rewrittenProgram = ourRewriter.execute[Program](input)
-    var inputPrime = ourInliner.execute[Program](rewrittenProgram)
-    //OuroborosMemberInliner.ZOPGused = false
-    inputPrime = Program(
-      if(OuroborosMemberInliner.zopgUsed) inputPrime.domains else inputPrime.domains.filter(domain => !zOPGdomainNames.contains(domain.name)),
-      inputPrime.fields,
-      inputPrime.functions.filter(function => !OuroborosNames.macroNames.contains(function.name) && !zOPGdomainNames.contains(function.name)),
-      inputPrime.predicates,
-      inputPrime.methods.filter(method => !OuroborosNames.macroNames.contains(method.name)  && !zOPGdomainNames.contains(method.name))
-    )(inputPrime.pos, inputPrime.info, inputPrime.errT)
+    var inputPrime = ourRewriter.execute[Program](input)
+
+    //comment these two lines out to disable inlining
+//    inputPrime = ourInliner.execute[Program](inputPrime)
+//    inputPrime = Program(
+//      if(OuroborosMemberInliner.zopgUsed) inputPrime.domains else inputPrime.domains.filter(domain => !zOPGdomainNames.contains(domain.name)),
+//      inputPrime.fields,
+//      inputPrime.functions.filter(function => !OuroborosNames.macroNames.contains(function.name) && !zOPGdomainNames.contains(function.name)),
+//      inputPrime.predicates,
+//      inputPrime.methods.filter(method => !OuroborosNames.macroNames.contains(method.name)  && !zOPGdomainNames.contains(method.name))
+//    )(inputPrime.pos, inputPrime.info, inputPrime.errT)
 
     OuroborosMemberInliner.zopgUsed = false
     translatedCode = inputPrime.toString()

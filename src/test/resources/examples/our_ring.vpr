@@ -93,7 +93,7 @@ method ringInsert(g:Graph[ZOPG, _], start:Node, x:Int)
 
     var node:Node := start
 
-    label beforeWhile
+    //label beforeWhile
     while ( !( node.val <= x && x < node.next.val
                || node.next == start && ( node.val <= x || x < start.val ) ) )
 
@@ -107,7 +107,7 @@ method ringInsert(g:Graph[ZOPG, _], start:Node, x:Int)
         invariant forall n:Node, m:Node ::
             { EXISTS_PATH(g,n,m) }
                 n in g && m in g ==> EXISTS_PATH(g,n,m) && EXISTS_PATH(g,m,n)
-        invariant (forall n: Ref :: {n.next} n in UNIVERSE ==> old[beforeWhile](n.next) == n.next)
+        //invariant (forall n: Ref :: {n.next} n in UNIVERSE ==> old[beforeWhile](n.next) == n.next)
     {
         node := node.next
     }
@@ -119,8 +119,8 @@ method ringInsert(g:Graph[ZOPG, _], start:Node, x:Int)
     } else {
         new_start := start
     }
-    new_node2.next := node.next
-    node.next := new_node2
+    UPDATE_ZOPG(next, UNIVERSE, new_node2, node.next)//new_node2.next := node.next
+    UPDATE_ZOPG(next, UNIVERSE, node, new_node2) //node.next := new_node2
     // assert forall n0: Ref :: {n0.next} n0 in new_g && n0 != new_node2 ==> n0.next != null && n0.next in new_g
     // assert new_node2.next in new_g
     // assert CLOSED(new_g)

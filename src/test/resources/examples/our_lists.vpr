@@ -67,17 +67,20 @@ method swap(g:Graph[_,_], x:Node, i:Int, j:Int)
             var exit:Ref := node_j.next
 
             // -- swap node_i and node_j --
-
-            prev_i.next := node_j
+            UPDATE_DAG(next, g, prev_i, node_j)
 
             if ( node_i.next != node_j ) {
-                node_j.next := node_i.next
-                prev_j.next := node_i
+                UPDATE_DAG(next, g, node_j, node_i.next)
+                //node_j.next := node_i.next
+                UPDATE_DAG(next, g, prev_j, node_i)
+                //prev_j.next := node_i
 
             } else { // node_i == prev_j
-                node_j.next := node_i
+                UPDATE_DAG(next, g, node_j, node_i)
+                //node_j.next := node_i
             }
-            node_i.next := exit
+            UPDATE_DAG(next, g, node_i, exit)
+            //node_i.next := exit
         }
 
         prev_node := node
@@ -88,4 +91,5 @@ method swap(g:Graph[_,_], x:Node, i:Int, j:Int)
         // or it can be moved, but with 3x perf drop
         assert node != null ==> exists_path($$(g),node,node) && exists_path($$(g),prev_node,node)
     }
+    //assert false
 }

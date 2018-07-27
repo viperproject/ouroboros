@@ -1,5 +1,5 @@
-field left:Ref
-field right:Ref
+// field left:Ref
+// field right:Ref
 
 //method test_types(g0:Graph[_,_], n0:Node, g1:Graph[_,_], l0:List) returns (g_res:Graph[_,_], n_res:Node)
 
@@ -104,9 +104,10 @@ method connect_DAGs(g0:Graph[_,_], g1:Graph[_,_], x0:Node, x1:Node, x:Node)
     }
 }*/
 
-/*
+
 field next:Ref
-method join(g0:Graph[_,_], g1:Graph[_,_], x0:Node, x1:Node) returns (x:Ref, last:Ref)
+method join(g0:Graph[_,_], g1:Graph[_,Closed], x0:Node, x1:Node) returns (x:Ref, last:Ref)
+    requires CLOSED(g0)
     requires x0 in g0
     requires x1 in g1
     requires ACYCLIC_LIST_SEGMENT(g0)
@@ -125,16 +126,16 @@ method join(g0:Graph[_,_], g1:Graph[_,_], x0:Node, x1:Node) returns (x:Ref, last
         while ( last.next != null )
             // Preserving the info from the precondition:
 
-            //invariant GRAPH(g0)
-            invariant !(null in g0)
-                          && ( forall n:Ref :: {n.next} n in g0 ==> acc(n.next) )
-                          && ( forall n:Ref ::
-                              {n.next in g0}
-                              {n in g0, n.next}
-                                  n in g0 && n.next != null ==> n.next in g0 )
+            invariant CLOSED(g0)
+            // invariant !(null in g0)
+            //               && ( forall n:Ref :: {n.next} n in g0 ==> acc(n.next) )
+            //               && ( forall n:Ref ::
+            //                   {n.next in g0}
+            //                   {n in g0, n.next}
+            //                       n in g0 && n.next != null ==> n.next in g0 )
 
             invariant x0 in g0
-            invariant GRAPH(g1)
+            //invariant GRAPH(g1)
             invariant x1 in g1
 
             //invariant disjoint_sets(g0,g1)
@@ -159,4 +160,3 @@ method join(g0:Graph[_,_], g1:Graph[_,_], x0:Node, x1:Node) returns (x:Ref, last
     }
     x := x0
 }
-*/
