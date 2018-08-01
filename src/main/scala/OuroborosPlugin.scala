@@ -196,12 +196,17 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
     val stmtHandler = new OuroborosStmtHandler
     val graph_defs = graph_handler.graph_definitions
 
+    val usedMacroCalls: mutable.Buffer[String] = mutable.Buffer.empty[String]
     val ourRewriter = StrategyBuilder.Context[Node, String](
       {
         case (m: Method, ctx) if graph_defs.contains(m.name) =>
           stmtHandler.handleMethod(graphAST_handler.handleMethod(input, m, graph_defs.get(m.name), ctx), graph_defs.get(m.name), input)
-//        case (fa: FieldAssign, ctx) =>
-//          graph_handler.handleAssignments(input, fa, ctx)
+        case (f:FuncApp, ctx) =>
+          usedMacroCalls += f.funcname
+          f
+        case (mc: MethodCall, ctx) =>
+          usedMacroCalls += mc.methodName
+          mc
       },
       "", // default context
       {
@@ -222,6 +227,14 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
     }, mutable.Set.empty[Declaration])
 
     var inputPrime = ourRewriter.execute[Program](input)
+
+    inputPrime = Program(
+      if(OuroborosMemberInliner.zopgUsed) inputPrime.domains else inputPrime.domains.filter(domain => !zOPGdomainNames.contains(domain.name)),
+      inputPrime.fields,
+      inputPrime.functions.filter(function => !(OuroborosNames.macroNames.keySet ++ zOPGdomainNames).contains(function.name) || usedMacroCalls.contains(function.name)),
+      inputPrime.predicates,
+      inputPrime.methods.filter(method => !(OuroborosNames.macroNames.keySet ++ zOPGdomainNames).contains(method.name) || usedMacroCalls.contains(method.name))
+    )(inputPrime.pos, inputPrime.info, inputPrime.errT)
 
     //comment these two lines out to disable inlining
 //    inputPrime = ourInliner.execute[Program](inputPrime)

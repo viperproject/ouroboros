@@ -4,12 +4,12 @@ requires xe in g && x2 in g && xe != x2
 {
 //     var n: Node
 //     //n := new(*)
-//     n := new_node()
+//     n := NEW()
      var b: Bool
      while(b)
      {
          var n2: Node
-         n2 := new_node()
+         n2 := NEW()
 
      }
 //    xe.next := x2

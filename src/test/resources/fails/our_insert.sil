@@ -1,6 +1,7 @@
 //Probably a general graph, and not an acyclic 01 Path graph
 field next : Ref
-method test (g : Graph[_,_], x:Ref, y:Ref)
+method test (g : Graph[_,_], x:Node, y:Node)
+requires x in g && y in g && y != x
 ensures x.next == y
 ensures y.next == old(x.next)
 {

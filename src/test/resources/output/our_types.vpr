@@ -68,7 +68,7 @@ domain TrClo {
   }
   
   axiom ax_ExistsPath {
-    (forall EG: Set[Edge], start: Ref, end: Ref :: { exists_path(EG, start, end) } { edge(EG, start, end) } exists_path_(EG, start, end) == (start == end || (exists w: Ref :: edge(EG, start, w) && exists_path_(EG, w, end))))
+    (forall EG: Set[Edge], start: Ref, end: Ref :: { exists_path(EG, start, end) } { edge(EG, start, end) } exists_path_(EG, start, end) == (start == end || !(forall w: Ref :: { edge(EG, start, w),exists_path(EG, w, end) } !(edge(EG, start, w) && exists_path_(EG, w, end)))))
   }
   
   axiom ax_ExistsPathTrans {
@@ -88,7 +88,7 @@ domain TrClo {
   }
   
   axiom ax_ExistsSetPath {
-    (forall EG: Set[Edge], from: Set[Ref], to: Ref :: { exists_spath(EG, from, to) } exists_spath(EG, from, to) == (exists f: Ref :: (f in from) && exists_path(EG, f, to)))
+    (forall EG: Set[Edge], from: Set[Ref], to: Ref :: { exists_spath(EG, from, to) } exists_spath(EG, from, to) == !(forall f: Ref :: { (f in from) } { exists_path(EG, f, to) } !((f in from) && exists_path(EG, f, to))))
   }
 }
 
@@ -105,56 +105,6 @@ domain Graph {
 domain List {
   
   
-}
-
-domain TriggerWisdoms {
-  
-  function __learn_trigger__(bla: Bool): Bool
-  
-  function __trigger_ref__(r_0: Ref): Bool
-}
-
-domain ZeroOnePathGraphTCs {
-  
-  function DEP(EG: Set[Edge], x_0: Ref, y: Ref, u_0: Ref, v_0: Ref): Bool
-  
-  function DEP_(EG: Set[Edge], x_0: Ref, y: Ref, u_0: Ref, v_0: Ref): Bool
-  
-  axiom ax_DEP_alias {
-    (forall EG: Set[Edge], x_0: Ref, y: Ref, u_0: Ref, v_0: Ref :: { DEP(EG, x_0, y, u_0, v_0) } DEP(EG, x_0, y, u_0, v_0) == DEP_(EG, x_0, y, u_0, v_0))
-  }
-  
-  axiom ax_DEP_0_2 {
-    (forall EG: Set[Edge], x_0: Ref, y: Ref :: { DEP(EG, x_0, y, x_0, y) } { edge(EG, x_0, y) } edge(EG, x_0, y) == DEP_(EG, x_0, y, x_0, y))
-  }
-  
-  axiom ax_HeadTriangleImposable {
-    (forall EG: Set[Edge], x_0: Ref, y: Ref, v_0: Ref :: { DEP(EG, x_0, y, x_0, v_0) } { exists_path_(EG, x_0, y),exists_path(EG, v_0, y) } { edge(EG, x_0, v_0),exists_path_(EG, v_0, y) } exists_path_(EG, x_0, y) && (edge(EG, x_0, v_0) && exists_path_(EG, v_0, y)) ==> DEP_(EG, x_0, y, x_0, v_0))
-  }
-  
-  axiom ax_TailTriangleImposable {
-    (forall EG: Set[Edge], x_0: Ref, y: Ref, u_0: Ref :: { DEP(EG, x_0, y, u_0, y) } { exists_path_(EG, x_0, y),exists_path(EG, x_0, u_0) } { edge(EG, u_0, y),exists_path_(EG, x_0, u_0) } exists_path_(EG, x_0, y) && (exists_path_(EG, x_0, u_0) && edge(EG, u_0, y)) ==> DEP_(EG, x_0, y, u_0, y))
-  }
-  
-  axiom ax_NoEdgeNoDEP {
-    (forall EG: Set[Edge], x_0: Ref, y: Ref, u_0: Ref, v_0: Ref :: { DEP(EG, x_0, y, u_0, v_0) } !edge(EG, u_0, v_0) ==> !DEP_(EG, x_0, y, u_0, v_0))
-  }
-  
-  axiom ax_DEP_trigger_magic {
-    (forall EG: Set[Edge], x_0: Ref, y: Ref, u_0: Ref, v_0: Ref :: { DEP(EG, x_0, y, u_0, v_0) } DEP(EG, x_0, y, u_0, v_0) ==> exists_path(EG, x_0, y) && edge(EG, u_0, v_0))
-  }
-  
-  axiom ax_DEP_6_head {
-    (forall EG: Set[Edge], x_0: Ref, y: Ref, n: Ref :: { DEP(EG, y, n, x_0, y) } n != y ==> !DEP_(EG, y, n, x_0, y))
-  }
-  
-  axiom ax_DEP_6_tail {
-    (forall EG: Set[Edge], x_0: Ref, y: Ref, n: Ref :: { DEP(EG, n, x_0, x_0, y) } n != x_0 ==> !DEP_(EG, n, x_0, x_0, y))
-  }
-  
-  axiom ax_DEP_7 {
-    (forall EG: Set[Edge], nu: Ref, n: Ref, mu: Ref, sigma: Ref :: { DEP(EG, nu, n, mu, sigma) } nu != n && (n != sigma && (nu != mu && (edge(EG, nu, sigma) && edge(EG, mu, sigma)))) ==> !DEP_(EG, nu, n, mu, sigma))
-  }
 }
 
 field next: Ref
@@ -191,66 +141,16 @@ function apply_TCFraming(g0_0: Set[Ref], g1_0: Set[Ref]): Bool
   ensures (forall u_0: Ref, v_0: Ref :: { exists_path($$(g0_0), u_0, v_0) } { exists_path($$(g0_0 union g1_0), u_0, v_0) } (u_0 in g0_0) && ((v_0 in g0_0) && exists_path($$(g0_0), u_0, v_0)) ==> exists_path($$(g0_0 union g1_0), u_0, v_0))
   ensures (forall u_0: Ref, v_0: Ref :: { exists_path($$(g1_0), u_0, v_0) } { exists_path($$(g1_0 union g0_0), u_0, v_0) } (u_0 in g1_0) && ((v_0 in g1_0) && exists_path($$(g1_0), u_0, v_0)) ==> exists_path($$(g1_0 union g0_0), u_0, v_0))
   ensures (forall u_0: Ref, v_0: Ref :: { exists_path($$(g0_0), u_0, v_0) } { exists_path($$(g0_0 union g1_0), u_0, v_0) } (u_0 in g0_0) && ((v_0 in g0_0) && !exists_path($$(g0_0 union g1_0), u_0, v_0)) ==> !exists_path($$(g0_0), u_0, v_0))
-  ensures (forall u_0: Ref, v_0: Ref :: { exists_path($$(g1_0), u_0, v_0) } { exists_path($$(g1_0 union g0_0), u_0, v_0) } (u_0 in g1_0) && ((v_0 in g1_0) && !exists_path($$(g1_0 union g0_0), u_0, v_0)) ==> !exists_path($$(g1_0), u_0, v_0)) 
+  ensures (forall u_0: Ref, v_0: Ref :: { exists_path($$(g1_0), u_0, v_0) } { exists_path($$(g1_0 union g0_0), u_0, v_0) } (u_0 in g1_0) && ((v_0 in g1_0) && !exists_path($$(g1_0 union g0_0), u_0, v_0)) ==> !exists_path($$(g1_0), u_0, v_0))
+  ensures (forall u_0: Ref, v_0: Ref :: { exists_path($$(g0_0), u_0, v_0) } { exists_path($$(g0_0 union g1_0), u_0, v_0) } (u_0 in g0_0) && ((v_0 in g0_0) && (!exists_path($$(g0_0), u_0, v_0) && (CLOSED(g0_0) || CLOSED(g1_0)))) ==> !exists_path($$(g0_0 union g1_0), u_0, v_0))
+  ensures (forall u_0: Ref, v_0: Ref :: { exists_path($$(g1_0), u_0, v_0) } { exists_path($$(g0_0 union g1_0), u_0, v_0) } (u_0 in g1_0) && ((v_0 in g1_0) && (!exists_path($$(g1_0), u_0, v_0) && (CLOSED(g0_0) || CLOSED(g1_0)))) ==> !exists_path($$(g1_0 union g0_0), u_0, v_0)) 
 
-
-function update_DAG_invariant(g: Set[Ref], x_0: Ref, y: Ref): Bool
-  requires !((null in g)) && (forall n: Ref :: { n.next } (n in g) ==> acc(n.next, 1 / 2)) 
-{
-  !exists_path($$(g), y, x_0)
-}
 
 function apply_no_exit_closed(EG: Set[Edge], g1_0: Set[Ref], g2: Set[Ref]): Bool
   requires !((null in g1_0)) && (forall n: Ref :: { n.next } (n in g1_0) ==> acc(n.next, 1 / 2)) && CLOSED(g1_0)
   requires !((null in g2)) && (forall n: Ref :: { n.next } (n in g2) ==> acc(n.next, 1 / 2))
   ensures (forall v1: Ref, v2: Ref :: { exists_path(EG, v1, v2) } (v1 in g1_0) && (v2 in g2) ==> !exists_path(EG, v1, v2)) 
 
-
-function GRAPH_decl(g: Set[Ref]): Bool 
-
-
-function CLOSED_GRAPH_decl(g: Set[Ref]): Bool 
-
-
-function ZOPG_decl(g: Set[Ref]): Bool 
-
-
-function CLOSED_ZOPG_decl(g: Set[Ref]): Bool 
-
-
-function DAG_decl(g: Set[Ref]): Bool 
-
-
-function CLOSED_DAG_decl(g: Set[Ref]): Bool 
-
-
-function FOREST_decl(g: Set[Ref]): Bool 
-
-
-function CLOSED_FOREST_decl(g: Set[Ref]): Bool 
-
-
-function update_ZOPG_invariant(g: Set[Ref], from: Ref, to: Ref): Bool
-  requires !((null in g)) && (forall n: Ref :: { n.next } (n in g) ==> acc(n.next, 1 / 2)) 
-{
-  func_graph($$(g)) || (unshared_graph($$(g)) || (forall u_0: Ref, v_0: Ref :: { exists_path($$(g), u_0, from),exists_path($$(g), to, v_0) } (u_0 in g) && ((v_0 in g) && (u_0 != v_0 && exists_path($$(g), u_0, v_0))) ==> !exists_path($$(g), u_0, from) || !exists_path($$(g), to, v_0)))
-}
-
-method new_node() returns (node: Ref)
-
-
-method create_node(u_0: Set[Ref]) returns (node: Ref)
-{
-  var UNIVERSE: Set[Ref]
-  var lhs_node: Ref
-  var fresh_x: Ref
-  var singleton_graph: Set[Ref]
-  UNIVERSE := Set[Ref]()
-  inhale !((fresh_x in u_0))
-  inhale (fresh_x in singleton_graph) && (forall n: Ref :: fresh_x != n ==> !((n in singleton_graph)))
-  lhs_node := fresh_x
-  inhale acc(lhs_node.next, write) && lhs_node.next == null
-}
 
 method link_next(g: Set[Ref], x_0: Ref, y: Ref)
   requires (x_0 in g)
@@ -270,62 +170,6 @@ method unlink_next(g: Set[Ref], x_0: Ref)
   ensures x_0.next == null
   ensures old(x_0.next) == null ==> $$(g) == old($$(g))
   ensures old(x_0.next) != null ==> (forall v1: Ref, v2: Ref :: { edge($$(g), v1, v2) } edge($$(g), v1, v2) == (edge(old($$(g)), v1, v2) && !(v1 == x_0 && v2 == old(x_0.next))))
-
-
-method unlink_DAG_next(g: Set[Ref], x_0: Ref)
-  requires (x_0 in g)
-  requires !((null in g)) && ((x_0 in g) && (acc(x_0.next, write) && ((forall n: Ref :: { n.next } (n in g) && n != x_0 ==> acc(n.next, 1 / 2)) && (forall n: Ref :: { (n.next in g) } { (n in g),n.next } (n in g) && n.next != null ==> (n.next in g)))))
-  ensures !((null in g)) && ((x_0 in g) && (acc(x_0.next, write) && ((forall n: Ref :: { n.next } (n in g) && n != x_0 ==> acc(n.next, 1 / 2)) && (forall n: Ref :: { (n.next in g) } { (n in g),n.next } (n in g) && n.next != null ==> (n.next in g)))))
-  ensures x_0.next == null
-  ensures old(x_0.next) == null ==> $$(g) == old($$(g))
-  ensures old(x_0.next) != null ==> (forall v1: Ref, v2: Ref :: { edge($$(g), v1, v2) } edge($$(g), v1, v2) == (edge(old($$(g)), v1, v2) && !(v1 == x_0 && v2 == old(x_0.next))))
-  ensures old(x_0.next) != null ==> (forall v1: Ref, v2: Ref :: { exists_path($$(g), v1, v2) } exists_path($$(g), v1, v2) == (v1 == v2 || ((exists n: Ref :: exists_path(old($$(g)), v1, n) && (exists_path(old($$(g)), n, v2) && (!exists_path(old($$(g)), n, x_0) && !exists_path(old($$(g)), x_0, n) || !exists_path(old($$(g)), n, old(x_0.next)) && !exists_path(old($$(g)), old(x_0.next), n)))) || ((exists n: Ref :: n != x_0 && (n != old(x_0.next) && (exists_path(old($$(g)), x_0, n) && exists_path(old($$(g)), n, old(x_0.next))))) || (exists u_0: Ref, v_0: Ref :: (u_0 != x_0 || v_0 != old(x_0.next)) && (edge(old($$(g)), u_0, v_0) && (exists_path(old($$(g)), v1, u_0) && (exists_path(old($$(g)), u_0, x_0) && (exists_path(old($$(g)), old(x_0.next), v_0) && exists_path(old($$(g)), v_0, v2))))))))))
-
-
-method link_DAG_next(g: Set[Ref], x_0: Ref, y: Ref)
-  requires (x_0 in g)
-  requires y != null ==> (y in g)
-  requires !((null in g)) && ((x_0 in g) && (acc(x_0.next, write) && ((forall n: Ref :: { n.next } (n in g) && n != x_0 ==> acc(n.next, 1 / 2)) && (forall n: Ref :: { (n.next in g) } { (n in g),n.next } (n in g) && n.next != null ==> (n.next in g)))))
-  ensures !((null in g)) && ((x_0 in g) && (acc(x_0.next, write) && ((forall n: Ref :: { n.next } (n in g) && n != x_0 ==> acc(n.next, 1 / 2)) && (forall n: Ref :: { (n.next in g) } { (n in g),n.next } (n in g) && n.next != null ==> (n.next in g)))))
-  ensures x_0.next == y
-  ensures y == null ==> $$(g) == old($$(g))
-  ensures y != null ==> (forall v1: Ref, v2: Ref :: { edge(old($$(g)), v1, v2) } edge($$(g), v1, v2) == (edge(old($$(g)), v1, v2) || v1 == x_0 && v2 == y))
-  ensures y != null ==> (forall v1: Ref, v2: Ref :: { exists_path($$(g), v1, v2) } exists_path($$(g), v1, v2) == (exists_path(old($$(g)), v1, v2) || exists_path(old($$(g)), v1, x_0) && exists_path(old($$(g)), y, v2)))
-  ensures acyclic_graph($$(g))
-
-
-method update_next(g: Set[Ref], x_0: Ref, y: Ref)
-
-
-method update_DAG_next(g: Set[Ref], x_0: Ref, y: Ref)
-
-
-method unlink_ZOPG_next(g: Set[Ref], node: Ref)
-  requires (node in g)
-  requires !((null in g)) && ((node in g) && (acc(node.next, write) && ((forall n: Ref :: { n.next } (n in g) && n != node ==> acc(n.next, 1 / 2)) && (forall n: Ref :: { (n.next in g) } { (n in g),n.next } (n in g) && n.next != null ==> (n.next in g)))))
-  ensures !((null in g)) && ((node in g) && (acc(node.next, write) && ((forall n: Ref :: { n.next } (n in g) && n != node ==> acc(n.next, 1 / 2)) && (forall n: Ref :: { (n.next in g) } { (n in g),n.next } (n in g) && n.next != null ==> (n.next in g)))))
-  ensures node.next == null
-  ensures old(node.next) == null ==> $$(g) == old($$(g))
-  ensures old(node.next) != null ==> (forall v1: Ref, v2: Ref :: { edge($$(g), v1, v2) } { exists_path($$(g), v1, v2) } edge($$(g), v1, v2) == (edge(old($$(g)), v1, v2) && !(v1 == node && v2 == old(node.next))))
-  ensures old(node.next) != null ==> (forall x_0: Ref, y: Ref, u_0: Ref, v_0: Ref :: { DEP($$(g), x_0, y, u_0, v_0) } { DEP(old($$(g)), x_0, y, u_0, v_0) } DEP(old($$(g)), x_0, y, u_0, v_0) && !DEP(old($$(g)), x_0, y, node, old(node.next)) ==> DEP($$(g), x_0, y, u_0, v_0))
-
-
-method link_ZOPG_next(g: Set[Ref], from: Ref, to: Ref)
-  requires (from in g)
-  requires !((null in g)) && ((from in g) && (acc(from.next, write) && ((forall n: Ref :: { n.next } (n in g) && n != from ==> acc(n.next, 1 / 2)) && (forall n: Ref :: { (n.next in g) } { (n in g),n.next } (n in g) && n.next != null ==> (n.next in g))))) && from.next == null
-  ensures !((null in g)) && ((from in g) && (acc(from.next, write) && ((forall n: Ref :: { n.next } (n in g) && n != from ==> acc(n.next, 1 / 2)) && (forall n: Ref :: { (n.next in g) } { (n in g),n.next } (n in g) && n.next != null ==> (n.next in g)))))
-  ensures from.next == to
-  ensures to == null ==> $$(g) == old($$(g))
-  ensures to != null ==> (forall v1: Ref, v2: Ref :: { edge($$(g), v1, v2) } { exists_path($$(g), v1, v2) } edge($$(g), v1, v2) == (edge(old($$(g)), v1, v2) || v1 == from && v2 == to))
-  ensures to != null ==> (forall x_0: Ref, y: Ref, u_0: Ref, v_0: Ref :: { DEP($$(g), x_0, y, u_0, v_0) } { DEP(old($$(g)), x_0, y, u_0, v_0) } from != to && (u_0 != v_0 && x_0 != y) ==> DEP(old($$(g)), x_0, y, u_0, v_0) || (x_0 == from && (u_0 == from && (y == to && v_0 == to)) || ((exists w: Ref, z: Ref :: (forall u_: Ref, v_: Ref :: { DEP(old($$(g)), x_0, y, u_, v_) } !DEP(old($$(g)), x_0, y, u_, v_)) && ((DEP(old($$(g)), x_0, from, u_0, v_0) && x_0 != from || x_0 == u_0 && (u_0 == from && v_0 == to)) && (DEP(old($$(g)), to, y, w, z) && to != y || from == w && (to == z && z == y)))) || ((exists U: Ref, V: Ref :: (forall u_$0: Ref, v_$0: Ref :: { DEP(old($$(g)), x_0, y, u_$0, v_$0) } !DEP(old($$(g)), x_0, y, u_$0, v_$0)) && ((DEP(old($$(g)), x_0, from, U, V) && x_0 != from || x_0 == U && (U == from && V == to)) && (DEP(old($$(g)), to, y, u_0, v_0) && to != y || from == u_0 && (to == v_0 && v_0 == y)))) || u_0 == from && (v_0 == to && (exists U: Ref, V: Ref, w: Ref, z: Ref :: (forall u_$1: Ref, v_$1: Ref :: { DEP(old($$(g)), x_0, y, u_$1, v_$1) } !DEP(old($$(g)), x_0, y, u_$1, v_$1)) && ((DEP(old($$(g)), x_0, from, U, V) && x_0 != from || x_0 == U && (U == from && V == to)) && (DEP(old($$(g)), to, y, w, z) && to != y || from == w && (to == z && z == y)))))))) ==> DEP($$(g), x_0, y, u_0, v_0))
-  ensures to != null ==> (forall x_0: Ref, y: Ref, u_0: Ref, v_0: Ref :: { DEP($$(g), x_0, y, u_0, v_0) } { DEP(old($$(g)), x_0, y, u_0, v_0) } DEP($$(g), x_0, y, u_0, v_0) && !DEP($$(g), x_0, y, from, to) ==> DEP(old($$(g)), x_0, y, u_0, v_0))
-  ensures to != null ==> (forall n: Ref :: { exists_path($$(g), to, n) } { exists_path($$(g), from, n) } (n in g) && n != from ==> __learn_trigger__(DEP($$(g), from, n, from, from.next)))
-  ensures to != null ==> (forall n: Ref :: { exists_path($$(g), to, n) } { exists_path($$(g), from, n) } (n in g) && n != to ==> __learn_trigger__(DEP($$(g), to, n, to, to.next)))
-  ensures to != null ==> (forall n: Ref :: { exists_path($$(g), n, to) } { exists_path($$(g), n, from) } (n in g) && n != from ==> __learn_trigger__(DEP($$(g), n, from, n, n.next)))
-  ensures to != null ==> (forall n: Ref :: { DEP($$(g), to, n, to, to.next) } { DEP($$(g), from, n, from, from.next) } (n in g) ==> __learn_trigger__(exists_path($$(g), to, n)) && __learn_trigger__(exists_path(old($$(g)), to, n)))
-
-
-method update_ZOPG_next(g: Set[Ref], x_0: Ref, y: Ref)
 
 
 method join(g0: Set[Ref], g1: Set[Ref], x0: Ref, x1: Ref) returns (x: Ref, last: Ref)
@@ -381,6 +225,11 @@ inhale apply_no_exit_closed($$(g0 union g1), g1, g0)
     {
       last := last.next
     }
+    unlink_next(g0 union g1, last)
+    inhale apply_noExit($$(g0 union g1), g0 union g1, g0)
+    inhale apply_noExit($$(g0 union g1), g0 union g1, g1)
+    inhale apply_TCFraming(g0, g1)
+    link_next(g0 union g1, last, x1)
     unlink_next(UNIVERSE, last)
     link_next(UNIVERSE, last, x1)
   }

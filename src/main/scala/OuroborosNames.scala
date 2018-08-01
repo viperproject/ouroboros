@@ -9,7 +9,7 @@ import viper.silver.parser._
 import scala.collection.mutable
 
 object OuroborosNames {
-  val reserved_keywords = Set("CLOSED_ZOPG", "ZOPG", "CLOSED_GRAPH", "GRAPH", "ACYCLIC", "FUNCTIONAL", "Graph", "ClosedGraph", "ZOPG", "ClosedZOPG", "Node", "CLOSED", "DISJOINT", "UPDATE", "UPDATE_ZOPG", "apply_TCFraming", "new_node", "UNIVERSE")
+  val reserved_keywords = Set("FRAMING", "NO_EXIT", "CLOSED_ZOPG", "ZOPG", "CLOSED_GRAPH", "GRAPH", "ACYCLIC", "FUNCTIONAL", "Graph", "ZOPG", "ClosedZOPG", "Node", "CLOSED", "DISJOINT", "UPDATE", "UPDATE_ZOPG", "NEW", "UNIVERSE")
 
 
   var graph_keywords: mutable.Map[String, String] = mutable.Map.empty[String, String]

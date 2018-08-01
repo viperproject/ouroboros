@@ -85,9 +85,9 @@ method ringInsert(g:Graph[ZOPG, _], start:Node, x:Int)
     //         n in new_g && m in new_g
     //             ==> exists_path($$(new_g),n,m) && exists_path($$(new_g),m,n)
 {
-    //var n:Node := new_node2()
+    //var n:Node := NEW()
     //new_g, 
-    new_node2 := new_node()//create_node(g/*, x*/)
+    new_node2 := NEW()//create_node(g/*, x*/)
     inhale acc(new_node2.val, write)
     new_g := UNIVERSE
 

@@ -37,21 +37,18 @@ function apply_TCFraming(g0:Set[Ref], g1:Set[Ref]): Bool
 
 
     //probably wrong
-    //ensures forall u:Ref, v:Ref :: { exists_path($$(g0),u,v) }{ exists_path($$(g0 union g1),u,v) } u in g0 && v in g0 && !exists_path($$(g0),u,v) ==> !exists_path($$(g0 union g1),u,v)
-    //ensures forall u:Ref, v:Ref :: { exists_path($$(g1),u,v) }{ exists_path($$(g0 union g1),u,v) } u in g1 && v in g1 && !exists_path($$(g1),u,v) ==> !exists_path($$(g1 union g0),u,v)
+    ensures forall u:Ref, v:Ref :: { exists_path($$(g0),u,v) }{ exists_path($$(g0 union g1),u,v) } u in g0 && v in g0 && !exists_path($$(g0),u,v) && (CLOSED(g0) || CLOSED(g1)) ==> !exists_path($$(g0 union g1),u,v)
+    ensures forall u:Ref, v:Ref :: { exists_path($$(g1),u,v) }{ exists_path($$(g0 union g1),u,v) } u in g1 && v in g1 && !exists_path($$(g1),u,v) && (CLOSED(g0) || CLOSED(g1))==> !exists_path($$(g1 union g0),u,v)
 
-method new_node() returns (node: Ref)
+method NEW() returns (node: Ref)
 
 method create_node(u: Set[Ref]) returns (node: Ref)
-{
-    var lhs_node: Ref //when inlining, remove lhs_node declaration, and replace lhs_node occurences by name of node
-    var fresh_x: Ref
-    var singleton_graph: Set[Ref] //fresh_x and singleton_graph should be added on top of the method
-    assume !(fresh_x in u)
-    assume fresh_x in singleton_graph && forall n: Ref:: fresh_x != n ==> !(n in singleton_graph)
-    lhs_node := fresh_x
-    inhale acc(lhs_node.$field$) && lhs_node.$field$ == null
-}
+    requires PROTECTED_GRAPH(u)
+    requires CLOSED(u)
+    ensures PROTECTED_GRAPH(u)
+    ensures CLOSED(u)
+    ensures !(node in u)
+    ensures acc(node.$field$) && node.$field$ == null
 
 method link_$field$(g:Set[Ref], x:Ref, y:Ref)
     requires x in g
@@ -101,13 +98,20 @@ method unlink_DAG_$field$(g: Set[Ref], x:Ref)
     ensures old(x.$field$) != null ==> forall v1:Ref, v2:Ref ::
         { exists_path($$(g),v1,v2) }
              exists_path($$(g),v1,v2) <==> (v1==v2) ||
+//                !( forall n:Ref :: !(exists_path(old($$(g)),v1,n) && exists_path(old($$(g)),n,v2) && //TODO triggers
                 ( exists n:Ref :: exists_path(old($$(g)),v1,n) && exists_path(old($$(g)),n,v2) &&
+
                     ( !exists_path(old($$(g)),n,x) && !exists_path(old($$(g)),x,n) ||
+//                      !exists_path(old($$(g)),n,old(x.$field$)) && !exists_path(old($$(g)),old(x.$field$),n) ))
                       !exists_path(old($$(g)),n,old(x.$field$)) && !exists_path(old($$(g)),old(x.$field$),n) )
                 )
                 ||
+//                !( forall n:Ref :: !(n != x && n != old(x.$field$) && exists_path(old($$(g)),x,n) && exists_path(old($$(g)),n,old(x.$field$)) ))
                 ( exists n:Ref :: n != x && n != old(x.$field$) && exists_path(old($$(g)),x,n) && exists_path(old($$(g)),n,old(x.$field$)) )
                 ||
+//                !( forall u:Ref, v:Ref :: !((u != x || v != old(x.$field$)) && edge(old($$(g)),u,v) && exists_path(old($$(g)),v1,u) &&
+//                                                                            exists_path(old($$(g)),u,x) && exists_path(old($$(g)),old(x.$field$),v) &&
+//                                                                            exists_path(old($$(g)),v,v2) ))
                 ( exists u:Ref, v:Ref :: (u != x || v != old(x.$field$)) && edge(old($$(g)),u,v) && exists_path(old($$(g)),v1,u) &&
                                                                             exists_path(old($$(g)),u,x) && exists_path(old($$(g)),old(x.$field$),v) &&
                                                                             exists_path(old($$(g)),v,v2) )

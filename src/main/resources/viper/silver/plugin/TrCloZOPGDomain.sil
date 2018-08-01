@@ -192,6 +192,9 @@ method link_ZOPG_$field$(g:Set[Ref], from:Ref, to:Ref)
                         || ( exists w:Ref, z:Ref :: __psi__(old($$(g)), from,to, x,y, u,v, w,z) )
                         || ( exists U:Ref, V:Ref :: __psi__(old($$(g)), from,to, x,y, U,V, u,v) )
                         || u==from && v==to && ( exists U:Ref, V:Ref, w:Ref, z:Ref :: __psi__(old($$(g)), from,to, x,y, U,V, w,z) )
+//                        || !( forall w:Ref, z:Ref :: !(__psi__(old($$(g)), from,to, x,y, u,v, w,z) )) //TODO triggers
+//                        || !( forall U:Ref, V:Ref :: !(__psi__(old($$(g)), from,to, x,y, U,V, u,v) ))
+//                        || u==from && v==to && !( forall U:Ref, V:Ref, w:Ref, z:Ref :: !(__psi__(old($$(g)), from,to, x,y, U,V, w,z)) )
 
                             ==> DEP($$(g), x, y, u, v) )
     ensures to != null ==>

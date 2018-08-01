@@ -192,34 +192,40 @@ object OuroborosSynthesize {
               "$field$", f)
         )
       case m: PMethod if m.idndef.name == "create_node" =>
-        m.body match {
-          case None => Seq(m)
-          case Some(body) =>
-            var fieldName = "$field$"
-            val inhaleExpSynthesizer = StrategyBuilder.Slim[PNode](
-              {
-                case i: PIdnUse if i.name == "$field$" => PIdnUse(fieldName)
-              }
-            ).duplicateEverything
-            val bodySynthesizer = StrategyBuilder.Slim[PNode](
-              {
-                case i: PInhale =>
-                  val synthesizedExp =
-                    OuroborosHelper.transformAndFold[String, PExp](
-                      fields, PBoolLit(true),(exp1, exp2) => PBinExp(exp1, "&&", exp2), f => {
-                        fieldName = f
-                        inhaleExpSynthesizer.execute[PExp](i.e)
-                      }
-                    )
-                  PInhale(synthesizedExp).setPos(i)
-              }
-            )
-            val newBody = bodySynthesizer.execute[PStmt](body)
-            val newM = m.deepCopy(
-              body = Some(newBody)
-            )
-            Seq(newM)
-        }
+        var fieldName = "$field$"
+        val postSynthesizer = StrategyBuilder.Slim[PNode](
+          {
+            case i: PIdnUse if i.name == "$field$" => PIdnUse(fieldName)
+          }
+        ).duplicateEverything
+        var containsDollarFieldDollar = false
+        val containsDollarFieldDollarStrategy = StrategyBuilder.Slim[PNode](
+          {
+            case i: PIdnUse if i.name == "$field$" => containsDollarFieldDollar = true; i
+          }
+        )
+        val newMethod = PMethod(
+          m.idndef,
+          m.formalArgs,
+          m.formalReturns,
+          m.pres,
+          m.posts.map(post => {
+            containsDollarFieldDollar = false
+            containsDollarFieldDollarStrategy.execute[PExp](post)
+            if(containsDollarFieldDollar)
+              OuroborosHelper.transformAndFold[String, PExp](
+                fields, PBoolLit(true), (exp1, exp2) => PBinExp(exp1, "&&", exp2), f => {
+                  fieldName = f
+                  postSynthesizer.execute[PExp](post)
+                }
+              )
+            else
+              post
+          }),
+          m.body
+        ).setPos(m)
+
+        Seq(newMethod)
       case m: PMethod => Seq(m)
     }
   }

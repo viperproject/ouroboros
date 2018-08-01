@@ -181,7 +181,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
     case Nil => EmptySet(Ref)(pos, info, errT)//TrueLit()(pos, info, errT)
   }
 
-  lazy val n_Identifier: String = OuroborosNames.getIdentifier("n")
+  lazy val n_Identifier: String = getIdentifier("n")
 
   // forall n:Ref :: {n.field_i} n in nodes ==> acc(n.field_i,perm_exp)
   private def getQPForGraphNodes(graph_exp: PExp, field: String, perm_exp: PExp = PFullPerm()): PExp = PForall(
@@ -325,6 +325,18 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
     }
   }.flatten
 
+  private def FRAMING(prog: PProgram, g0: PExp, g1: PExp, mc: PMethodCall): PStmt = {
+    PInhale(
+      PCall(PIdnUse(getIdentifier("apply_TCFraming")), Seq(g0, g1)).setPos(mc)
+    ).setPos(mc)
+  }
+
+  private def NO_EXIT(prog: PProgram, edgesFrom: PExp, u: PExp, m: PExp, mc: PMethodCall): PStmt = {
+    PInhale(
+      PCall(PIdnUse(getIdentifier("apply_noExit")), Seq(PCall(PIdnUse(getIdentifier("$$")), Seq(edgesFrom)), u, m)).setPos(mc)
+    ).setPos(mc)
+  }
+
 
   def handlePMethod(input: PProgram, m: PMethod): PNode = {
 
@@ -351,7 +363,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
 
     def handlePMethodBody(body: PStmt): PStmt = body match {
       case pSeqn: PSeqn => PSeqn(
-        (PLocalVarDecl(PIdnDef(OuroborosNames.getIdentifier("UNIVERSE")), PSetType(TypeHelper.Ref), None) +:
+        (PLocalVarDecl(PIdnDef(getIdentifier("UNIVERSE")), PSetType(TypeHelper.Ref), None) +:
         output_graphs.map(f =>
           PInhale(PCall(PIdnUse(OurTypes.getTypeDeclFunctionName(f.typ)), Seq(PIdnUse(f.name))))
       )) ++ pSeqn.ss.flatMap(s => handlePStmtInBody(s)))
@@ -451,7 +463,9 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
       case "PROTECTED_GRAPH" if m.args.length == 1 => PROTECTED_GRAPH(input, m.args.head, ref_fields(input))
 
       case "EDGE" if m.args.length == 3 => EDGE(input, m.args.head, m.args(1), m.args(2), m)
+      case "EDGE" if m.args.length == 2 => EDGE(input, universeExp(), m.args.head, m.args.last, m)
       case "EXISTS_PATH" if m.args.length == 3 => EXISTS_PATH(input, m.args.head, m.args(1), m.args(2), m)
+      case "EXISTS_PATH" if m.args.length == 2 => EXISTS_PATH(input, universeExp(), m.args.head, m.args.last, m)
       case "IS_GLOBAL_ROOT" if m.args.length == 2 => IS_GLOBAL_ROOT(input, m.args.head, m.args(1), m)
 
       case "FUNCTIONAL" if m.args.length == 1 => FUNCTIONAL(input, m.args.head, m)
@@ -465,65 +479,143 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
 
   def handlePMethodCall(input: PProgram, m: PMethodCall): PNode = {
     m.method.name match {
-      case "UPDATE" if m.args.length == 4 => genericUpdate(input, m)
-      case "UPDATE_ZOPG" if m.args.length == 4 => zopgUpdate(input, m)
-      case "UPDATE_DAG" if m.args.length == 4 => dagUpdate(input, m)
+      case "UPDATE" if m.args.length == 4 => genericUpdate(input, field = m.args.head, graph = m.args(1), lhsNode = m.args(2), rhsNode = m.args.last, m)
+      case "UPDATE" if m.args.length == 3 => genericUpdate(input, field = m.args.head, graph = universeExp(), lhsNode = m.args(1), rhsNode = m.args.last, m)
+
+      case "UNLINK" if m.args.length == 3 => genericLinkOrUnlink(input, field = m.args.head, graph = m.args(1), lhsNode = m.args.last, rhsNode = None, m)
+      case "UNLINK" if m.args.length == 2 => genericLinkOrUnlink(input, field = m.args.head, graph = universeExp(), lhsNode = m.args.last, rhsNode = None, m)
+      case "LINK" if m.args.length == 4 => genericLinkOrUnlink(input, field = m.args.head, graph = m.args(1), lhsNode = m.args(2), rhsNode = Some(m.args.last), m)
+      case "LINK" if m.args.length == 3 => genericLinkOrUnlink(input, field = m.args.head, graph = universeExp(), lhsNode = m.args(1), rhsNode = Some(m.args.last), m)
+
+      case "UPDATE_ZOPG" if m.args.length == 4 => zopgUpdate(input, field = m.args.head, graph = m.args(1), lhsNode = m.args(2), rhsNode = m.args.last, m)
+      case "UPDATE_ZOPG" if m.args.length == 3 => zopgUpdate(input, field = m.args.head, graph = universeExp(), lhsNode = m.args(1), rhsNode = m.args.last, m)
+
+      case "UNLINK_ZOPG" if m.args.length == 3 => zopgLinkOrUnlink(input, field = m.args.head, graph = m.args(1), lhsNode = m.args.last, rhsNode = None, m)
+      case "UNLINK_ZOPG" if m.args.length == 2 => zopgLinkOrUnlink(input, field = m.args.head, graph = universeExp(), lhsNode = m.args.last, rhsNode = None, m)
+      case "LINK_ZOPG" if m.args.length == 4 => zopgLinkOrUnlink(input, field = m.args.head, graph = m.args(1), lhsNode = m.args(2), rhsNode = Some(m.args.last), m)
+      case "Link_ZOPG" if m.args.length == 3 => zopgLinkOrUnlink(input, field = m.args.head, graph = universeExp(), lhsNode = m.args(1), rhsNode = Some(m.args.last), m)
+
+      case "UPDATE_DAG" if m.args.length == 4 => dagUpdate(input, field = m.args.head, graph = m.args(1), lhsNode = m.args(2), rhsNode = m.args.last, m)
+      case "UPDATE_DAG" if m.args.length == 3 => dagUpdate(input, field = m.args.head, graph = universeExp(), lhsNode = m.args(1), rhsNode = m.args.last, m)
+
+      case "UNLINK_DAG" if m.args.length == 3 => dagLinkOrUnlink(input, field = m.args.head, graph = m.args(1), lhsNode = m.args(2), rhsNode = None, m)
+      case "UNLINK_DAG" if m.args.length == 2 => dagLinkOrUnlink(input, field = m.args.head, graph = universeExp(), lhsNode = m.args(1), rhsNode = None, m)
+      case "LINK_DAG" if m.args.length == 4 => dagLinkOrUnlink(input, field = m.args.head, graph = m.args(1), lhsNode = m.args(2), rhsNode = Some(m.args.last), m)
+      case "LINK_DAG" if m.args.length == 3 => dagLinkOrUnlink(input, field = m.args.head, graph = universeExp(), lhsNode = m.args(1), rhsNode = Some(m.args.last), m)
+
+      case "FRAMING" if m.args.length == 2 => FRAMING(input, m.args.head, m.args.last, m)
+      case "NO_EXIT" if m.args.length == 3 => NO_EXIT(input, m.args.head, m.args(1), m.args.last, m)
       case _ => m
     }
   }
 
-  def genericUpdate(input: PProgram, m: PMethodCall): PStmt = {
-    m.args.head match {
-      case field: PIdnUse =>
-        val fieldName = field.name
-        val updateMethodName = OuroborosNames.getIdentifier(s"update_$fieldName")
-        val copier = StrategyBuilder.Slim[PNode](PartialFunction.empty).duplicateEverything
+  def genericUpdate(input: PProgram, field: PExp, graph: PExp, lhsNode: PExp, rhsNode: PExp, m: PMethodCall): PStmt = field match {
+    case field: PIdnUse =>
+      val fieldName = field.name
+      val updateMethodName = getIdentifier(s"update_$fieldName")
+      //val copier = StrategyBuilder.Slim[PNode](PartialFunction.empty).duplicateEverything
 
-        val updateMethodCall = PMethodCall(
-          Seq(),
-          PIdnUse(updateMethodName),
-          m.args.tail.map(arg => copier.execute[PExp](arg).setPos(arg)) //TODO needed?
-        ).setPos(m)
+      val updateMethodCall = PMethodCall(
+        Seq(),
+        PIdnUse(updateMethodName),
+        Seq(graph, lhsNode, rhsNode) //TODO needed?
+      ).setPos(m)
 
-        //println(s"$linkMethodName arguments: " + linkMethod.args)
+      //println(s"$linkMethodName arguments: " + linkMethod.args)
 
-        updateMethodCall
-      case _ => m //TODO throw error
-    }
+      updateMethodCall
+    case _ => m //TODO throw error
   }
 
-  def zopgUpdate(input: PProgram, m: PMethodCall): PStmt = {
-    m.args.head match {
-      case field: PIdnUse =>
-        val fieldName = field.name
-        val updateMethodName = OuroborosNames.getIdentifier(s"update_ZOPG_$fieldName")
-        val copier = StrategyBuilder.Slim[PNode](PartialFunction.empty).duplicateEverything
-        val updateMethodCall = PMethodCall(
-          Seq(),
-          PIdnUse(updateMethodName),
-          m.args.tail.map(arg => copier.execute[PExp](arg).setPos(arg)) //TODO needed?
-        ).setPos(m)
+  def genericLinkOrUnlink(input: PProgram, field: PExp, graph: PExp, lhsNode: PExp, rhsNode: Option[PExp], m: PMethodCall): PStmt = field match {
+    case field: PIdnUse =>
+      val fieldName = field.name
+      val methodName = rhsNode match {
+        case None => getIdentifier(s"unlink_$fieldName")
+        case _ =>    getIdentifier(s"link_$fieldName")
+      }
+      val methodCall = PMethodCall(
+        Seq(),
+        PIdnUse(methodName),
+        Seq(graph, lhsNode) ++
+          (if(rhsNode.isEmpty) Seq()
+          else Seq(rhsNode.get))
+      ).setPos(m)
 
-        updateMethodCall
-      case _ => m
-    }
+      methodCall
+    case _ => m //TODO throw error
   }
 
-  def dagUpdate(input: PProgram, m:PMethodCall): PStmt = {
-    m.args.head match {
-      case field: PIdnUse =>
-        val fieldName = field.name
-        val updateMethodName = OuroborosNames.getIdentifier(s"update_DAG_$fieldName")
-        val copier = StrategyBuilder.Slim[PNode](PartialFunction.empty).duplicateEverything
-        val updateMethodCall = PMethodCall(
-          Seq(),
-          PIdnUse(updateMethodName),
-          m.args.tail.map(arg => copier.execute[PExp](arg).setPos(arg)) //TODO needed?
-        ).setPos(m)
+  def zopgUpdate(input: PProgram, field: PExp, graph: PExp, lhsNode: PExp, rhsNode: PExp, m: PMethodCall): PStmt = field match {
+    case field: PIdnUse =>
+      val fieldName = field.name
+      val updateMethodName = getIdentifier(s"update_ZOPG_$fieldName")
+      //val copier = StrategyBuilder.Slim[PNode](PartialFunction.empty).duplicateEverything
+      val updateMethodCall = PMethodCall(
+        Seq(),
+        PIdnUse(updateMethodName),
+        Seq(graph, lhsNode, rhsNode) //TODO needed?
+      ).setPos(m)
 
-        updateMethodCall
-      case _ => m
-    }
+      updateMethodCall
+    case _ => m
+  }
+
+  def zopgLinkOrUnlink(input: PProgram, field: PExp, graph: PExp, lhsNode: PExp, rhsNode: Option[PExp], m: PMethodCall): PStmt = field match {
+    case field: PIdnUse =>
+      OuroborosMemberInliner.zopgUsed = true
+      val fieldName = field.name
+      val methodName = rhsNode match {
+        case None => getIdentifier(s"unlink_ZOPG_$fieldName")
+        case _ => getIdentifier(s"link_ZOPG_$fieldName")
+      }
+
+      val methodCall = PMethodCall(
+        Seq(),
+        PIdnUse(methodName),
+        Seq(graph, lhsNode) ++
+          (if (rhsNode.isEmpty) Seq()
+          else Seq(rhsNode.get))
+      ).setPos(m)
+
+      methodCall
+
+    case _ => m
+  }
+
+  def dagUpdate(input: PProgram, field: PExp, graph: PExp, lhsNode: PExp, rhsNode: PExp, m:PMethodCall): PStmt = field match {
+    case field: PIdnUse =>
+      val fieldName = field.name
+      val updateMethodName = getIdentifier(s"update_DAG_$fieldName")
+      //val copier = StrategyBuilder.Slim[PNode](PartialFunction.empty).duplicateEverything
+      val updateMethodCall = PMethodCall(
+        Seq(),
+        PIdnUse(updateMethodName),
+        Seq(graph, lhsNode, rhsNode) //TODO needed?
+      ).setPos(m)
+
+      updateMethodCall
+    case _ => m
+  }
+
+  def dagLinkOrUnlink(input: PProgram, field: PExp, graph: PExp, lhsNode: PExp, rhsNode: Option[PExp], m: PMethodCall): PStmt = field match {
+    case field: PIdnUse =>
+      val fieldName = field.name
+      val methodName = rhsNode match {
+        case None => getIdentifier(s"unlink_DAG_$fieldName")
+        case _ => getIdentifier(s"link_DAG_$fieldName")
+      }
+      val methodCall = PMethodCall(
+        Seq(),
+        PIdnUse(methodName),
+        Seq(graph, lhsNode) ++
+          (if (rhsNode.isEmpty) Seq()
+          else Seq(rhsNode.get))
+      ).setPos(m)
+
+      methodCall
+
+    case _ => m
   }
 
   private def getNoExitWisdom(input: Program, g0:Exp, g1:Exp)(pos: Position = NoPosition, info: Info = NoInfo, errT: ErrorTrafo = NoTrafos): Stmt = {
@@ -680,5 +772,8 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
     } flatten, Seq())(fa.pos, fa.info, unlinkErrTrafo)
   }
 
-   def getIdentifier(name : String): String = OuroborosNames.getIdentifier(name)
+  def getIdentifier(name : String): String = OuroborosNames.getIdentifier(name)
+
+  def universeExp(): PExp = PIdnUse(getIdentifier("UNIVERSE"))
+
 }

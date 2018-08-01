@@ -138,7 +138,10 @@ domain TrClo {
             { edge(EG,start,end) }
                 exists_path_(EG,start,end) <==>
                     start == end
-                    || exists w:Ref :: edge(EG,start,w) && exists_path_(EG,w,end)
+                    || !(forall w:Ref ::
+                        { edge(EG, start, w), exists_path(EG, w, end) } //TODO
+                            !(edge(EG,start,w) && exists_path_(EG,w,end)))
+//                    || exists w:Ref :: edge(EG,start,w) && exists_path_(EG,w,end)
     }
 
     /** Follows from T1 && IND */
@@ -181,7 +184,10 @@ domain TrClo {
         forall EG:Set[Edge], from:Set[Ref], to:Ref ::
             { exists_spath(EG,from,to) }
                 exists_spath(EG,from,to) <==>
-                    exists f:Ref :: f in from && exists_path(EG,f,to)
+                    !(forall f:Ref ::
+                        {f in from}{exists_path(EG, f, to)} //TODO
+                            !(f in from && exists_path(EG,f,to)))
+//                    exists f:Ref :: f in from && exists_path(EG,f,to)
         }
 }
 

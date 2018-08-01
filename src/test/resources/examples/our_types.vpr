@@ -155,7 +155,11 @@ method join(g0:Graph[_,_], g1:Graph[_,Closed], x0:Node, x1:Node) returns (x:Ref,
         {
             last := last.next
         }
-
+        UNLINK(next, g0 union g1, last)
+        NO_EXIT(g0 union g1, g0 union g1, g0) //TODO add automatically
+        NO_EXIT(g0 union g1, g0 union g1, g1) //TODO add automatically
+        FRAMING(g0, g1)                       //TODO add automatically
+        LINK(next, g0 union g1, last, x1)
         last.next := x1
     }
     x := x0
