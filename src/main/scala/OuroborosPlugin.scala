@@ -37,17 +37,22 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
     OuroborosNames reset()
   }
 
+  override def beforeParse(input: String, isImported: Boolean): String = {
+    //TODO cast (:= (Graph[_,_]) g)
+    //input.split("\\n", 1)
+    super.beforeParse(input, isImported)
+  }
+
   override def beforeResolve(input: PProgram): PProgram = {
     reset()
 
     logger.debug(">>> beforeResolve ")
 
     def getErrors(nodes: Set[PIdnDef]) = {
-      var newErrors: Set[AbstractError] = Set()
-      nodes.map(x => {
+      nodes.foreach(x => {
         val message = FastMessaging.message(x, "Cannot use identifier " + x.name)
         for (m <- message) {
-          newErrors += OuroborosInvalidIdentifierError( m.label,
+          val error: AbstractError = OuroborosInvalidIdentifierError( m.label,
             m.pos match {
               case fp: FilePosition =>
                 SourcePosition(fp.file, m.pos.line, m.pos.column)
@@ -56,11 +61,9 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
                 NoPosition //TODO find position
             }
           )
+          reportError(error)
         }
-        x
       })
-
-      _errors ++= newErrors
 
     }
 
@@ -142,15 +145,13 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
 
     val macros : Seq[PGlobalDeclaration] = macroSynthesizedFile.methods ++ macroSynthesizedFile.functions
 
-    macros.map {
+    macros.foreach {
       case function: PFunction =>
         OuroborosNames.macroNames put (function.idndef.name, None) //put(function.idndef.name, function.formalArgs.map(arg => arg.idndef.name))
-        function
       case method: PMethod =>
         OuroborosNames.macroNames put (method.idndef.name, None) //put(method.idndef.name, method.formalArgs.map(arg => arg.idndef.name))
-        method
 
-      case mac => mac
+      case _ =>
     }
 
 
@@ -170,8 +171,11 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
       {
         //case p: PProgram => graph_handler.synthesizeParametricEntities(pprog)
         case i: PProgram => OuroborosNames.ref_fields = graph_handler.ref_fields(i); i
-        case m: PMethod => graph_handler.handlePMethod(pprog, m)
-        case m: PCall => graph_handler.handlePCall(pprog, m)
+        case m: PMethod =>
+          val methodAndErrors = graph_handler.handlePMethod(pprog, m)
+          methodAndErrors._2.foreach(reportError)
+          methodAndErrors._1
+        case m: PCall => graph_handler.handlePCall(pprog, m, None)
         case m: PMethodCall => graph_handler.handlePMethodCall(pprog, m)
         case m: PField => graph_handler.handlePField(pprog, m) //TODO Fields, Domains
         case f: PFormalArgDecl => graph_handler.handlePFormalArgDecl(pprog, f) //TODO maybe register graphs?

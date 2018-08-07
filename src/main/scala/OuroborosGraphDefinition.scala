@@ -9,15 +9,15 @@ package viper.silver.plugin
 import java.util
 
 import scala.language.postfixOps
-
 import scala.collection.{immutable, mutable}
-import viper.silver.{ast, parser}
+import viper.silver.{FastMessaging, ast, parser}
 import viper.silver.ast.utility.Rewriter.{ContextC, Rewritable, StrategyBuilder}
 import viper.silver.ast._
 import viper.silver.ast.utility.Rewriter
 import viper.silver.parser.{PFormalArgDecl, _}
 import viper.silver.plugin.errors.OuroborosAssignmentError
 import viper.silver.plugin.reasons.{InsufficientGraphPermission, NotInGraphReason}
+import viper.silver.verifier.AbstractError
 import viper.silver.verifier.errors.PreconditionInCallFalse
 import viper.silver.verifier.reasons.{AssertionFalse, InsufficientPermission, InternalReason}
 
@@ -56,39 +56,70 @@ case class GraphType[T <: Topology, C <: Closedness]()
 object OurTypes {
   //val ourTypes = Seq("Graph", "ClosedGraph", "List")
 
-  def getOurObject(ourType : PDomainType) : Option[Topology with Closedness] = ourType.domain.name match {
+  def getOurObject(ourType : PDomainType) : (Option[Topology with Closedness], Seq[AbstractError]) = ourType.domain.name match {
     case "Graph" =>
-      assert(ourType.typeArguments.size == 2) //TODO need to do errorReporting instead of assert false
-      assert(ourType.typeArguments.head.isInstanceOf[PDomainType])
-      assert(ourType.typeArguments.last.isInstanceOf[PDomainType])
+      def getError(message: String, pos: PNode): Seq[AbstractError] = {
+        val newMessage = FastMessaging.message(pos, message)
+        newMessage.map(m => {
+          OuroborosInvalidIdentifierError( m.label,
+            m.pos match {
+              case fp: FilePosition =>
+                SourcePosition(fp.file, m.pos.line, m.pos.column)
+              case _ =>
+                NoPosition
+            }
+          )
+        })
+      }
+      if(ourType.typeArguments.size < 2) {
+        val error = getError(s"Closedness is not specified.", ourType)
+        return (None, error)
+      } else if(ourType.typeArguments.size > 2) {
+        val error = getError(s"Can only specify Topology and Closedness.", ourType)
+        return (None, error)
+      }
+      //assert(ourType.typeArguments.size == 2) //TODO need to do errorReporting instead of assert false
+
       ourType.typeArguments.last match {
         case clos:PDomainType if clos.typeArguments.isEmpty => clos.domain.name match {
           case "Closed" => ourType.typeArguments.head match {
             case topo: PDomainType if topo.typeArguments.isEmpty => topo.domain.name match {
-              case "Forest" => Some(OurClosedForest)
-              case "DAG" => Some(OurClosedDAG)
-              case "ZOPG" => Some(OurClosedZOPG)
-              case "_" => Some(OurClosedGraph)
-              case _ => assert(false); None //TODO need to report Error
+              case "Forest" => (Some(OurClosedForest), Seq())
+              case "DAG" => (Some(OurClosedDAG), Seq())
+              case "ZOPG" => (Some(OurClosedZOPG), Seq())
+              case "_" => (Some(OurClosedGraph), Seq())
+              case _ =>
+                val error = getError(s"Topology ${topo.domain.name} is not defined.", topo)
+                (None, error)
             }
-            case _ => assert(false); None //TODO need to report Error
+            case _ =>
+              val error = getError(s"Topology ${ourType.typeArguments.head} is invalid.", ourType.typeArguments.head)
+              (None, error)
           }
 
           case "_" => ourType.typeArguments.head match {
             case topo: PDomainType if topo.typeArguments.isEmpty => topo.domain.name match {
-              case "Forest" => Some(OurForest)
-              case "DAG" => Some(OurDAG)
-              case "ZOPG" => Some(OurZOPG)
-              case "_" => Some(OurGraph)
-              case _ => assert(false); None //TODO need to report Error
+              case "Forest" => (Some(OurForest), Seq())
+              case "DAG" => (Some(OurDAG), Seq())
+              case "ZOPG" => (Some(OurZOPG), Seq())
+              case "_" => (Some(OurGraph), Seq())
+              case _ =>
+                val error = getError(s"Topology ${topo.domain.name} is not defined.", topo)
+                (None, error)
             }
-            case _ => assert(false); None //TODO need to report Error
+            case _ =>
+              val error = getError(s"Topology ${ourType.typeArguments.head} is invalid.", ourType.typeArguments.head)
+              (None, error)
           }
-          case _  => assert(false); None
+          case _  =>
+            val error = getError(s"Closedness ${clos.domain.name} is not defined.", clos)
+            (None, error)
         }
-        case _ => assert(false); None
+        case _ =>
+          val error = getError(s"Closedness ${ourType.typeArguments.last} is invalid.", ourType.typeArguments.last)
+          (None, error)
       }
-    case _ => None
+    case _ => (None, Seq())
       //TODO more types
   }
 
@@ -338,11 +369,16 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
   }
 
 
-  def handlePMethod(input: PProgram, m: PMethod): PNode = {
+  def handlePMethod(input: PProgram, m: PMethod): (PNode, Seq[AbstractError]) = {
+
+    var errors: Seq[AbstractError] = Seq()
 
     def collect_objects(collection: Seq[PFormalArgDecl]): Seq[OurObject] = collection.flatMap {
       case x:PFormalArgDecl => x.typ match {
-        case d: PDomainType => OurTypes.getOurObject(d) match {
+        case d: PDomainType =>
+          val getOurObject = OurTypes.getOurObject(d)
+          errors ++= getOurObject._2
+          getOurObject._1 match {
           case None => Seq()
           case Some(ourType) => Seq(OurObject(x.idndef.name, ourType))
         }
@@ -379,7 +415,9 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
         case d: PDomainType => d.domain.name match {
           case "Node" => Seq(PLocalVarDecl(l.idndef, TypeHelper.Ref, l.init).setPos(l))
           case _ =>
-            OurTypes.getOurObject(d) match {
+            val getOurObject = OurTypes.getOurObject(d)
+            errors ++= getOurObject._2
+            getOurObject._1 match {
               case None => Seq(l)
               case Some(ourType) =>
                   Seq(
@@ -401,22 +439,34 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
     // Store the graph specifications for future reference.
     graph_definitions(m.idndef.name) = OurGraphSpec(input_graphs, /*local_graphs, */output_graphs)
 
-    PMethod(
-      m.idndef,
-      m.formalArgs.map(x => {
-        handlePFormalArgDecl(input, x)
-      }),
-      m.formalReturns.map(x => {
-        handlePFormalArgDecl(input, x)
-      }),
-      /*map_graphs_to_contracts(input_graphs) ++ disjoint_graph_specs(input_graphs) ++*/ m.pres/*.map(x => {
-        handlePExp(input, x)
-      })*/,
-      /*output_graphs_footprint ++ union_graph_specs(input_graphs, output_graphs) ++ */m.posts/*.map(x => {
-        handlePExp(input, x)
-      })*/,
-      mBody
-    ).setPos(m)
+    var objects: Seq[OurObject] = Seq()
+    val presAndPostsRewriter = StrategyBuilder.Slim[PNode](
+      {
+        case n: PCall => handlePCall(input, n, Some(objects))
+      }
+    )
+
+    (
+      PMethod(
+        m.idndef,
+        m.formalArgs.map(x => {
+          handlePFormalArgDecl(input, x)
+        }),
+        m.formalReturns.map(x => {
+          handlePFormalArgDecl(input, x)
+        }),
+        m.pres.map(pre => {
+          objects = input_graphs
+          presAndPostsRewriter.execute[PExp](pre)
+        }),
+        m.posts.map(post => {
+          objects = input_graphs ++ output_graphs
+          presAndPostsRewriter.execute[PExp](post)
+        }),
+        mBody
+      ).setPos(m),
+      errors
+    )
   }
 
   def handlePField(input: PProgram, m: PField): PField = {
@@ -450,7 +500,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
     }
   }
 
-  def handlePCall(input: PProgram, m: PCall): PNode = {
+  def handlePCall(input: PProgram, m: PCall, objects: Option[Seq[OurObject]]): PNode = {
 
     m.func.name match {
       case "CLOSED_GRAPH" if m.args.length == 1 => GRAPH(input, m.args.head, ref_fields(input), m, true)
@@ -463,9 +513,9 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
       case "PROTECTED_GRAPH" if m.args.length == 1 => PROTECTED_GRAPH(input, m.args.head, ref_fields(input))
 
       case "EDGE" if m.args.length == 3 => EDGE(input, m.args.head, m.args(1), m.args(2), m)
-      case "EDGE" if m.args.length == 2 => EDGE(input, universeExp(), m.args.head, m.args.last, m)
+      case "EDGE" if m.args.length == 2 => EDGE(input, if(objects.isEmpty) universeExp() else getUnion(objects.get), m.args.head, m.args.last, m)
       case "EXISTS_PATH" if m.args.length == 3 => EXISTS_PATH(input, m.args.head, m.args(1), m.args(2), m)
-      case "EXISTS_PATH" if m.args.length == 2 => EXISTS_PATH(input, universeExp(), m.args.head, m.args.last, m)
+      case "EXISTS_PATH" if m.args.length == 2 => EXISTS_PATH(input, if(objects.isEmpty) universeExp() else getUnion(objects.get), m.args.head, m.args.last, m)
       case "IS_GLOBAL_ROOT" if m.args.length == 2 => IS_GLOBAL_ROOT(input, m.args.head, m.args(1), m)
 
       case "FUNCTIONAL" if m.args.length == 1 => FUNCTIONAL(input, m.args.head, m)
@@ -493,7 +543,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
       case "UNLINK_ZOPG" if m.args.length == 3 => zopgLinkOrUnlink(input, field = m.args.head, graph = m.args(1), lhsNode = m.args.last, rhsNode = None, m)
       case "UNLINK_ZOPG" if m.args.length == 2 => zopgLinkOrUnlink(input, field = m.args.head, graph = universeExp(), lhsNode = m.args.last, rhsNode = None, m)
       case "LINK_ZOPG" if m.args.length == 4 => zopgLinkOrUnlink(input, field = m.args.head, graph = m.args(1), lhsNode = m.args(2), rhsNode = Some(m.args.last), m)
-      case "Link_ZOPG" if m.args.length == 3 => zopgLinkOrUnlink(input, field = m.args.head, graph = universeExp(), lhsNode = m.args(1), rhsNode = Some(m.args.last), m)
+      case "LINK_ZOPG" if m.args.length == 3 => zopgLinkOrUnlink(input, field = m.args.head, graph = universeExp(), lhsNode = m.args(1), rhsNode = Some(m.args.last), m)
 
       case "UPDATE_DAG" if m.args.length == 4 => dagUpdate(input, field = m.args.head, graph = m.args(1), lhsNode = m.args(2), rhsNode = m.args.last, m)
       case "UPDATE_DAG" if m.args.length == 3 => dagUpdate(input, field = m.args.head, graph = universeExp(), lhsNode = m.args(1), rhsNode = m.args.last, m)
@@ -776,4 +826,12 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
 
   def universeExp(): PExp = PIdnUse(getIdentifier("UNIVERSE"))
 
+  def getUnion(objects: Seq[OurObject]): PExp = {
+    OuroborosHelper.transformAndFold[OurObject, PExp](
+      objects,
+      PEmptySet(PSetType(TypeHelper.Ref)),
+      (union, graph) => PBinExp(union, "union", graph),
+      obj => PIdnUse(obj.name)
+    )
+  }
 }
