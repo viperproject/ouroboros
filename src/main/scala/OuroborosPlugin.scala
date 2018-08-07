@@ -35,6 +35,7 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
 
   def reset(): Unit = {
     OuroborosNames reset()
+    OuroborosConfig reset()
   }
 
   override def beforeParse(input: String, isImported: Boolean): String = {
@@ -47,6 +48,30 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
     reset()
 
     logger.debug(">>> beforeResolve ")
+    var inline: Boolean = false
+    var wisdoms: Boolean = false
+    var update_invariants: Boolean = false
+    input.fields.foreach(field => {
+      field.idndef.name match {
+        case "__CONFIG_OUROBOROS_INLINE" => inline = true
+        case "__CONFIG_OUROBOROS_WISDOMS" => wisdoms = true
+        case "__CONFIG_OUROBOROS_UPDATE_INVARIANTS" => update_invariants = true
+        case _ =>
+      }
+    })
+
+    OuroborosConfig.set(inline, wisdoms, update_invariants)
+
+    val inputWithoutConfigFields = PProgram(
+      input.imports,
+      input.macros,
+      input.domains,
+      input.fields.filter(field => !OuroborosNames.magic_fields.contains(field.idndef.name)),
+      input.functions,
+      input.predicates,
+      input.methods,
+      input.errors
+    )
 
     def getErrors(nodes: Set[PIdnDef]) = {
       nodes.foreach(x => {
@@ -72,7 +97,7 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
 
     //Collect identifiers
     var invalidIdentifier: Option[Set[PIdnDef]] = None
-    invalidIdentifier = OuroborosNames.collectNames(input)
+    invalidIdentifier = OuroborosNames.collectNames(inputWithoutConfigFields)
     //logger.debug("NAMES: " + names)
 
     //If one identifier is "Graph" or "Node", stop
@@ -80,11 +105,11 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
       case None =>
       case Some(nodes) =>
         getErrors(nodes)
-        return input
+        return inputWithoutConfigFields
     }
 
     //Get Ref Fields
-    val ref_fields: Seq[String] = input.fields.collect {
+    val ref_fields: Seq[String] = inputWithoutConfigFields.fields.collect {
       case PField(f, t) if t == TypeHelper.Ref => Seq(f.name)
       case x:PField => x.typ match {
         case d: PDomainType if d.domain.name == "Node" => Seq(x.idndef.name)
@@ -157,14 +182,14 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
 
     val pprog: PProgram =
       PProgram(
-        preamble.imports ++ input.imports,
+        preamble.imports ++ inputWithoutConfigFields.imports,
         Seq(),//preamble.macros ++ input.macros,
-        preamble.domains ++ input.domains,
-        preamble.fields ++ input.fields,
-        preamble.functions ++ input.functions,
-        preamble.predicates ++ input.predicates,
-        preamble.methods ++ input.methods,
-        preamble.errors ++ input.errors
+        preamble.domains ++ inputWithoutConfigFields.domains,
+        preamble.fields ++ inputWithoutConfigFields.fields,
+        preamble.functions ++ inputWithoutConfigFields.functions,
+        preamble.predicates ++ inputWithoutConfigFields.predicates,
+        preamble.methods ++ inputWithoutConfigFields.methods,
+        preamble.errors ++ inputWithoutConfigFields.errors
       )
 
     val ourRewriter = StrategyBuilder.Slim[PNode](
@@ -241,14 +266,16 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
     )(inputPrime.pos, inputPrime.info, inputPrime.errT)
 
     //comment these two lines out to disable inlining
-//    inputPrime = ourInliner.execute[Program](inputPrime)
-//    inputPrime = Program(
-//      if(OuroborosMemberInliner.zopgUsed) inputPrime.domains else inputPrime.domains.filter(domain => !zOPGdomainNames.contains(domain.name)),
-//      inputPrime.fields,
-//      inputPrime.functions.filter(function => !OuroborosNames.macroNames.contains(function.name) && !zOPGdomainNames.contains(function.name)),
-//      inputPrime.predicates,
-//      inputPrime.methods.filter(method => !OuroborosNames.macroNames.contains(method.name)  && !zOPGdomainNames.contains(method.name))
-//    )(inputPrime.pos, inputPrime.info, inputPrime.errT)
+    if(OuroborosConfig.inline) {
+      inputPrime = ourInliner.execute[Program](inputPrime)
+      inputPrime = Program(
+        if (OuroborosMemberInliner.zopgUsed) inputPrime.domains else inputPrime.domains.filter(domain => !zOPGdomainNames.contains(domain.name)),
+        inputPrime.fields,
+        inputPrime.functions.filter(function => !OuroborosNames.macroNames.contains(function.name) && !zOPGdomainNames.contains(function.name)),
+        inputPrime.predicates,
+        inputPrime.methods.filter(method => !OuroborosNames.macroNames.contains(method.name) && !zOPGdomainNames.contains(method.name))
+      )(inputPrime.pos, inputPrime.info, inputPrime.errT)
+    }
 
     OuroborosMemberInliner.zopgUsed = false
     translatedCode = inputPrime.toString()
@@ -325,4 +352,23 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
       input.methods ++ ourPreamble.methods
     )(input.pos, input.info, input.errT + NodeTrafo(input))
   }*/
+}
+
+object OuroborosConfig {
+  var inline: Boolean = false
+  var wisdoms: Boolean = false
+  var update_invariants: Boolean = false
+
+  def set(inline: Boolean, wisdoms: Boolean, update_invariants: Boolean) = {
+    this.inline = inline
+    this.wisdoms = wisdoms
+    this.update_invariants = update_invariants
+  }
+
+  def reset() = {
+    inline = false
+    wisdoms = false
+    update_invariants = false
+  }
+
 }

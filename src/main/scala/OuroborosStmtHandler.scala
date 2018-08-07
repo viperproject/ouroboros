@@ -291,10 +291,13 @@ class OuroborosStmtHandler {
           else
             (OuroborosNames.getIdentifier(s"unlink_DAG_$fieldName"),  OuroborosNames.getIdentifier(s"link_DAG_$fieldName"))
 
-          val invariantFunctionName = if(ZOPGUpdateNames.contains(methodName))
+          val invariantFunctionName = if(OuroborosConfig.update_invariants)
+            (if(ZOPGUpdateNames.contains(methodName))
             Some(OuroborosNames.getIdentifier("update_ZOPG_invariant"))
           else if(DAGUpdateNames.contains(methodName))
             Some(OuroborosNames.getIdentifier("update_DAG_invariant"))
+          else
+            None)
           else
             None
 

@@ -9,7 +9,10 @@ import viper.silver.parser._
 import scala.collection.mutable
 
 object OuroborosNames {
-  val reserved_keywords = Set("FRAMING", "NO_EXIT", "CLOSED_ZOPG", "ZOPG", "CLOSED_GRAPH", "GRAPH", "ACYCLIC", "FUNCTIONAL", "Graph", "ZOPG", "ClosedZOPG", "Node", "CLOSED", "DISJOINT", "UPDATE", "UPDATE_ZOPG", "NEW", "UNIVERSE")
+  val keywords = Set("FRAMING", "NO_EXIT", "CLOSED_ZOPG", "ZOPG", "CLOSED_GRAPH", "GRAPH", "ACYCLIC", "FUNCTIONAL", "Graph", "ZOPG", "ClosedZOPG", "Node", "CLOSED", "DISJOINT", "UPDATE", "UPDATE_ZOPG", "NEW", "UNIVERSE")
+  val magic_fields = Set("__CONFIG_OUROBOROS_INLINE", "__CONFIG_OUROBOROS_WISDOMS", "__CONFIG_OUROBOROS_UPDATE_INVARIANTS")
+
+  def reserved_keywords() = keywords ++ magic_fields
 
 
   var graph_keywords: mutable.Map[String, String] = mutable.Map.empty[String, String]
@@ -56,7 +59,7 @@ object OuroborosNames {
     var invalidIdentifier : Option[Set[PIdnDef]] = None
 
     def checkIfValid(node: PIdnDef): String = {
-      if(OuroborosNames.reserved_keywords.contains(node.name)) {
+      if(OuroborosNames.reserved_keywords().contains(node.name)) {
         invalidIdentifier match {
           case None => invalidIdentifier = Some(Set(node))
           case Some(nodes) => invalidIdentifier = Some(nodes + node)
