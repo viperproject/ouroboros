@@ -174,11 +174,11 @@ def fold_GRAPH(graph: Exp, fields: Seq[Field], input: Program, closed: Boolean, 
 
 def GRAPH(graph: Exp, fields: Seq[Field], input: Program, closed: Boolean, qpsNeeded: Boolean, dag: Boolean): Seq[Exp] = {
   val qpsForRefFieldErrTrafo = OuroborosErrorTransformers.qpsForRefFieldErrTrafo(graph.toString())
-  val unExp : Exp = NO_NULL(graph, input)
+  val noNullProperty : Exp = NO_NULL(graph, input)
   val QPForRefFields : Seq[Exp] = if(qpsNeeded)
     collectQPsForRefFields(fields, graph.duplicateMeta(graph.pos, graph.info, qpsForRefFieldErrTrafo).asInstanceOf[Exp], FullPerm()(graph.pos, graph.info, qpsForRefFieldErrTrafo))
   else Seq()
-  val InGraphForallsForRefFields = if(closed)
+  val closedProperty = if(closed)
     Seq(
       CLOSED(graph, input)
     )
@@ -189,7 +189,7 @@ def GRAPH(graph: Exp, fields: Seq[Field], input: Program, closed: Boolean, qpsNe
   else
   Seq()
 
-  (unExp +: QPForRefFields) ++ InGraphForallsForRefFields ++ dagProperty
+  (noNullProperty +: QPForRefFields) ++ closedProperty ++ dagProperty
 }
 
   def DAG(graph: Exp, input: Program): Exp = {

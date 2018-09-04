@@ -1,7 +1,7 @@
 package viper.silver.plugin
 
 import viper.silver.ast.{ErrTrafo, Exp, FieldAssign, Node}
-import viper.silver.plugin.errors.{OuroborosAssignmentError, OuroborosGraphSpecificactionError, OuroborosInternalEncodingError}
+import viper.silver.plugin.errors.{OuroborosAssignmentError, OuroborosGraphSpecificactionError, OuroborosInternalEncodingError, OuroborosTypeError}
 import viper.silver.plugin.reasons._
 import viper.silver.verifier.AbstractVerificationError
 import viper.silver.verifier.errors._
@@ -24,7 +24,7 @@ object OuroborosErrorTransformers {
   def graphErrTrafo(g: String): ErrTrafo = {
     def reasonTransformer(err: AbstractVerificationError): AbstractVerificationError = {
       err.reason match {
-        case r : InsufficientPermission => { //TODO maybe find out, for which field, we don't have enough permissions
+        case r : InsufficientPermission => //TODO maybe find out, for which field, we don't have enough permissions
           OuroborosGraphSpecificactionError(
             g,
             err.offendingNode,
@@ -34,7 +34,6 @@ object OuroborosErrorTransformers {
             ),
             err.cached
           )
-        }
         case r : AssertionFalse if r.readableMessage.contains(s"${OuroborosNames.getIdentifier("closed")}(")=> {
           OuroborosGraphSpecificactionError(
             g,
@@ -192,4 +191,10 @@ object OuroborosErrorTransformers {
       case x => x
     })
   }
+
+  def wrongTypeErrTrafo(exp: Node, wantedType: Topology with Closedness): ErrTrafo = ErrTrafo({
+    case x =>
+      OuroborosTypeError(x.offendingNode,
+        WrongTypeReason(x.offendingNode, s"The expression $exp might not be of wished Type $wantedType."), false)
+  })
 }

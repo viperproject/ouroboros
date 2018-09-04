@@ -30,6 +30,7 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
 
   val graph_handler = new OuroborosGraphDefinition(this)
   val graphAST_handler = new OuroborosGraphHandler()
+  val graph_state_checker = new OuroborosReachingDefinition()
   var translatedCode = ""
   var zOPGdomainNames : Seq[String] = Seq()
 
@@ -39,7 +40,6 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
   }
 
   override def beforeParse(input: String, isImported: Boolean): String = {
-    //TODO cast (:= (Graph[_,_]) g)
     //input.split("\\n", 1)
     super.beforeParse(input, isImported)
   }
@@ -51,16 +51,18 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
     var inline: Boolean = false
     var wisdoms: Boolean = false
     var update_invariants: Boolean = false
+    var type_check: Boolean = false
     input.fields.foreach(field => {
       field.idndef.name match {
         case "__CONFIG_OUROBOROS_INLINE" => inline = true
         case "__CONFIG_OUROBOROS_WISDOMS" => wisdoms = true
         case "__CONFIG_OUROBOROS_UPDATE_INVARIANTS" => update_invariants = true
+        case "__CONFIG_OUROBOROS_TYPE_CHECK" => type_check = true
         case _ =>
       }
     })
 
-    OuroborosConfig.set(inline, wisdoms, update_invariants)
+    OuroborosConfig.set(inline, wisdoms, update_invariants, type_check)
 
     val inputWithoutConfigFields = PProgram(
       input.imports,
@@ -72,6 +74,21 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
       input.methods,
       input.errors
     )
+
+//    input.methods.foreach(method => {
+//
+//      val message = FastMessaging.message(method, "Test warning")
+//      for (m <- message) {
+//        val error: AbstractError = ParseWarning(m.label, m.pos match {
+//          case fp: FilePosition =>
+//            SourcePosition(fp.file, m.pos.line, m.pos.column)
+//          case _ =>
+//            NoPosition
+//        })
+//
+//        reportError(error)
+//      }
+//    })
 
     def getErrors(nodes: Set[PIdnDef]) = {
       nodes.foreach(x => {
@@ -243,7 +260,17 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
       }
     )
 
-    val ourInliner = StrategyBuilder.Context[Node, mutable.Set[Declaration]]({
+
+    lazy val ourStateChecker = StrategyBuilder.Slim[Node](
+      {
+        case m: Method if graph_defs.contains(m.name) =>
+          val tuple = graph_state_checker.handleMethod(m, graph_defs, input)
+          tuple._2.foreach(err => reportError(err))
+          tuple._1
+      }
+    )
+
+    lazy val ourInliner = StrategyBuilder.Context[Node, mutable.Set[Declaration]]({
       case (fc : FuncApp, ctx) if OuroborosNames.macroNames.contains(fc.funcname) || zOPGdomainNames.contains(fc.funcname) => OuroborosMemberInliner.inlineFunctionApp(fc, input, fc.pos, fc.info, fc.errT)
 
       case (mc: MethodCall, ctx) if OuroborosNames.macroNames.contains(mc.methodName) || zOPGdomainNames.contains(mc.methodName) =>
@@ -265,7 +292,10 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
       inputPrime.methods.filter(method => !(OuroborosNames.macroNames.keySet ++ zOPGdomainNames).contains(method.name) || usedMacroCalls.contains(method.name))
     )(inputPrime.pos, inputPrime.info, inputPrime.errT)
 
-    //comment these two lines out to disable inlining
+    if(OuroborosConfig.type_check) {
+      inputPrime = ourStateChecker.execute[Program](inputPrime)
+    }
+
     if(OuroborosConfig.inline) {
       inputPrime = ourInliner.execute[Program](inputPrime)
       inputPrime = Program(
@@ -280,15 +310,34 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
     OuroborosMemberInliner.zopgUsed = false
     translatedCode = inputPrime.toString()
     logger.debug(s"Complete Viper program:\n${inputPrime.toString()}")
+    this.input = Some(inputPrime)
     inputPrime
   }
 
-  override def mapVerificationResult(input: VerificationResult): VerificationResult = input match {
-    case Success => Success
-    case Failure(errors) => Failure(errors.map {
-      case x: AbstractVerificationError => x.transformedError()
-      case x => x
-    })
+  var input: Option[Program] = None
+
+  override def mapVerificationResult(input: VerificationResult): VerificationResult = {
+    if(OuroborosNames.ref_fields.isEmpty) {
+      val noRefFields = ParseWarning("There are no fields of type Node or Ref.", this.input match {
+        case None => NoPosition
+        case Some(x) => x.pos
+      })
+      input match {
+        case Success => Failure(Seq(noRefFields))
+        case Failure(errors) => Failure(errors.map {
+          case x: AbstractVerificationError => x.transformedError()
+          case x => x
+        } :+ noRefFields)
+      }
+    } else {
+      input match {
+        case Success => Success
+        case Failure(errors) => Failure(errors.map {
+          case x: AbstractVerificationError => x.transformedError()
+          case x => x
+        })
+      }
+    }
   }
 
   private def readResourceIntoTmpFile(resource: String): Path = {
@@ -358,17 +407,20 @@ object OuroborosConfig {
   var inline: Boolean = false
   var wisdoms: Boolean = false
   var update_invariants: Boolean = false
+  var type_check: Boolean = false
 
-  def set(inline: Boolean, wisdoms: Boolean, update_invariants: Boolean) = {
+  def set(inline: Boolean, wisdoms: Boolean, update_invariants: Boolean, type_check: Boolean) = {
     this.inline = inline
     this.wisdoms = wisdoms
     this.update_invariants = update_invariants
+    this.type_check = type_check
   }
 
   def reset() = {
     inline = false
     wisdoms = false
     update_invariants = false
+    type_check = false
   }
 
 }

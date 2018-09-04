@@ -9,8 +9,20 @@ import viper.silver.parser._
 import scala.collection.mutable
 
 object OuroborosNames {
-  val keywords = Set("FRAMING", "NO_EXIT", "CLOSED_ZOPG", "ZOPG", "CLOSED_GRAPH", "GRAPH", "ACYCLIC", "FUNCTIONAL", "Graph", "ZOPG", "ClosedZOPG", "Node", "CLOSED", "DISJOINT", "UPDATE", "UPDATE_ZOPG", "NEW", "UNIVERSE")
-  val magic_fields = Set("__CONFIG_OUROBOROS_INLINE", "__CONFIG_OUROBOROS_WISDOMS", "__CONFIG_OUROBOROS_UPDATE_INVARIANTS")
+  val keywords = Set("FRAMING", "NO_EXIT",
+    /*"CLOSED_ZOPG", "ZOPG",*/ "CLOSED_GRAPH", "GRAPH", //TODO CLOSED_ZOPG needed?
+    "Graph", "ZOPG", /*"ClosedZOPG",*/ "Node", "DAG", "Closed", //TODO ClosedZOPG needed?
+    "ACYCLIC", "FUNCTIONAL", "CLOSED", "DISJOINT", "NEW",
+    "UPDATE",
+    "UPDATE_ZOPG", "UNLINK_ZOPG", "LINK_ZOPG",
+    "UPDATE_DAG", "UNLINK_DAG", "LINK_DAG",
+    "UNIVERSE")
+  val magic_fields = Set(
+    "__CONFIG_OUROBOROS_INLINE",
+    "__CONFIG_OUROBOROS_WISDOMS",
+    "__CONFIG_OUROBOROS_UPDATE_INVARIANTS",
+    "__CONFIG_OUROBOROS_TYPE_CHECK"
+  )
 
   def reserved_keywords() = keywords ++ magic_fields
 
@@ -53,6 +65,13 @@ object OuroborosNames {
       addNewName(name, name)
     }
     name
+  }
+
+  def getNewPrefix(prefix: String, string: String): String = {
+    string match {
+      case _ if string.startsWith(prefix) => prefix.concat("_")
+      case _ => prefix
+    }
   }
 
   def collectNames(input : PProgram): Option[Set[PIdnDef]] = {

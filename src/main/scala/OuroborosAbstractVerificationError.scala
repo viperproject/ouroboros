@@ -29,6 +29,13 @@ object errors {
     def withReason(r: ErrorReason) = OuroborosAssignmentError(offendingNode, r)
   }
 
+  case class OuroborosTypeError(offendingNode: ErrorNode, reason: ErrorReason, override val cached: Boolean = false) extends OuroborosAbstractVerificationError {
+    val id = "graph.type"//TODO
+    val text = "Type checking failed."
+    def withNode(offendingNode: errors.ErrorNode = this.offendingNode) = OuroborosTypeError(offendingNode, this.reason)
+    def withReason(r: ErrorReason) = OuroborosTypeError(offendingNode, r)
+  }
+
 }
 
 object reasons {
@@ -73,6 +80,13 @@ object reasons {
     val readableMessage = explanation
 
     def withNode(offendingNode: errors.ErrorNode = this.offendingNode) = CyclicGraphReason(offendingNode, this.explanation)
+  }
+
+  case class WrongTypeReason(offendingNode: ErrorNode, explanation: String) extends AbstractErrorReason {
+    val id = "wrong.type"
+    val readableMessage = explanation
+
+    def withNode(offendingNode: errors.ErrorNode = this.offendingNode) = WrongTypeReason(offendingNode, this.explanation)
   }
 }
 

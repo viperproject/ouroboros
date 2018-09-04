@@ -41,6 +41,8 @@ sealed trait Forest extends DAG with ZOPG
 sealed trait Closedness
 sealed trait Closed extends Closedness
 
+case class OurGraphType(topo: Topology, clos: Closedness)
+
 case object OurGraph extends Topology with Closedness
 case object OurClosedGraph extends Topology with Closed
 case object OurDAG extends DAG with Closedness
@@ -53,110 +55,7 @@ case object OurClosedForest extends Forest with Closed
 case class GraphType[T <: Topology, C <: Closedness]()
 
 
-object OurTypes {
-  //val ourTypes = Seq("Graph", "ClosedGraph", "List")
 
-  def getOurObject(ourType : PDomainType) : (Option[Topology with Closedness], Seq[AbstractError]) = ourType.domain.name match {
-    case "Graph" =>
-      def getError(message: String, pos: PNode): Seq[AbstractError] = {
-        val newMessage = FastMessaging.message(pos, message)
-        newMessage.map(m => {
-          OuroborosInvalidIdentifierError( m.label,
-            m.pos match {
-              case fp: FilePosition =>
-                SourcePosition(fp.file, m.pos.line, m.pos.column)
-              case _ =>
-                NoPosition
-            }
-          )
-        })
-      }
-      if(ourType.typeArguments.size < 2) {
-        val error = getError(s"Closedness is not specified.", ourType)
-        return (None, error)
-      } else if(ourType.typeArguments.size > 2) {
-        val error = getError(s"Can only specify Topology and Closedness.", ourType)
-        return (None, error)
-      }
-      //assert(ourType.typeArguments.size == 2) //TODO need to do errorReporting instead of assert false
-
-      ourType.typeArguments.last match {
-        case clos:PDomainType if clos.typeArguments.isEmpty => clos.domain.name match {
-          case "Closed" => ourType.typeArguments.head match {
-            case topo: PDomainType if topo.typeArguments.isEmpty => topo.domain.name match {
-              case "Forest" => (Some(OurClosedForest), Seq())
-              case "DAG" => (Some(OurClosedDAG), Seq())
-              case "ZOPG" => (Some(OurClosedZOPG), Seq())
-              case "_" => (Some(OurClosedGraph), Seq())
-              case _ =>
-                val error = getError(s"Topology ${topo.domain.name} is not defined.", topo)
-                (None, error)
-            }
-            case _ =>
-              val error = getError(s"Topology ${ourType.typeArguments.head} is invalid.", ourType.typeArguments.head)
-              (None, error)
-          }
-
-          case "_" => ourType.typeArguments.head match {
-            case topo: PDomainType if topo.typeArguments.isEmpty => topo.domain.name match {
-              case "Forest" => (Some(OurForest), Seq())
-              case "DAG" => (Some(OurDAG), Seq())
-              case "ZOPG" => (Some(OurZOPG), Seq())
-              case "_" => (Some(OurGraph), Seq())
-              case _ =>
-                val error = getError(s"Topology ${topo.domain.name} is not defined.", topo)
-                (None, error)
-            }
-            case _ =>
-              val error = getError(s"Topology ${ourType.typeArguments.head} is invalid.", ourType.typeArguments.head)
-              (None, error)
-          }
-          case _  =>
-            val error = getError(s"Closedness ${clos.domain.name} is not defined.", clos)
-            (None, error)
-        }
-        case _ =>
-          val error = getError(s"Closedness ${ourType.typeArguments.last} is invalid.", ourType.typeArguments.last)
-          (None, error)
-      }
-    case _ => (None, Seq())
-      //TODO more types
-  }
-
-//  def getOurTypeName(ourType: Topology with Closedness): String = ourType match {
-//    case OurClosedGraph => "ClosedGraph"
-//    case OurGraph => "Graph"
-//    case OurDAG => "DAG"
-//    case OurClosedDAG => "ClosedDAG"
-//    case OurZOPG => "ZOPG"
-//    case OurClosedZOPG => "ClosedZOPG"
-//    case OurForest => "Forest"
-//    case OurClosedForest => "ClosedForest"
-//  }
-
-  def getTypeDeclFunctionName(ourType: Topology with Closedness): String = ourType match{
-    case OurGraph => OuroborosNames.getIdentifier("GRAPH_decl")
-    case OurClosedGraph => OuroborosNames.getIdentifier("CLOSED_GRAPH_decl")
-    case OurDAG => OuroborosNames.getIdentifier("DAG_decl")
-    case OurClosedDAG => OuroborosNames.getIdentifier("CLOSED_DAG_decl")
-    case OurZOPG => OuroborosNames.getIdentifier("ZOPG_decl")
-    case OurClosedZOPG => OuroborosNames.getIdentifier("CLOSED_ZOPG_decl")
-    case OurForest => OuroborosNames.getIdentifier("FOREST_decl")
-    case OurClosedForest => OuroborosNames.getIdentifier("CLOSED_FOREST_decl")
-  }
-
-  def getOurTypeFromFunction(functionName: String): Option[Topology with Closedness] = functionName match {
-    case x if x == OuroborosNames.getIdentifier("GRAPH_decl") => Some(OurGraph)
-    case x if x == OuroborosNames.getIdentifier("CLOSED_GRAPH_decl") => Some(OurClosedGraph)
-    case x if x == OuroborosNames.getIdentifier("DAG_decl") => Some(OurDAG)
-    case x if x == OuroborosNames.getIdentifier("CLOSED_DAG_decl") => Some(OurClosedDAG)
-    case x if x == OuroborosNames.getIdentifier("ZOPG_decl") => Some(OurZOPG)
-    case x if x == OuroborosNames.getIdentifier("CLOSED_ZOPG_decl") => Some(OurClosedZOPG)
-    case x if x == OuroborosNames.getIdentifier("FOREST_decl") => Some(OurForest)
-    case x if x == OuroborosNames.getIdentifier("CLOSED_FOREST_decl") => Some(OurClosedForest)
-    case _ => None
-  }
-}
 
 case class OurObject(name: String, typ: Topology with Closedness)
 
@@ -475,7 +374,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
         d.domain.name match {
           case "Node" => PField(m.idndef, TypeHelper.Ref)
           case "Graph" => PField(m.idndef, PSetType(TypeHelper.Ref))
-          case "ZOPG" | "ClosedZOPG" => PField(m.idndef, PSetType(TypeHelper.Ref))
+          //case "ZOPG" | "ClosedZOPG" => PField(m.idndef, PSetType(TypeHelper.Ref))
           case _ => m
         }
       case d: PSetType =>
