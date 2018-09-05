@@ -1,0 +1,9 @@
+disjoint union,Graph,Closed Graph,DAG,Closed DAG,ZOPG,Closed ZOPG,Forest,Closed Forest
+Graph,Graph,Graph,Graph,Graph,Graph,Graph,Graph,Graph
+Closed Graph,,Closed Graph,Graph,Closed Graph,Graph,Closed Graph,Graph,Closed Graph
+DAG,,,Graph,DAG,Graph,Graph,Graph,DAG
+Closed DAG,,,,Closed DAG,Graph,Closed Graph,DAG,Closed DAG
+ZOPG,,,,,Graph,Graph,Graph,Graph
+Closed ZOPG,,,,,,Closed ZOPG,Graph,Closed ZOPG
+Forest,,,,,,,Graph,DAG
+Closed Forest,,,,,,,,Closed Forest

@@ -1,0 +1,9 @@
+disjoint setminus,Graph,Closed Graph,DAG,Closed DAG,ZOPG,Closed ZOPG,Forest,Closed Forest
+Graph,Graph,Graph,Graph,Graph,Graph,Graph,Graph,Graph
+Closed Graph,Closed Graph,Closed Graph,Closed Graph,Closed Graph,Closed Graph,Closed Graph,Closed Graph,Closed Graph
+DAG,DAG,DAG,DAG,DAG,DAG,DAG,DAG,DAG
+Closed DAG,Closed DAG,Closed DAG,Closed DAG,Closed DAG,Closed DAG,Closed DAG,Closed DAG,Closed DAG
+ZOPG,ZOPG,ZOPG,ZOPG,ZOPG,ZOPG,ZOPG,ZOPG,ZOPG
+Closed ZOPG,Closed ZOPG,Closed ZOPG,Closed ZOPG,Closed ZOPG,Closed ZOPG,Closed ZOPG,Closed ZOPG,Closed ZOPG
+Forest,Forest,Forest,Forest,Forest,Forest,Forest,Forest,Forest
+Closed Forest,Closed Forest,Closed Forest,Closed Forest,Closed Forest,Closed Forest,Closed Forest,Closed Forest,Closed Forest

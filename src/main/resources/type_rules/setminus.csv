@@ -1,0 +1,9 @@
+setminus,Graph,Closed Graph,DAG,Closed DAG,ZOPG,Closed ZOPG,Forest,Closed Forest
+Graph,Graph,Graph,Graph,Graph,Graph,Graph,Graph,Graph
+Closed Graph,Graph,Graph,Graph,Graph,Graph,Graph,Graph,Graph
+DAG,DAG,DAG,DAG,DAG,DAG,DAG,DAG,DAG
+Closed DAG,DAG,DAG,DAG,DAG,DAG,DAG,DAG,DAG
+ZOPG,ZOPG,ZOPG,ZOPG,ZOPG,ZOPG,ZOPG,ZOPG,ZOPG
+Closed ZOPG,ZOPG,ZOPG,ZOPG,ZOPG,ZOPG,ZOPG,ZOPG,ZOPG
+Forest,Forest,Forest,Forest,Forest,Forest,Forest,Forest,Forest
+Closed Forest,Forest,Forest,Forest,Forest,Forest,Forest,Forest,Forest
