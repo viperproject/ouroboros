@@ -52,7 +52,7 @@ domain TrClo {
   }
   
   axiom ax_NoExit {
-    (forall EG: Set[Edge], U: Set[Ref], M: Set[Ref] :: { apply_noExit(EG, U, M) } apply_noExit(EG, U, M) ==> (forall u: Ref, v: Ref :: { edge(EG, u, v) } { (u in M),(v in M) } (u in M) && ((v in U) && !((v in M))) ==> !edge(EG, u, v)) ==> (forall u: Ref, v: Ref :: { exists_path(EG, u, v) } { (u in M),(v in M) } (u in M) && ((v in U) && !((v in M))) ==> !exists_path(EG, u, v)))
+    (forall EG: Set[Edge], U: Set[Ref], M: Set[Ref] :: { apply_noExit(EG, U, M) } apply_noExit(EG, U, M) ==> (forall u: Ref, v: Ref :: { edge(EG, u, v) } (u in M) && ((v in U) && !((v in M))) ==> !edge(EG, u, v)) ==> (forall u: Ref, v: Ref :: { exists_path(EG, u, v) } (u in M) && ((v in U) && !((v in M))) ==> !exists_path(EG, u, v)))
   }
   
   axiom ax_instantiation_uReach {
@@ -68,7 +68,7 @@ domain TrClo {
   }
   
   axiom ax_ExistsPath {
-    (forall EG: Set[Edge], start: Ref, end: Ref :: { exists_path(EG, start, end) } { edge(EG, start, end) } exists_path_(EG, start, end) == (start == end || !(forall w: Ref :: { edge(EG, start, w),exists_path(EG, w, end) } !(edge(EG, start, w) && exists_path_(EG, w, end)))))
+    (forall EG: Set[Edge], start: Ref, end: Ref :: { exists_path(EG, start, end) } { edge(EG, start, end) } exists_path_(EG, start, end) == (start == end || !(forall w: Ref :: { edge(EG, start, w) } { exists_path(EG, w, end) } !(edge(EG, start, w) && exists_path_(EG, w, end)))))
   }
   
   axiom ax_ExistsPathTrans {
@@ -118,7 +118,7 @@ function $$(nodes: Set[Ref]): Set[Edge]
 
 function DISJOINT(g1_0: Set[Ref], g2_0: Set[Ref]): Bool 
 {
-  (forall n: Ref :: { (n in g1_0),(n in g2_0) } (n in g1_0) ==> !((n in g2_0))) && (forall n: Ref :: { (n in g1_0),(n in g2_0) } (n in g2_0) ==> !((n in g1_0)))
+  (forall n: Ref :: { (n in g1_0) } { (n in g2_0) } (n in g1_0) ==> !((n in g2_0)))
 }
 
 function NoNullInGraph(g0: Set[Ref]): Bool 
@@ -135,8 +135,7 @@ function CLOSED(g_0: Set[Ref]): Bool
 function apply_TCFraming(g0: Set[Ref], g1_0: Set[Ref]): Bool
   requires (forall n: Ref :: { n.next } (n in g0) ==> acc(n.next, 1 / 2))
   requires (forall n: Ref :: { n.next } (n in g1_0) ==> acc(n.next, 1 / 2))
-  requires (forall n: Ref :: { (n in g0),(n in g1_0) } (n in g0) ==> !((n in g1_0)))
-  requires (forall n: Ref :: { (n in g0),(n in g1_0) } (n in g1_0) ==> !((n in g0)))
+  requires (forall n: Ref :: { (n in g0) } { (n in g1_0) } (n in g0) ==> !((n in g1_0)))
   ensures g0 union g1_0 == g1_0 union g0
   ensures (forall u: Ref, v: Ref :: { exists_path($$(g0), u, v) } { exists_path($$(g0 union g1_0), u, v) } (u in g0) && ((v in g0) && exists_path($$(g0), u, v)) ==> exists_path($$(g0 union g1_0), u, v))
   ensures (forall u: Ref, v: Ref :: { exists_path($$(g1_0), u, v) } { exists_path($$(g1_0 union g0), u, v) } (u in g1_0) && ((v in g1_0) && exists_path($$(g1_0), u, v)) ==> exists_path($$(g1_0 union g0), u, v))

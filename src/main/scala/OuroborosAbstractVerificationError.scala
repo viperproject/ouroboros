@@ -2,7 +2,7 @@ package viper.silver.plugin
 
 import viper.silver.ast.utility.Rewriter.Rewritable
 import viper.silver.ast.{Node, Position, Positioned, TransformableErrors}
-import viper.silver.verifier.{AbstractVerificationError, AbstractError, AbstractErrorReason, ErrorReason}
+import viper.silver.verifier.{AbstractError, AbstractErrorReason, AbstractVerificationError, ErrorReason}
 
 abstract class OuroborosAbstractVerificationError extends AbstractVerificationError { }
 
@@ -36,6 +36,12 @@ object errors {
     def withReason(r: ErrorReason) = OuroborosTypeError(offendingNode, r)
   }
 
+  case class OuroborosNotSupportedError(offendingNode: ErrorNode, reason: ErrorReason, override val cached: Boolean = false) extends OuroborosAbstractVerificationError {
+    val id = "not.Supported"//TODO
+    val text = "Not supported."
+    def withNode(offendingNode: errors.ErrorNode = this.offendingNode) = OuroborosNotSupportedError(offendingNode, this.reason)
+    def withReason(r: ErrorReason) = OuroborosNotSupportedError(offendingNode, r)
+  }
 }
 
 object reasons {
@@ -87,6 +93,20 @@ object reasons {
     val readableMessage = explanation
 
     def withNode(offendingNode: errors.ErrorNode = this.offendingNode) = WrongTypeReason(offendingNode, this.explanation)
+  }
+
+  case class ExhaleNotSupportedReason(offendingNode: ErrorNode, explanation: String) extends AbstractErrorReason {
+    val id = "exhale"
+    val readableMessage = explanation
+
+    def withNode(offendingNode: errors.ErrorNode = this.offendingNode) = ExhaleNotSupportedReason(offendingNode, this.explanation)
+  }
+
+  case class ZOPGCheckNotSupportedReason(offendingNode: ErrorNode, explanation: String)  extends AbstractErrorReason {
+    val id = "ZOPG.check"
+    val readableMessage = explanation
+
+    def withNode(offendingNode: errors.ErrorNode = this.offendingNode) = ZOPGCheckNotSupportedReason(offendingNode, this.explanation)
   }
 }
 

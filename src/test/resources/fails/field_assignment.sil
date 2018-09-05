@@ -1,30 +1,36 @@
 field n1: Node
-method test(g: Graph[_,_], x: Node)
+field __CONFIG_OUROBOROS_TYPE_CHECK: Bool
+//method hi(g: Graph[_,Closed]) returns (g2: Graph[DAG,_])
+
+method test(g: Graph[ZOPG,_], x: Node)
+requires ACYCLIC(g)
 requires x in g
 {
-    var g2: Graph[DAG,_] //:= Set()
+    var g2: Graph[Forest,_] 
+    g2 := g
+    // var g2: Graph[DAG,_] //:= Set()
 
-    //g2 := g
+    // //g2 := g
 
-    //inhale DISJOINT(g, g2)
-    // assert g2 == g
-    // assert DISJOINT(g, g2)
-    // assert |g| == 0
-    // assert |g2| == 0
-    //exhale GRAPH(g2)
+    // //inhale DISJOINT(g, g2)
+    // // assert g2 == g
+    // // assert DISJOINT(g, g2)
+    // // assert |g| == 0
+    // // assert |g2| == 0
+    // //exhale GRAPH(g2)
 
-    //assert false
+    // //assert false
     
-    while(false)
-    {
+    // while(false)
+    // {
 
-    }
-    var n: Node
-    n := new(*)
-    UPDATE_DAG(n1, g2 union Set(n), x, n)
-    var n4: Node
-    var n2: Node
-    var n3: Node
-    n.n1 := n
-    g2 := Set(n2, n3, n4)
+    // }
+    // var n: Node
+    // n := new(*)
+    // UPDATE_DAG(n1, g2 union Set(n), x, n)
+    // var n4: Node
+    // var n2: Node
+    // var n3: Node
+    // n.n1 := n
+    // g2 := Set(n2, n3, n4)
 }

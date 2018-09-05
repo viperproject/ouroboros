@@ -1,7 +1,8 @@
 
 function DISJOINT(g1: Set[Ref], g2:Set[Ref]): Bool
 {
-    (forall n: Ref :: { (n in g1),(n in g2) } (n in g1) ==> !((n in g2))) && (forall n: Ref :: { (n in g1),(n in g2) } (n in g2) ==> !((n in g1)))
+    (forall n: Ref :: { (n in g1)}{(n in g2) } (n in g1) ==> !((n in g2)))// && //TODO multipattern
+     //(forall n: Ref :: { (n in g1)}{(n in g2) } (n in g2) ==> !((n in g1))) //TODO multipattern
 }
 
 function NoNullInGraph(g0:Set[Ref]): Bool
@@ -23,8 +24,8 @@ function apply_TCFraming(g0:Set[Ref], g1:Set[Ref]): Bool
     //requires forall n:Ref :: {n.r} n in g1 ==> acc(n.r)
 
     //requires disjoint_sets(g0,g1) //Not needed at the moment, as input graphs are always disjoint, and otherwise we use setminus
-    requires (forall n:Ref :: { n in g0, n in g1 } n in g0 ==> !(n in g1))
-    requires (forall n:Ref :: { n in g0, n in g1 } n in g1 ==> !(n in g0))
+    requires (forall n:Ref :: { n in g0}{ n in g1 } n in g0 ==> !(n in g1))
+    //requires (forall n:Ref :: { n in g0}{ n in g1 } n in g1 ==> !(n in g0))
 
     // needed for triggering
     ensures g0 union g1 == g1 union g0

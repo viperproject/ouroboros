@@ -120,7 +120,7 @@ class OuroborosStmtHandler {
 
     val closed = wrapper.input.findFunction(OuroborosNames.getIdentifier("CLOSED"))
 
-    val universeAccess = graphHandler.GRAPH(universe(stmt.pos), graphHandler.ref_fields(wrapper.input.fields), wrapper.input, true, true, false)
+    val universeAccess = graphHandler.GRAPH(universe(stmt.pos), graphHandler.ref_fields(wrapper.input.fields), wrapper.input, true, true, true, false)
 
     val bodyScopeName = OuroborosNames.getNewName("bodyScope")
     val bodyScope = Some(LocalVarDecl(bodyScopeName, Bool)(stmt.pos, stmt.info, stmt.errT))
@@ -233,8 +233,7 @@ class OuroborosStmtHandler {
 
   def handleMethodCall(call: MethodCall, wrapper: OuroborosStmtWrapper): Stmt = {
     val input = wrapper.input
-    val genericUpdateNames: mutable.Map[String, Field] = mutable.Map.empty
-    input.fields.map(field => genericUpdateNames.put(OuroborosNames.getIdentifier(s"update_${field.name}"), field))
+    val genericUpdateNames: mutable.Map[String, Field] = mutable.Map.empty[String, Field] ++ input.fields.map(field => (OuroborosNames.getIdentifier(s"update_${field.name}"), field))
     val ZOPGUpdateNames: mutable.Map[String, Field] = mutable.Map.empty[String, Field] ++ input.fields.map(field => (OuroborosNames.getIdentifier(s"update_ZOPG_${field.name}"), field))
     val DAGUpdateNames: mutable.Map[String, Field] = mutable.Map.empty[String, Field] ++ input.fields.map(field => (OuroborosNames.getIdentifier(s"update_DAG_${field.name}"), field))
     call.methodName match {
@@ -267,29 +266,6 @@ class OuroborosStmtHandler {
           Seq()
         )(call.pos, SimpleInfo(Seq("", s"$node := NEW()\n")), call.errT)
 
-
-//        val newCall = MethodCall(OuroborosNames.getIdentifier("create_node"), Seq(universe), call.targets)(call.pos, call.info, call.errT)
-//        if (OuroborosNames.macroNames.contains(newCall.methodName)) {
-//          val inlinedCall: Seqn = OuroborosMemberInliner.inlineMethodCall(newCall, wrapper.input, call.pos, call.info, call.errT).asInstanceOf[Seqn]
-//          val decls: mutable.Map[Option[LocalVarDecl], Set[LocalVarDecl]] = mutable.Map.empty
-//
-//          val singletonGraph = inlinedCall.scopedDecls.filter(p => p.isInstanceOf[LocalVarDecl] && p.asInstanceOf[LocalVarDecl].typ == SetType(Ref)).head
-//          val newUniverse = AnySetUnion(universe.duplicateMeta((NoPosition, NoInfo, NoTrafos)).asInstanceOf[Exp], LocalVar(singletonGraph.name)(SetType(Ref)) )()
-//          val newUniverseAssign = LocalVarAssign(universe.duplicateMeta((NoPosition, NoInfo, NoTrafos)).asInstanceOf[LocalVar], newUniverse)()
-//          val framingAxioms = getFramingAxioms(LocalVar(singletonGraph.name)(SetType(Ref), inlinedCall.pos, NoInfo, inlinedCall.errT), input, wrapper)
-//
-//          inlinedCall.scopedDecls.collect({
-//            case x: LocalVarDecl if x.typ == SetType(Ref) =>
-//              wrapper.newlyDeclaredVariables.get(wrapper.scope) match {
-//                case None => wrapper.newlyDeclaredVariables.put(wrapper.scope, Set(x))
-//                case Some(localVarDecls) => wrapper.newlyDeclaredVariables.put(wrapper.scope, localVarDecls + x)
-//              }
-//          })
-//
-//          Seqn((inlinedCall.ss :+ framingAxioms) :+ newUniverseAssign, inlinedCall.scopedDecls.filter(x => x.isInstanceOf[LocalVarDecl] && x.asInstanceOf[LocalVarDecl].typ != SetType(Ref)))(inlinedCall.pos, SimpleInfo(Seq("", s"inlined: create_node(universe = $universe)\n")), inlinedCall.errT)
-//        }
-//        else
-//          call
       case methodName => (genericUpdateNames ++ ZOPGUpdateNames ++ DAGUpdateNames).get(methodName) match {
         case Some(field) =>
           //TODO need to find out, which update method to use
@@ -689,61 +665,5 @@ class OuroborosStmtHandler {
 
   def universe(pos: Position = NoPosition, info: Info = NoInfo, errT: ErrorTrafo = NoTrafos): LocalVar = {
     LocalVar(OuroborosNames.getIdentifier("UNIVERSE"))(SetType(Ref), pos, info, errT)
-  }
-}
-
-
-case class OuroborosStmtWrapper(
-                                 input: Program,
-                                 inputGraphs: Map[String, Topology with Closedness],
-                                 userDefinedGraphs: mutable.Map[String, (Topology with Closedness, LocalVarDecl)],
-                                 scope: Option[LocalVarDecl],
-                                 newlyDeclaredVariables: mutable.Map[Option[LocalVarDecl], Set[LocalVarDecl]],
-                                 newlyDeclaredInitVariables: mutable.Buffer[LocalVarDecl],
-                                 dontConsiderScopes: mutable.Set[Option[LocalVarDecl]]
-                               )
-{
-
-  def setScope(newScope: Option[LocalVarDecl]): OuroborosStmtWrapper = {
-    val existingCopy: mutable.Map[String, (Topology with Closedness, LocalVarDecl)]
-      = mutable.Map.empty ++ userDefinedGraphs
-    OuroborosStmtWrapper(input,inputGraphs, existingCopy, newScope, newlyDeclaredVariables, newlyDeclaredInitVariables, dontConsiderScopes)
-  }
-
-  def allGraphsMapping(/*scopes: mutable.Buffer[Option[LocalVarDecl]]*/): mutable.Map[Option[LocalVarDecl], Set[Exp]] = {
-    val toReturn: mutable.Map[Option[LocalVarDecl], Set[Exp]] = newlyDeclaredVariables.map(tuple => (tuple._1, tuple._2.map(decl =>
-      ExplicitSet(Seq(LocalVar(decl.name)(Ref)))().asInstanceOf[Exp]))) //TODO why do we need to cast?
-    userDefinedGraphs foreach(tuple =>{
-          val graphName = tuple._1
-          val initDecl = tuple._2._2
-          toReturn.put(Some(initDecl), Set(LocalVar(graphName)(SetType(Ref))))
-/*      toReturn.get(scope) match {
-        case None => toReturn.put(scope, names)
-        case Some(oldNames) => toReturn.put(scope, oldNames ++ names)
-      }*/
-    })
-
-
-    toReturn.get(None) match {
-      case None => toReturn.put(None, inputGraphs.keySet.map(graphName => LocalVar(graphName)(SetType(Ref))))
-      case Some(decls) => toReturn.put(None, decls ++ inputGraphs.keySet.map(graphName => LocalVar(graphName)(SetType(Ref))))
-    }
-
-    toReturn
-  }
-
-  def allUserDefinedGraphs(/*scopes: mutable.Buffer[Option[LocalVarDecl]]*/): Set[String] = {
-    userDefinedGraphs.collect({
-      case tuple /*if scopes.contains(tuple._1)*/ => tuple._1
-    })/*.flatten*/.toSet
-  }
-
-  def getUserDefinedGraphInitDecl(graphName: String/*, scopes: mutable.Buffer[Option[LocalVarDecl]]*/): Option[LocalVarDecl] = {
-    val graphInitDecl: Option[LocalVarDecl] = userDefinedGraphs.get(graphName) match {
-      case None => None
-      case Some(tuple) => Some(tuple._2)
-    }
-
-    graphInitDecl
   }
 }

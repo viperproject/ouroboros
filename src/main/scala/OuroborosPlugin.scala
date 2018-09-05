@@ -247,10 +247,10 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
       {
         case (m: Method, ctx) if graph_defs.contains(m.name) =>
           stmtHandler.handleMethod(graphAST_handler.handleMethod(input, m, graph_defs.get(m.name), ctx), graph_defs.get(m.name), input)
-        case (f:FuncApp, ctx) =>
+        case (f:FuncApp, ctx) if !OuroborosConfig.type_check =>
           usedMacroCalls += f.funcname
           f
-        case (mc: MethodCall, ctx) =>
+        case (mc: MethodCall, ctx) if !OuroborosConfig.type_check =>
           usedMacroCalls += mc.methodName
           mc
       },
@@ -267,11 +267,18 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
           val tuple = graph_state_checker.handleMethod(m, graph_defs, input)
           tuple._2.foreach(err => reportError(err))
           tuple._1
+        case f:FuncApp =>
+          usedMacroCalls += f.funcname
+          f
+        case mc: MethodCall =>
+          usedMacroCalls += mc.methodName
+          mc
       }
     )
 
     lazy val ourInliner = StrategyBuilder.Context[Node, mutable.Set[Declaration]]({
-      case (fc : FuncApp, ctx) if OuroborosNames.macroNames.contains(fc.funcname) || zOPGdomainNames.contains(fc.funcname) => OuroborosMemberInliner.inlineFunctionApp(fc, input, fc.pos, fc.info, fc.errT)
+      case (fc : FuncApp, ctx) if OuroborosNames.macroNames.contains(fc.funcname) || zOPGdomainNames.contains(fc.funcname) =>
+        OuroborosMemberInliner.inlineFunctionApp(fc, input, fc.pos, fc.info, fc.errT)
 
       case (mc: MethodCall, ctx) if OuroborosNames.macroNames.contains(mc.methodName) || zOPGdomainNames.contains(mc.methodName) =>
         OuroborosMemberInliner.inlineMethodCall(mc, input, mc.pos, mc.info, mc.errT)
@@ -282,7 +289,13 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
       }
     }, mutable.Set.empty[Declaration])
 
-    var inputPrime = ourRewriter.execute[Program](input)
+    var inputPrime = input
+
+    inputPrime = ourRewriter.execute[Program](input)
+
+    if(OuroborosConfig.type_check) {
+      inputPrime = ourStateChecker.execute[Program](inputPrime)
+    }
 
     inputPrime = Program(
       if(OuroborosMemberInliner.zopgUsed) inputPrime.domains else inputPrime.domains.filter(domain => !zOPGdomainNames.contains(domain.name)),
@@ -291,10 +304,6 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
       inputPrime.predicates,
       inputPrime.methods.filter(method => !(OuroborosNames.macroNames.keySet ++ zOPGdomainNames).contains(method.name) || usedMacroCalls.contains(method.name))
     )(inputPrime.pos, inputPrime.info, inputPrime.errT)
-
-    if(OuroborosConfig.type_check) {
-      inputPrime = ourStateChecker.execute[Program](inputPrime)
-    }
 
     if(OuroborosConfig.inline) {
       inputPrime = ourInliner.execute[Program](inputPrime)

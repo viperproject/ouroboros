@@ -52,7 +52,7 @@ domain TrClo {
   }
   
   axiom ax_NoExit {
-    (forall EG: Set[Edge], U: Set[Ref], M: Set[Ref] :: { apply_noExit(EG, U, M) } apply_noExit(EG, U, M) ==> (forall u: Ref, v_0: Ref :: { edge(EG, u, v_0) } { (u in M),(v_0 in M) } (u in M) && ((v_0 in U) && !((v_0 in M))) ==> !edge(EG, u, v_0)) ==> (forall u: Ref, v_0: Ref :: { exists_path(EG, u, v_0) } { (u in M),(v_0 in M) } (u in M) && ((v_0 in U) && !((v_0 in M))) ==> !exists_path(EG, u, v_0)))
+    (forall EG: Set[Edge], U: Set[Ref], M: Set[Ref] :: { apply_noExit(EG, U, M) } apply_noExit(EG, U, M) ==> (forall u: Ref, v_0: Ref :: { edge(EG, u, v_0) } (u in M) && ((v_0 in U) && !((v_0 in M))) ==> !edge(EG, u, v_0)) ==> (forall u: Ref, v_0: Ref :: { exists_path(EG, u, v_0) } (u in M) && ((v_0 in U) && !((v_0 in M))) ==> !exists_path(EG, u, v_0)))
   }
   
   axiom ax_instantiation_uReach {
@@ -68,7 +68,7 @@ domain TrClo {
   }
   
   axiom ax_ExistsPath {
-    (forall EG: Set[Edge], start_0: Ref, end: Ref :: { exists_path(EG, start_0, end) } { edge(EG, start_0, end) } exists_path_(EG, start_0, end) == (start_0 == end || !(forall w: Ref :: { edge(EG, start_0, w),exists_path(EG, w, end) } !(edge(EG, start_0, w) && exists_path_(EG, w, end)))))
+    (forall EG: Set[Edge], start_0: Ref, end: Ref :: { exists_path(EG, start_0, end) } { edge(EG, start_0, end) } exists_path_(EG, start_0, end) == (start_0 == end || !(forall w: Ref :: { edge(EG, start_0, w) } { exists_path(EG, w, end) } !(edge(EG, start_0, w) && exists_path_(EG, w, end)))))
   }
   
   axiom ax_ExistsPathTrans {
@@ -182,8 +182,7 @@ function CLOSED(g_0: Set[Ref]): Bool
 function apply_TCFraming(g0: Set[Ref], g1: Set[Ref]): Bool
   requires (forall n_0: Ref :: { n_0.next } (n_0 in g0) ==> acc(n_0.next, 1 / 2))
   requires (forall n_0: Ref :: { n_0.next } (n_0 in g1) ==> acc(n_0.next, 1 / 2))
-  requires (forall n_0: Ref :: { (n_0 in g0),(n_0 in g1) } (n_0 in g0) ==> !((n_0 in g1)))
-  requires (forall n_0: Ref :: { (n_0 in g0),(n_0 in g1) } (n_0 in g1) ==> !((n_0 in g0)))
+  requires (forall n_0: Ref :: { (n_0 in g0) } { (n_0 in g1) } (n_0 in g0) ==> !((n_0 in g1)))
   ensures g0 union g1 == g1 union g0
   ensures (forall u: Ref, v_0: Ref :: { exists_path($$(g0), u, v_0) } { exists_path($$(g0 union g1), u, v_0) } (u in g0) && ((v_0 in g0) && exists_path($$(g0), u, v_0)) ==> exists_path($$(g0 union g1), u, v_0))
   ensures (forall u: Ref, v_0: Ref :: { exists_path($$(g1), u, v_0) } { exists_path($$(g1 union g0), u, v_0) } (u in g1) && ((v_0 in g1) && exists_path($$(g1), u, v_0)) ==> exists_path($$(g1 union g0), u, v_0))
@@ -192,12 +191,6 @@ function apply_TCFraming(g0: Set[Ref], g1: Set[Ref]): Bool
   ensures (forall u: Ref, v_0: Ref :: { exists_path($$(g0), u, v_0) } { exists_path($$(g0 union g1), u, v_0) } (u in g0) && ((v_0 in g0) && (!exists_path($$(g0), u, v_0) && (CLOSED(g0) || CLOSED(g1)))) ==> !exists_path($$(g0 union g1), u, v_0))
   ensures (forall u: Ref, v_0: Ref :: { exists_path($$(g1), u, v_0) } { exists_path($$(g0 union g1), u, v_0) } (u in g1) && ((v_0 in g1) && (!exists_path($$(g1), u, v_0) && (CLOSED(g0) || CLOSED(g1)))) ==> !exists_path($$(g1 union g0), u, v_0)) 
 
-
-function update_ZOPG_invariant(g_0: Set[Ref], from: Ref, to: Ref): Bool
-  requires !((null in g_0)) && (forall n_0: Ref :: { n_0.next } (n_0 in g_0) ==> acc(n_0.next, 1 / 2)) 
-{
-  func_graph($$(g_0)) || (unshared_graph($$(g_0)) || (forall u: Ref, v_0: Ref :: { exists_path($$(g_0), u, from),exists_path($$(g_0), to, v_0) } (u in g_0) && ((v_0 in g_0) && (u != v_0 && exists_path($$(g_0), u, v_0))) ==> !exists_path($$(g_0), u, from) || !exists_path($$(g_0), to, v_0)))
-}
 
 method create_node(u: Set[Ref]) returns (node_0: Ref)
   requires !((null in u)) && (forall n_0: Ref :: { n_0.next } (n_0 in u) ==> acc(n_0.next, 1 / 2))
@@ -303,13 +296,7 @@ new_g := UNIVERSE
     new_start := start
   }
   unlink_ZOPG_next(UNIVERSE, new_node2)
-  
-  // Inserted invariant that is needed to preserve graph property after update.
-assert update_ZOPG_invariant(UNIVERSE, new_node2, node.next)
   link_ZOPG_next(UNIVERSE, new_node2, node.next)
   unlink_ZOPG_next(UNIVERSE, node)
-  
-  // Inserted invariant that is needed to preserve graph property after update.
-assert update_ZOPG_invariant(UNIVERSE, node, new_node2)
   link_ZOPG_next(UNIVERSE, node, new_node2)
 }

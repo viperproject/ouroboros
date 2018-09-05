@@ -165,7 +165,7 @@ function update_ZOPG_invariant(g:Set[Ref], from:Ref, to:Ref): Bool
     requires PROTECTED_GRAPH(g)
 {
     /*!exists_path($$(g),from,to)*/func_graph($$(g)) || unshared_graph($$(g)) || (forall u: Ref, v:Ref ::
-                    {exists_path($$(g),u,from), exists_path($$(g), to, v)}
+                    {exists_path($$(g),u,from), exists_path($$(g), to, v)} //TODO multipattern
                         u in g && v in g && u != v && exists_path($$(g), u, v) ==>
                             !(exists_path($$(g), u, from)) ||
                                 !(exists_path($$(g), to, v)))
@@ -173,7 +173,7 @@ function update_ZOPG_invariant(g:Set[Ref], from:Ref, to:Ref): Bool
 
 method link_ZOPG_$field$(g:Set[Ref], from:Ref, to:Ref)
     requires from in g
-//    requires to != null
+    requires to != null ==> to in g
     requires PROTECTED_GRAPH(g,from, $field$) && from.$field$ == null //!exists_path($$(g), from, to)
     ensures PROTECTED_GRAPH(g,from, $field$)
     ensures from.$field$ == to

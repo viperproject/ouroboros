@@ -72,8 +72,8 @@ domain TrClo {
         // apply_noExit(EG,U,M) &&
         ( apply_noExit(EG,U,M) ==> (
 
-            ( forall u:Ref, v:Ref :: { edge(EG,u,v) }       { u in M, v in M } (u in M) && (v in U) && !(v in M) ==> !edge(EG,u,v) ) ==>
-            ( forall u:Ref, v:Ref :: { exists_path(EG,u,v) }{ u in M, v in M } (u in M) && (v in U) && !(v in M) ==> !exists_path(EG,u,v) )
+            ( forall u:Ref, v:Ref :: { edge(EG,u,v) }       /*{ u in M, v in M }*/ (u in M) && (v in U) && !(v in M) ==> !edge(EG,u,v) ) ==> //TODO multipattern
+            ( forall u:Ref, v:Ref :: { exists_path(EG,u,v) }/*{ u in M, v in M }*/ (u in M) && (v in U) && !(v in M) ==> !exists_path(EG,u,v) ) //TODO multipattern
         ) )
     }
 
@@ -83,8 +83,8 @@ domain TrClo {
         // apply_noExit(EG,U,M) &&
         ( apply_noTCExit(EG,U,M) ==> (
 
-            ( forall u:Ref, v:Ref :: { edge(EG,u,v) }       { u in M, v in M } (u in M) && (v in U) && !(v in M) ==> !edge(EG,u,v) ) ==>
-            ( forall u:Ref, v:Ref :: { exists_path(EG,u,v) }{ u in M, v in M } (u in M) && (v in U) && !(v in M) ==> !exists_path(EG,u,v) )
+            ( forall u:Ref, v:Ref :: { edge(EG,u,v) }       { u in M, v in M } (u in M) && (v in U) && !(v in M) ==> !edge(EG,u,v) ) ==> //TODO multipattern
+            ( forall u:Ref, v:Ref :: { exists_path(EG,u,v) }{ u in M, v in M } (u in M) && (v in U) && !(v in M) ==> !exists_path(EG,u,v) ) //TODO multipattern
         ) )
     }
     */
@@ -95,8 +95,8 @@ domain TrClo {
         // apply_goOut(EG,U,A,B) &&
         ( apply_goOut(EG,U,A,B) ==> (
 
-            ( forall u:Ref, v:Ref :: { edge(EG,u,v) }{ u in A, v in A }{ u in A, v in B } (u in A) && (v in U) && !(v in A) && edge(EG,u,v) ==> v in B ) ==>
-            ( forall u:Ref, v:Ref :: { exists_path(EG,u,v) }{ u in A, v in A }            (u in A) && (v in U) && !(v in A) && exists_path(EG,u,v) ==> exists w:Ref :: w in B && exists_path(EG,u,w) && exists_path(EG,w,v) )
+            ( forall u:Ref, v:Ref :: { edge(EG,u,v) }{ u in A, v in A }{ u in A, v in B } (u in A) && (v in U) && !(v in A) && edge(EG,u,v) ==> v in B ) ==> //TODO multipattern
+            ( forall u:Ref, v:Ref :: { exists_path(EG,u,v) }{ u in A, v in A }            (u in A) && (v in U) && !(v in A) && exists_path(EG,u,v) ==> exists w:Ref :: w in B && exists_path(EG,u,w) && exists_path(EG,w,v) ) //TODO multipattern
         ) )
     }
 
@@ -105,7 +105,7 @@ domain TrClo {
         // apply_newStart(U,A,EG1,EG2) &&
         ( apply_newStart(U,A,EG1,EG2) ==> (
 
-            ( forall u:Ref, v:Ref :: { edge(EG1,u,v) }{ u in A, v in A } (u in A) && (v in A) && edge(EG2,u,v) ==> edge(EG1,u,v) )  ==>
+            ( forall u:Ref, v:Ref :: { edge(EG1,u,v) }{ u in A, v in A } (u in A) && (v in A) && edge(EG2,u,v) ==> edge(EG1,u,v) )  ==> //TODO multipattern
             ( forall u:Ref, v:Ref :: { exists_path(EG1,u,v) }{ exists_path(EG2,u,v) } exists_path(EG2,u,v) && !exists_path(EG1,u,v) ==> exists w:Ref :: (w in U) && !(w in A) && exists_path(EG2,u,w) && exists_path(EG2,w,v) )
         ) )
     }
@@ -139,7 +139,7 @@ domain TrClo {
                 exists_path_(EG,start,end) <==>
                     start == end
                     || !(forall w:Ref ::
-                        { edge(EG, start, w), exists_path(EG, w, end) } //TODO
+                        { edge(EG, start, w)}{ exists_path(EG, w, end) } //TODO multipattern; transformed exists to not forall
                             !(edge(EG,start,w) && exists_path_(EG,w,end)))
 //                    || exists w:Ref :: edge(EG,start,w) && exists_path_(EG,w,end)
     }
@@ -147,7 +147,7 @@ domain TrClo {
     /** Follows from T1 && IND */
     axiom ax_ExistsPathTrans {
         forall EG:Set[Edge], u:Ref, v:Ref, w:Ref ::
-            { exists_path(EG,u,w), exists_path(EG,w,v) }
+            { exists_path(EG,u,w), exists_path(EG,w,v) } //TODO multipattern
                 exists_path_(EG,u,w) && exists_path_(EG,w,v) ==> exists_path_(EG,u,v)
     }
 
@@ -166,7 +166,7 @@ domain TrClo {
             { unshared_graph(EG) }
                 unshared_graph(EG) <==>
                     forall v1:Ref, v2:Ref, v:Ref ::
-                        { edge(EG,v1,v), edge(EG,v2,v) }
+                        { edge(EG,v1,v), edge(EG,v2,v) } //TODO multipattern
                             edge(EG,v1,v) && edge(EG,v2,v) ==> v1 == v2
     }
 
@@ -175,7 +175,7 @@ domain TrClo {
             { func_graph(EG) }
                 func_graph(EG) <==>
                     forall v1:Ref, v2:Ref, v:Ref ::
-                        //{ edge(EG,v1,v), edge(EG,v2,v) }
+                        //{ edge(EG,v1,v), edge(EG,v2,v) } //TODO multipattern
                         { edge(EG,v,v1), edge(EG,v,v2) }
                             edge(EG,v,v1) && edge(EG,v,v2) ==> v1 == v2
     }
@@ -185,7 +185,7 @@ domain TrClo {
             { exists_spath(EG,from,to) }
                 exists_spath(EG,from,to) <==>
                     !(forall f:Ref ::
-                        {f in from}{exists_path(EG, f, to)} //TODO
+                        {f in from}{exists_path(EG, f, to)}
                             !(f in from && exists_path(EG,f,to)))
 //                    exists f:Ref :: f in from && exists_path(EG,f,to)
         }

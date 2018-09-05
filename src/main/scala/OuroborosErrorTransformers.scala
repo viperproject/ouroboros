@@ -1,7 +1,7 @@
 package viper.silver.plugin
 
 import viper.silver.ast.{ErrTrafo, Exp, FieldAssign, Node}
-import viper.silver.plugin.errors.{OuroborosAssignmentError, OuroborosGraphSpecificactionError, OuroborosInternalEncodingError, OuroborosTypeError}
+import viper.silver.plugin.errors._
 import viper.silver.plugin.reasons._
 import viper.silver.verifier.AbstractVerificationError
 import viper.silver.verifier.errors._
@@ -196,5 +196,17 @@ object OuroborosErrorTransformers {
     case x =>
       OuroborosTypeError(x.offendingNode,
         WrongTypeReason(x.offendingNode, s"The expression $exp might not be of wished Type $wantedType."), false)
+  })
+
+  def wrongTypeAfterCallErrTrafo(exp: Node, wantedType: Topology with Closedness): ErrTrafo = ErrTrafo({
+    case x =>
+      OuroborosTypeError(x.offendingNode,
+        WrongTypeReason(x.offendingNode, s"The expression $exp might not be of wished Type $wantedType after the methodCall."), false)
+  })
+
+  def ZOPGCheckErrTrafo(exp: Node): ErrTrafo = ErrTrafo({
+    case x =>
+      OuroborosNotSupportedError(x.offendingNode,
+        ZOPGCheckNotSupportedReason(x.offendingNode, s"Dynamically checking that $exp is of type ZOPG is not supported."), false)
   })
 }

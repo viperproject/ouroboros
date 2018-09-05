@@ -319,15 +319,20 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
             getOurObject._1 match {
               case None => Seq(l)
               case Some(ourType) =>
+                val assign: Seq[PStmt] = l.init match {
+                  case None => Seq()
+                  case Some(init) =>
+                    Seq(PVarAssign(PIdnUse(l.idndef.name), init).setPos(l))
+                }
                   Seq(
-                    PLocalVarDecl(l.idndef, PSetType(TypeHelper.Ref).setPos(l.typ), l.init).setPos(l),
+                    PLocalVarDecl(l.idndef, PSetType(TypeHelper.Ref).setPos(l.typ), None).setPos(l),
                     PInhale(
                       PCall(
                         PIdnUse(OurTypes.getTypeDeclFunctionName(ourType)),
                         Seq(PIdnUse(l.idndef.name))
                       ).setPos(l)
                     ).setPos(l)
-                  )
+                  ) ++ assign
             }
         }
         case _ => Seq(l)

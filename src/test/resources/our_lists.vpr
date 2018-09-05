@@ -1,5 +1,6 @@
 field next:Ref
 //field boohoo: Ref
+//field __CONFIG_OUROBOROS_UPDATE_INVARIANTS: Bool
 
 method swap(g:Graph[_,_], x:Node, i:Int, j:Int)
     // value parameters
@@ -72,7 +73,7 @@ method swap(g:Graph[_,_], x:Node, i:Int, j:Int)
             if ( node_i.next != node_j ) {
                 UPDATE_DAG(next, g, node_j, node_i.next)
                 //node_j.next := node_i.next
-                UPDATE_DAG(next, g, prev_j, node_i)
+                UPDATE_ZOPG(next, g, prev_j, node_i)
                 //prev_j.next := node_i
 
             } else { // node_i == prev_j
@@ -93,3 +94,18 @@ method swap(g:Graph[_,_], x:Node, i:Int, j:Int)
     }
     //assert false
 }
+
+// method test() {
+//     var g0: Set[Ref]
+//     var g1: Set[Ref]
+//     var g0_copy: Set[Ref] := g0
+//     var b: Bool
+//     label init
+//     while(b)
+//     {
+//         //g0 := g1
+//     }
+//     assert old[init](g0) == g0
+//     assert g0_copy == g0
+
+// }
