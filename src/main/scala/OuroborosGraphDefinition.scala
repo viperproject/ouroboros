@@ -517,7 +517,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
 
   def zopgLinkOrUnlink(input: PProgram, field: PExp, graph: PExp, lhsNode: PExp, rhsNode: Option[PExp], m: PMethodCall): PStmt = field match {
     case field: PIdnUse =>
-      OuroborosMemberInliner.zopgUsed = true
+      OuroborosConfig.zopgUsed = true
       val fieldName = field.name
       val methodName = rhsNode match {
         case None => getIdentifier(s"unlink_ZOPG_$fieldName")

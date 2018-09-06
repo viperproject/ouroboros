@@ -298,7 +298,7 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
     }
 
     inputPrime = Program(
-      if(OuroborosMemberInliner.zopgUsed) inputPrime.domains else inputPrime.domains.filter(domain => !zOPGdomainNames.contains(domain.name)),
+      if(OuroborosConfig.zopgUsed) inputPrime.domains else inputPrime.domains.filter(domain => !zOPGdomainNames.contains(domain.name)),
       inputPrime.fields,
       inputPrime.functions.filter(function => !(OuroborosNames.macroNames.keySet ++ zOPGdomainNames).contains(function.name) || usedMacroCalls.contains(function.name)),
       inputPrime.predicates,
@@ -308,7 +308,7 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
     if(OuroborosConfig.inline) {
       inputPrime = ourInliner.execute[Program](inputPrime)
       inputPrime = Program(
-        if (OuroborosMemberInliner.zopgUsed) inputPrime.domains else inputPrime.domains.filter(domain => !zOPGdomainNames.contains(domain.name)),
+        if (OuroborosConfig.zopgUsed) inputPrime.domains else inputPrime.domains.filter(domain => !zOPGdomainNames.contains(domain.name)),
         inputPrime.fields,
         inputPrime.functions.filter(function => !OuroborosNames.macroNames.contains(function.name) && !zOPGdomainNames.contains(function.name)),
         inputPrime.predicates,
@@ -316,7 +316,7 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
       )(inputPrime.pos, inputPrime.info, inputPrime.errT)
     }
 
-    OuroborosMemberInliner.zopgUsed = false
+    OuroborosConfig.zopgUsed = false
     translatedCode = inputPrime.toString()
     logger.debug(s"Complete Viper program:\n${inputPrime.toString()}")
     this.input = Some(inputPrime)
@@ -432,4 +432,5 @@ object OuroborosConfig {
     type_check = false
   }
 
+  var zopgUsed: Boolean = false
 }

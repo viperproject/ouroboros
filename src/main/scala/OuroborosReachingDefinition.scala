@@ -433,6 +433,8 @@ class OuroborosReachingDefinition {
     val setGraph = SetExp.getSetExp(graph, wrapper)
     var checkStmtBeforeCall: Seq[Stmt] = typeChecker.checkTypeOfExp(typ, graph, wrapper, call)
     var  newCall: MethodCall = call
+    var newType: Topology with Closedness = typ
+
     if(!typ.isInstanceOf[DAG] && !typ.isInstanceOf[ZOPG]) {
       var newErrorWrapper = wrapper.copyError()
       val checkStmtForDAGBeforeCall = typeChecker.checkTypeOfExp(OurDAG, graph, newErrorWrapper, call)
@@ -440,15 +442,18 @@ class OuroborosReachingDefinition {
         val DAGLinkName = OuroborosNames.getIdentifier(s"link_DAG_${field.name}")
         val DAGLinkMethod = wrapper.input.findMethod(DAGLinkName)
         newCall = MethodCall(DAGLinkMethod, call.args, Seq())(call.pos, SimpleInfo(Seq("", "Changed from generic update to DAG Update.\n")), call.errT)
-        checkStmtBeforeCall = checkStmtForDAGBeforeCall
+        checkStmtBeforeCall = checkStmtForDAGBeforeCall //is empty
+        newType = OurDAG
       } else {
         newErrorWrapper = wrapper.copyError()
         val checkStmtForZOPGBeforeCall = typeChecker.checkTypeOfExp(OurZOPG, graph, newErrorWrapper, call)
         if(checkStmtForZOPGBeforeCall.isEmpty && newErrorWrapper.errors.size == wrapper.errors.size) {
-          val ZOPGLinkName = OuroborosNames.getIdentifier(s"link_ZOPG_${field.name} ")
+          val ZOPGLinkName = OuroborosNames.getIdentifier(s"link_ZOPG_${field.name}")
           val ZOPGLinkMethod = wrapper.input.findMethod(ZOPGLinkName)
+          OuroborosConfig.zopgUsed = true
           newCall = MethodCall(ZOPGLinkMethod, call.args, Seq())(call.pos, SimpleInfo(Seq("", "Changed from generic update to ZOPG Update.\n")), call.errT)
-          checkStmtBeforeCall = checkStmtForZOPGBeforeCall
+          checkStmtBeforeCall = checkStmtForZOPGBeforeCall //is empty
+          newType = OurZOPG
         }
       }
     }
@@ -479,12 +484,13 @@ class OuroborosReachingDefinition {
             Seq(ZOPGInvCall(callArgsCopy))
           case _ => Seq()
         }
+
         toInGraph ++ invStmts
       case _ =>
         Seq()
     }
 
-    val callDependentInvs: Seq[Exp] = typ match {
+    val callDependentInvs: Seq[Exp] = newType match {
       //case _: Forest =>
       case _: DAG if !DAGChecked=>
         Seq(DAGInvCall(callArgsCopy))
@@ -560,10 +566,6 @@ class OuroborosReachingDefinition {
     val ZOPGInvFunction = input.findFunction(updateZOPGInvariantName)
     val DAGInvFunction = input.findFunction(updateDAGInvariantName)
 
-    def callArgsCopy: Seq[Exp] = call.args.map(exp => exp.duplicateMeta((exp.pos, exp.info, exp.errT)).asInstanceOf[Exp])
-    def ZOPGInvCall(args: Seq[Exp]) = FuncApp(ZOPGInvFunction, args)(call.pos, call.info, call.errT)
-    def DAGInvCall(args: Seq[Exp]) = FuncApp(DAGInvFunction, args)(call.pos, call.info, call.errT)
-
     val graph = call.args.head
     var checkStmtBeforeCall: Seq[Stmt] = typeChecker.checkTypeOfExp(typ, graph, wrapper, call)
     var  newCall: MethodCall = call
@@ -579,8 +581,9 @@ class OuroborosReachingDefinition {
         newErrorWrapper = wrapper.copyError()
         val checkStmtForZOPGBeforeCall = typeChecker.checkTypeOfExp(OurZOPG, graph, newErrorWrapper, call)
         if (checkStmtForZOPGBeforeCall.isEmpty && newErrorWrapper.errors.size == wrapper.errors.size  ) {
-          val ZOPGUnlinkName = OuroborosNames.getIdentifier(s"unlink_ZOPG_${field.name} ")
+          val ZOPGUnlinkName = OuroborosNames.getIdentifier(s"unlink_ZOPG_${field.name}")
           val ZOPGUnlinkMethod = wrapper.input.findMethod(ZOPGUnlinkName)
+          OuroborosConfig.zopgUsed = true
           newCall = MethodCall(ZOPGUnlinkMethod, call.args, Seq())(call.pos, SimpleInfo(Seq("", "Changed from generic update to ZOPG Update.\n")), call.errT)
           checkStmtBeforeCall = checkStmtForZOPGBeforeCall
         }

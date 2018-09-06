@@ -269,7 +269,7 @@ class OuroborosStmtHandler {
       case methodName => (genericUpdateNames ++ ZOPGUpdateNames ++ DAGUpdateNames).get(methodName) match {
         case Some(field) =>
           //TODO need to find out, which update method to use
-          if (ZOPGUpdateNames.contains(methodName)) OuroborosMemberInliner.zopgUsed = true
+          if (ZOPGUpdateNames.contains(methodName)) OuroborosConfig.zopgUsed = true
           val copier = StrategyBuilder.Slim[Node](PartialFunction.empty).duplicateEverything
           val fieldName = field.name
           val $$Name = OuroborosNames.getIdentifier("$$")
