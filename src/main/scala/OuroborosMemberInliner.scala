@@ -45,7 +45,7 @@ object OuroborosMemberInliner {
         var contractsInlined : Seq[Stmt] = Seq()
         contractsInlined ++= calledMethod.pres.map(exp => Exhale(contractsRewriter.execute[Exp](exp))(pos, info, errT))
         contractsInlined ++= calledMethod.posts.map(exp => Inhale(contractsRewriter.execute[Exp](exp))(pos, info, errT))
-        Seqn(label +: contractsInlined, Seq())(pos, SimpleInfo(Seq("", s"inlined $mc \n")), errT)
+        Seqn(label +: contractsInlined, Seq())(pos, SimpleInfo(Seq("", s"inlined $mc", "")), errT)
 
       case Some(body) =>
         assert(calledMethod.pres.isEmpty && calledMethod.posts.isEmpty)
@@ -79,7 +79,7 @@ object OuroborosMemberInliner {
         val fresh_xDecl = LocalVarDecl(newFreshTarget, Ref)()
         val singleton_graphDecl = LocalVarDecl(newSingletonGraph, SetType(Ref))()
         val decls = Seq(fresh_xDecl, singleton_graphDecl)
-        Seqn(bodySynthesizer.execute[Seqn](body).ss,decls)(body.pos, SimpleInfo(Seq("", s"create_node(universe = $universe)\n")), body.errT)
+        Seqn(bodySynthesizer.execute[Seqn](body).ss,decls)(body.pos, SimpleInfo(Seq("", s"create_node(universe = $universe)", "")), body.errT)
 
     }
   }

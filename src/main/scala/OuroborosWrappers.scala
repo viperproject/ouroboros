@@ -1,14 +1,17 @@
 package viper.silver.plugin
 
 import viper.silver.ast._
+import viper.silver.plugin.GraphState.GraphState
 
 import scala.collection.mutable
 
 case class OuroborosStmtWrapper(
                                  input: Program,
                                  inputGraphs: Map[String, Topology with Closedness],
-                                 userDefinedGraphs: mutable.Map[String, (Topology with Closedness, LocalVarDecl)],
+                                 localNodes: mutable.Map[String, Set[String]],
+                                 localGraphs: mutable.Map[String, GraphIsInit],
                                  scope: Option[LocalVarDecl],
+                                 //Map from Scope to Set of declared variables.
                                  newlyDeclaredVariables: mutable.Map[Option[LocalVarDecl], Set[LocalVarDecl]],
                                  newlyDeclaredInitVariables: mutable.Buffer[LocalVarDecl],
                                  dontConsiderScopes: mutable.Set[Option[LocalVarDecl]]
@@ -16,17 +19,20 @@ case class OuroborosStmtWrapper(
 {
 
   def setScope(newScope: Option[LocalVarDecl]): OuroborosStmtWrapper = {
-    val existingCopy: mutable.Map[String, (Topology with Closedness, LocalVarDecl)]
-    = mutable.Map.empty ++ userDefinedGraphs
-    OuroborosStmtWrapper(input,inputGraphs, existingCopy, newScope, newlyDeclaredVariables, newlyDeclaredInitVariables, dontConsiderScopes)
+    val localGraphsCopy: mutable.Map[String, GraphIsInit]
+    = mutable.Map.empty ++ localGraphs
+    val localNodesCopy: mutable.Map[String, Set[String]] =
+      mutable.Map.empty ++ localNodes
+    OuroborosStmtWrapper(input,inputGraphs, localNodesCopy, localGraphsCopy, newScope, newlyDeclaredVariables, newlyDeclaredInitVariables, dontConsiderScopes)
   }
 
   def allGraphsMapping(/*scopes: mutable.Buffer[Option[LocalVarDecl]]*/): mutable.Map[Option[LocalVarDecl], Set[Exp]] = {
     val toReturn: mutable.Map[Option[LocalVarDecl], Set[Exp]] = newlyDeclaredVariables.map(tuple => (tuple._1, tuple._2.map(decl =>
       ExplicitSet(Seq(LocalVar(decl.name)(Ref)))().asInstanceOf[Exp]))) //TODO why do we need to cast?
-    userDefinedGraphs foreach(tuple =>{
+    localGraphs foreach(tuple =>{
       val graphName = tuple._1
-      val initDecl = tuple._2._2
+      val graphAndIsInitialized = tuple._2
+      val initDecl = graphAndIsInitialized.isInitDecl
       toReturn.put(Some(initDecl), Set(LocalVar(graphName)(SetType(Ref))))
       /*      toReturn.get(scope) match {
               case None => toReturn.put(scope, names)
@@ -43,39 +49,38 @@ case class OuroborosStmtWrapper(
     toReturn
   }
 
-  def allUserDefinedGraphs(/*scopes: mutable.Buffer[Option[LocalVarDecl]]*/): Set[String] = {
-    userDefinedGraphs.collect({
-      case tuple /*if scopes.contains(tuple._1)*/ => tuple._1
-    })/*.flatten*/.toSet
-  }
-
   def getUserDefinedGraphInitDecl(graphName: String/*, scopes: mutable.Buffer[Option[LocalVarDecl]]*/): Option[LocalVarDecl] = {
-    val graphInitDecl: Option[LocalVarDecl] = userDefinedGraphs.get(graphName) match {
+    val graphInitDecl: Option[LocalVarDecl] = localGraphs.get(graphName) match {
       case None => None
-      case Some(tuple) => Some(tuple._2)
+      case Some(graphIsInit) => Some(graphIsInit.isInitDecl)
     }
 
     graphInitDecl
   }
 }
 
+case class GraphIsInit(typ: Topology with Closedness, isInitDecl: LocalVarDecl, graphState: GraphState)
 
-case class OuroborosStateWrapper(
+
+case class OuroborosStateWrapper(//immutable
                                   input: Program,
                                   specs: Map[String, OurGraphSpec],
                                   inputGraphs: Map[String, Topology with Closedness],
+                                  inputNodes: Map[String, Set[String]],
+                                //mutable
                                   stateCopies: mutable.Map[Stmt, StateCopyWrapper],
-                                  userDefinedGraphs: mutable.Map[String, (Topology with Closedness, LocalVarDecl, Integer)],
+                                  localGraphs: mutable.Map[String, (Topology with Closedness, LocalVarDecl, Integer)],
+                                  localNodes: mutable.Map[String, Set[String]],
                                   definitions: mutable.Map[String, mutable.Map[Integer, (Stmt, OuroborosStateWrapper)]],
                                   errors: mutable.Buffer[OuroborosAbstractVerificationError],
                                   typeCheck: Boolean
                                 ) {
 
   def copy(checkType: Boolean): OuroborosStateWrapper = {
-    val newInputGraphs = Map.empty[String, Topology with Closedness] ++ inputGraphs //TODO needed?
-    val newUserDefinedGraphs = mutable.Map.empty[String, (Topology with Closedness, LocalVarDecl, Integer)] ++ userDefinedGraphs
+    val newLocalGraphs = mutable.Map.empty[String, (Topology with Closedness, LocalVarDecl, Integer)] ++ localGraphs
+    val newLocalNodes = mutable.Map.empty[String, Set[String]] ++ localNodes
     val newDefs = mutable.Map.empty[String, mutable.Map[Integer, (Stmt, OuroborosStateWrapper)]] ++ definitions
-    OuroborosStateWrapper(input, specs, newInputGraphs, stateCopies, newUserDefinedGraphs, newDefs, errors, checkType)
+    OuroborosStateWrapper(input, specs, inputGraphs, inputNodes, stateCopies, newLocalGraphs, newLocalNodes, newDefs, errors, checkType)
 
   }
 
@@ -85,7 +90,7 @@ case class OuroborosStateWrapper(
 
   def copyError(): OuroborosStateWrapper = {
     val newErrors = mutable.Buffer.empty[OuroborosAbstractVerificationError] ++ errors
-    OuroborosStateWrapper(input, specs, inputGraphs, stateCopies, userDefinedGraphs, definitions, newErrors, typeCheck)
+    OuroborosStateWrapper(input, specs, inputGraphs, inputNodes, stateCopies, localGraphs, localNodes, definitions, newErrors, typeCheck)
   }
 
 
@@ -129,7 +134,7 @@ case class OuroborosStateWrapper(
     }
     inputGraphs.get(graphName) match {
       case None =>
-        userDefinedGraphs.get(graphName) match {
+        localGraphs.get(graphName) match {
           //case None => //TODO should not happen
           case Some(tuple) =>
             tuple._1
@@ -140,16 +145,16 @@ case class OuroborosStateWrapper(
   }
 
   def getLastDefinitionValues(otherWrapper: OuroborosStateWrapper): Unit = {
-    otherWrapper.userDefinedGraphs.foreach(tuple => {
+    otherWrapper.localGraphs.foreach(tuple => {
       val graphName = tuple._1
-      if(userDefinedGraphs.contains(graphName)) {
-        val thisSpecs = userDefinedGraphs(graphName)
+      if(localGraphs.contains(graphName)) {
+        val thisSpecs = localGraphs(graphName)
         val thisLastDefValue = thisSpecs._3
         val otherLastDefValue = tuple._2._3
         if(thisLastDefValue < otherLastDefValue) {
           val ourType = thisSpecs._1
           val initDecl = thisSpecs._2
-          userDefinedGraphs.put(graphName, (ourType, initDecl, otherLastDefValue))
+          localGraphs.put(graphName, (ourType, initDecl, otherLastDefValue))
         }
       }
     })
@@ -236,6 +241,13 @@ object StateCopyWrapper {
         //There is already a copy of an explicit Set, consisting of the same elements.
         existingStateCopy
     }
+
+    case condSetExp: CondSetExp =>
+      val stateCopyThn: StateCopyWrapper = createStateCopy(condSetExp.thn, existingStateCopy)
+      val stateCopyEls: StateCopyWrapper = createStateCopy(condSetExp.els, stateCopyThn)
+
+      stateCopyEls
+    case _: EmptySetExp => existingStateCopy
   }
 }
 

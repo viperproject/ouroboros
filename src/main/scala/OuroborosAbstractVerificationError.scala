@@ -15,6 +15,13 @@ object errors {
     def withReason(r: ErrorReason) = OuroborosGraphSpecificactionError(graph, offendingNode, r)
   }
 
+  case class OuroborosClosedGraphSpecificactionError(graph: String, offendingNode: ErrorNode, reason: ErrorReason, override val cached: Boolean = false) extends OuroborosAbstractVerificationError {
+    val id = "graph.specification"//TODO
+    val text = s"It could not be verified that $graph is a closed graph."
+    def withNode(offendingNode: errors.ErrorNode = this.offendingNode) = OuroborosClosedGraphSpecificactionError(graph, offendingNode, this.reason)
+    def withReason(r: ErrorReason) = OuroborosClosedGraphSpecificactionError(graph, offendingNode, r)
+  }
+
   case class OuroborosInternalEncodingError(offendingNode: ErrorNode, reason: ErrorReason, override val cached: Boolean = false) extends OuroborosAbstractVerificationError {
     val id = "internal"
     val text = "An internal error occurred."
@@ -23,24 +30,33 @@ object errors {
   }
 
   case class OuroborosAssignmentError(offendingNode: ErrorNode, reason: ErrorReason, override val cached: Boolean = false) extends OuroborosAbstractVerificationError {
-    val id = "graph.assignment"//TODO
+    val id = "graph.assignment"
     val text = "Assignment failed."
     def withNode(offendingNode: errors.ErrorNode = this.offendingNode) = OuroborosAssignmentError(offendingNode, this.reason)
     def withReason(r: ErrorReason) = OuroborosAssignmentError(offendingNode, r)
   }
 
   case class OuroborosTypeError(offendingNode: ErrorNode, reason: ErrorReason, override val cached: Boolean = false) extends OuroborosAbstractVerificationError {
-    val id = "graph.type"//TODO
-    val text = "Type checking failed."
+    val id = "graph.type"
+    val text = "Type invariant might be violated."
     def withNode(offendingNode: errors.ErrorNode = this.offendingNode) = OuroborosTypeError(offendingNode, this.reason)
     def withReason(r: ErrorReason) = OuroborosTypeError(offendingNode, r)
   }
 
   case class OuroborosNotSupportedError(offendingNode: ErrorNode, reason: ErrorReason, override val cached: Boolean = false) extends OuroborosAbstractVerificationError {
-    val id = "not.Supported"//TODO
+    val id = "not.supported"
     val text = "Not supported."
     def withNode(offendingNode: errors.ErrorNode = this.offendingNode) = OuroborosNotSupportedError(offendingNode, this.reason)
     def withReason(r: ErrorReason) = OuroborosNotSupportedError(offendingNode, r)
+  }
+
+  case class OuroborosNodeCheckError(offendingNode: ErrorNode, reason: ErrorReason, override val cached: Boolean = false) extends OuroborosAbstractVerificationError {
+    val id = "node.check"
+    val text = "Node might not be in the declared graph."
+
+    def withNode(offendingNode: errors.ErrorNode = this.offendingNode) = OuroborosNodeCheckError(offendingNode, this.reason)
+
+    def withReason(r: ErrorReason) = OuroborosNodeCheckError(offendingNode, r)
   }
 }
 

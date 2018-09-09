@@ -2,6 +2,7 @@ package viper.silver.plugin
 
 import viper.silver.ast._
 import viper.silver.ast.utility.Rewriter.StrategyBuilder
+import viper.silver.plugin.GraphState.GraphState
 
 import scala.collection.mutable
 
@@ -31,7 +32,7 @@ class OuroborosStmtHandler {
       case None => Map.empty[String, Topology with Closedness]
       case Some(graphSpec) =>
         val inputs: mutable.Map[String, Topology with Closedness] = mutable.Map.empty[String, Topology with Closedness]
-        graphSpec.inputs.foreach(obj => {
+        graphSpec.inputGraphs.foreach(obj => {
           val objDecls = method.formalArgs.filter(p => p.name == obj.name)
           objDecls.size match {
             case 1 =>
@@ -53,11 +54,12 @@ class OuroborosStmtHandler {
     val inputGraphsUniverse = LocalVarAssign(LocalVar(universeName)(SetType(Ref)), unionInputGraphs)()
 
 
-    val existingGraphs: mutable.Map[String, (Topology with Closedness, LocalVarDecl)] =
-      mutable.Map.empty[String, (Topology with Closedness, LocalVarDecl)]
-    //val initialMap: mutable.Map[String, (Topology with Closedness, LocalVarDecl)] = mutable.Map.empty// ++ inputGraphs
-    //existingGraphs.put(None, mutable.Map.empty /*++ outputGraphs*/) //TODO if we have fields of graph type, it will be more complex
-    val wrapper: OuroborosStmtWrapper = OuroborosStmtWrapper(input, inputGraphs, existingGraphs, None, mutable.Map.empty, mutable.Buffer.empty, mutable.Set.empty)
+    val localGraphs: mutable.Map[String, GraphIsInit] =
+      mutable.Map.empty[String, GraphIsInit]
+
+    val localNodes: mutable.Map[String, Set[String]] = mutable.Map.empty[String, Set[String]]
+    //TODO if we have fields of graph type, it will be more complex
+    val wrapper: OuroborosStmtWrapper = OuroborosStmtWrapper(input, inputGraphs, localNodes, localGraphs, None, mutable.Map.empty, mutable.Buffer.empty, mutable.Set.empty)
     handleSeqn(seqn, wrapper, true) match {
       case s: Seqn => Seqn(inputGraphsUniverse +: s.ss, (s.scopedDecls) /*++ outputGraphs.values.map(x => x._2)*/)(s.pos, s.info, s.errT)
       case s => Seqn(Seq(inputGraphsUniverse, s), Seq() /*++ outputGraphs.values.map(x => x._2)*/)(s.pos, s.info, s.errT)
@@ -65,7 +67,7 @@ class OuroborosStmtHandler {
   }
 
   def handleStmt(stmt: Stmt, wrapper: OuroborosStmtWrapper): Stmt = { //TODO check if existingGraphs changes
-    stmt match {
+    val handledStmt = stmt match {
       case whileStmt: While => handleWhile(whileStmt, wrapper) //Add type invariants + handle body
       case methodCall: MethodCall => handleMethodCall(methodCall, wrapper) //Type Invariance Checking
       case seqn: Seqn => handleSeqn(seqn, wrapper, false) //visit stmts
@@ -88,6 +90,27 @@ class OuroborosStmtHandler {
         case localDecl:LocalVarDeclStmt => handleLocalVarDeclStmt(localDecl, wrapper)*/
 
     }
+
+    val isInitRewriter = StrategyBuilder.Slim[Node]({
+      case funcApp: FuncApp if
+        funcApp.funcname == OuroborosNames.getIdentifier("IS_INITIALIZED") &&
+          funcApp.args.head.isInstanceOf[LocalVar] =>
+        val graph = funcApp.args.head.asInstanceOf[LocalVar]
+        wrapper.localGraphs.get(graph.name) match {
+          case None if wrapper.inputGraphs.contains(graph.name) =>
+            TrueLit()(funcApp.pos, NoInfo, funcApp.errT)
+          case None =>
+            funcApp
+          case Some(GraphIsInit(_, isInitDecl, _)) => isInitDecl.typ match {
+            case Int => NeCmp(LocalVar(isInitDecl.name)(Int), IntLit(0)())(funcApp.pos, NoInfo, funcApp.errT)
+            case Bool => LocalVar(isInitDecl.name)(Bool, funcApp.pos, NoInfo, funcApp.errT)
+          }
+        }
+    })
+
+    val rewrittenStmt = isInitRewriter.execute[Stmt](handledStmt)
+
+    rewrittenStmt
   }
 
   def isInit(initDecl: LocalVarDecl): Exp = initDecl.typ match {
@@ -96,29 +119,59 @@ class OuroborosStmtHandler {
   }
 
   def handleWhile(stmt: While, wrapper: OuroborosStmtWrapper): While = {
-    val userDefinedGraphs = wrapper.userDefinedGraphs
+    val localGraphs = wrapper.localGraphs
+
+
+
+    //Access invariants for fresh nodes
     val conditionedgraphInvs: mutable.Iterable[Exp] = wrapper.newlyDeclaredVariables.map(f => {
-      f._1 match {
-        case None => f._2.flatMap(a => getGraphPropertiesExceptAccess((a.name, OurGraph), wrapper.input, stmt, false))
-        case Some(scope) => f._2.flatMap(a => {
-          getGraphPropertiesExceptAccess((a.name, OurGraph), wrapper.input, stmt, false).map(exp =>
+      val maybeScope = f._1
+      val newDecls = f._2
+      maybeScope match {
+        case None => newDecls.flatMap(a => getGraphPropertiesExceptAccess((a.name, OurGraph), false, false, wrapper.input, stmt, false))
+        case Some(scope) => newDecls.flatMap(a => {
+          getGraphPropertiesExceptAccess((a.name, OurGraph), false, false, wrapper.input, stmt, false).map(exp =>
             Implies(LocalVar(scope.name)(Bool), exp)(exp.pos, exp.info, exp.errT))
         })
       }
     }).flatten
 
-    val graphInvs: mutable.Iterable[Exp] = conditionedgraphInvs ++ userDefinedGraphs.flatMap(p => {
-      val initDecl = p._2._2
+    val graphInvs: mutable.Iterable[Exp] = conditionedgraphInvs ++
+    //Graph Invariants for local Nodes
+    localGraphs.flatMap(p => {
+      val graphIsInit = p._2
+      val initDecl = graphIsInit.isInitDecl
       val graphName = p._1
-      val isInitialized = isInit(initDecl)
-
-      getGraphPropertiesExceptAccess((graphName, p._2._1), wrapper.input, stmt, true).map(exp =>
-        Implies(isInitialized, exp)(exp.pos, exp.info, exp.errT))
+      val isInitializedExp = isInit(initDecl)
+      val isInitialized = graphIsInit.graphState == GraphState.ALWAYS_INITIALIZED
+      val graphPropertiesIfInitialized = getGraphPropertiesExceptAccess((graphName, graphIsInit.typ), false, false, wrapper.input, stmt, true)
+      if(isInitialized) {
+        //We don't need to check, if the graph is Initialized
+        graphPropertiesIfInitialized
+      } else {
+        //We need to check
+        graphPropertiesIfInitialized.map(exp =>
+          Implies(isInitializedExp, exp)(exp.pos, exp.info, exp.errT))
+      }
     }) ++ wrapper.inputGraphs.flatMap(a => {
-      getGraphPropertiesExceptAccess(a, wrapper.input, stmt, true)
+      getGraphPropertiesExceptAccess(a, false, false, wrapper.input, stmt, true)
     })
 
-    val closed = wrapper.input.findFunction(OuroborosNames.getIdentifier("CLOSED"))
+    val nodeInvs: Iterable[Exp] = wrapper.localNodes.map({
+      case (node, graphs) =>
+        val localGraphsMapping = getLocalGraphMapping(wrapper)
+        val graphsExp = OurNode.getGraphExp(graphs, localGraphsMapping)
+        def nodeVar = LocalVar(node)(Ref)
+        val nodeInGraphs = AnySetContains(nodeVar, graphsExp)(stmt.pos, NoInfo, OuroborosErrorTransformers.nodeNotInGraphErrTrafo(
+          nodeVar,
+          graphsExp
+        ))
+        val ifNonNull = Implies(NeCmp(nodeVar, NullLit()())(), nodeInGraphs)(stmt.pos, NoInfo, OuroborosErrorTransformers.nodeNotInGraphErrTrafo(
+          nodeVar,
+          graphsExp
+        ))
+        ifNonNull
+    })
 
     val universeAccess = graphHandler.GRAPH(universe(stmt.pos), graphHandler.ref_fields(wrapper.input.fields), wrapper.input, true, true, true, false)
 
@@ -128,16 +181,23 @@ class OuroborosStmtHandler {
     val handledBody = handleSeqn(stmt.body, wrapper.setScope(bodyScope), false)
 
 
-    val graphsSubsetOfUniverse: Set[Exp with Serializable] = wrapper.userDefinedGraphs.map(triple => {
+    val graphsSubsetOfUniverse: Set[Exp with Serializable] = wrapper.localGraphs.map(triple => {
       val graphName = triple._1
-      val initDecl = triple._2._2
+      val graphIsInit = triple._2
+      val initDecl = graphIsInit.isInitDecl
+      val isInitialized = graphIsInit.graphState == GraphState.ALWAYS_INITIALIZED
       val graph = LocalVar(graphName)(SetType(Ref))
 
-      val isInitialized = isInit(initDecl)
+      val isInitializedExp = isInit(initDecl)
+
+      val condGraph = if(isInitialized)
+        graph
+       else
+        CondExp(isInitializedExp, graph, EmptySet(Ref)())()
 
       AnySetSubset(
-        CondExp(isInitialized, graph, EmptySet(Ref)())(),
-        universe(stmt.pos))(stmt.pos,SimpleInfo(Seq(s"Preserve that the universe contains $graphName \n"))) //TODO ErrorTrafo
+        condGraph,
+        universe(stmt.pos))(stmt.pos,SimpleInfo(Seq(s"Preserve that the universe contains $graphName.", ""))) //TODO ErrorTrafo
 
 
     }).toSet ++ wrapper.newlyDeclaredVariables.flatMap(tuple => {
@@ -147,12 +207,12 @@ class OuroborosStmtHandler {
         scope match {
           case None => AnySetContains(
             LocalVar(decl.name)(Ref),
-            universe(stmt.pos))(stmt.pos,SimpleInfo(Seq(s"Preserve that the universe contains ${decl.name} \n")))
+            universe(stmt.pos))(stmt.pos,SimpleInfo(Seq(s"Preserve that the universe contains ${decl.name}.", "")))
           case Some(s) => CondExp(
             LocalVar(s.name)(Bool),
             AnySetContains(
               LocalVar(decl.name)(Ref),
-              universe(stmt.pos))(stmt.pos,SimpleInfo(Seq(s"Preserve that the universe contains ${decl.name} \n"))) ,
+              universe(stmt.pos))(stmt.pos,SimpleInfo(Seq(s"Preserve that the universe contains ${decl.name}.", ""))) ,
             TrueLit()())()
 
         }
@@ -164,10 +224,10 @@ class OuroborosStmtHandler {
         universe()
       )()
     })
-//TODO preserve that UNIVERSE is closed
+
     While(stmt.cond,
       graphsSubsetOfUniverse.toSeq ++ universeAccess ++
-      graphInvs.toSeq ++ stmt.invs /*++ newConditionedClosedness*/,
+      graphInvs ++ nodeInvs ++ stmt.invs /*++ newConditionedClosedness*/,
       if (wrapper.newlyDeclaredVariables.get(bodyScope).isDefined) Seqn(Seq(bodyScopeTrue, handledBody),
         Seq())(handledBody.pos, handledBody.info, handledBody.errT) else handledBody
     )(stmt.pos, stmt.info, stmt.errT)
@@ -184,12 +244,26 @@ class OuroborosStmtHandler {
     val elsScopeTrue = LocalVarAssign(
       LocalVar(elsScopeName)(Bool), TrueLit()()
     )()
-    val handledThnBlock = handleSeqn(ifStmt.thn, wrapper.setScope(thnScope), false)
+
+    val thnWrapper = wrapper.setScope(thnScope)
+    val handledThnBlock = handleSeqn(ifStmt.thn, thnWrapper, false)
 
     wrapper.dontConsiderScopes.add(thnScope)
-    val handledElsBlock = handleSeqn(ifStmt.els, wrapper.setScope(elsScope), false)
+    val elsWrapper = wrapper.setScope(elsScope)
+    val handledElsBlock = handleSeqn(ifStmt.els, elsWrapper, false)
     wrapper.dontConsiderScopes.remove(thnScope)
 
+    //If a variable is initialized in thn and in els, we can be sure that it is always initialized after the if block
+    thnWrapper.localGraphs.collect({
+      case (graphName, graphIsInit) if wrapper.localGraphs.contains(graphName) =>
+        val thnState = thnWrapper.localGraphs(graphName).graphState
+        val elsState = elsWrapper.localGraphs(graphName).graphState
+        if(elsState != thnState) {
+          wrapper.localGraphs.put(graphName, GraphIsInit(graphIsInit.typ, graphIsInit.isInitDecl,GraphState.UNKNOWN))
+        } else {
+          wrapper.localGraphs.put(graphName, graphIsInit)
+        }
+    })
     If(ifStmt.cond,
       if (wrapper.newlyDeclaredVariables.contains(thnScope))
         Seqn(Seq(thnScopeTrue, handledThnBlock), Seq())()
@@ -238,12 +312,7 @@ class OuroborosStmtHandler {
     val DAGUpdateNames: mutable.Map[String, Field] = mutable.Map.empty[String, Field] ++ input.fields.map(field => (OuroborosNames.getIdentifier(s"update_DAG_${field.name}"), field))
     call.methodName match {
       case x if x == OuroborosNames.getIdentifier("NEW") =>
-        val universe = LocalVar(OuroborosNames.getIdentifier("UNIVERSE"))(SetType(Ref))/*OuroborosHelper.transformAndFold[String, Exp](
-          wrapper.allGraphs().toSeq,
-          EmptySet(Ref)(),
-          (exp1, exp2) => AnySetUnion(exp1, exp2)(),
-          graphName => LocalVar(graphName)(SetType(Ref))
-        )*/
+        val universe = LocalVar(OuroborosNames.getIdentifier("UNIVERSE"))(SetType(Ref))
         assert(call.targets.size == 1) //TODO throw correct error
         val node = call.targets.head
         val fresh_x = OuroborosNames.getNewName(s"fresh_$node")
@@ -261,18 +330,29 @@ class OuroborosStmtHandler {
         val newUniverse = AnySetUnion(universe.duplicateMeta((NoPosition, NoInfo, NoTrafos)).asInstanceOf[Exp], ExplicitSet(Seq(node.duplicateMeta((node.pos, node.info, node.errT)).asInstanceOf[Exp]))() )()
         val newUniverseAssign = LocalVarAssign(universe.duplicateMeta((NoPosition, NoInfo, NoTrafos)).asInstanceOf[LocalVar], newUniverse)()
 
+        val nodeCheck = wrapper.localNodes.get(node.name) match {
+          case None => Seq()
+          case Some(graphs) =>
+            val nodeCopy = node.duplicateMeta((node.pos, node.info, node.errT)).asInstanceOf[LocalVar]
+            val localGraphsMapping: mutable.Map[String, (LocalVarDecl, GraphState)] = getLocalGraphMapping(wrapper)
+            val graphsExp = OurNode.getGraphExp(graphs, localGraphsMapping)
+            val nodeInGraphs = AnySetContains(nodeCopy, graphsExp)()
+            val assertContains = Assert(nodeInGraphs)(call.pos,
+              SimpleInfo(Seq("", s"Assert that $node stays in the graph $graphsExp.", "")),
+              OuroborosErrorTransformers.nodeNotInGraphErrTrafo(node, graphsExp))
+            Seq(assertContains)
+        }
+
         Seqn(
-          Seq(createCall, nodeAssign, framingAxioms, newUniverseAssign),
+          Seq(createCall, nodeAssign, framingAxioms, newUniverseAssign) ++ nodeCheck,
           Seq()
-        )(call.pos, SimpleInfo(Seq("", s"$node := NEW()\n")), call.errT)
+        )(call.pos, SimpleInfo(Seq("", s"$node := NEW()", "")), call.errT)
 
       case methodName => (genericUpdateNames ++ ZOPGUpdateNames ++ DAGUpdateNames).get(methodName) match {
         case Some(field) =>
-          //TODO need to find out, which update method to use
           if (ZOPGUpdateNames.contains(methodName)) OuroborosConfig.zopgUsed = true
           val copier = StrategyBuilder.Slim[Node](PartialFunction.empty).duplicateEverything
           val fieldName = field.name
-          val $$Name = OuroborosNames.getIdentifier("$$")
           val methodNames = if (genericUpdateNames.contains(methodName))
             (OuroborosNames.getIdentifier(s"unlink_$fieldName"),
               OuroborosNames.getIdentifier(s"link_$fieldName"))
@@ -322,7 +402,7 @@ class OuroborosStmtHandler {
               invariantFunction.get,
               call.args.map(arg => copier.execute[Exp](arg))
             )()
-          )(call.pos, SimpleInfo(Seq("", s"Inserted invariant that is needed to preserve graph property after update.\n")), call.errT)) //TODO errT
+          )(call.pos, SimpleInfo(Seq("", s"Inserted invariant that is needed to preserve graph property after update.", "")), call.errT)) //TODO errT
           else None
 
           val linkMethodCall = MethodCall(
@@ -350,15 +430,43 @@ class OuroborosStmtHandler {
             Seq()
           )(call.pos, call.info, call.errT)
         case None =>
-          val userDefinedGraphs = wrapper.allUserDefinedGraphs()
-          val graphTargets: Seq[(LocalVar, LocalVarDecl)] = call.targets.collect({
-            case target if userDefinedGraphs.contains(target.name) =>
-              (target, wrapper.getUserDefinedGraphInitDecl(target.name).get)
-          })
-          val updateUniverseAndInit = graphTargets.flatMap(tuple => {
-            val initDecl = tuple._2
-            val graph = tuple._1
+          val localGraphs = wrapper.localGraphs
 
+          val graphTargets: Seq[(LocalVar, GraphIsInit)] = call.targets.collect({
+            case target if localGraphs.contains(target.name) =>
+              (target, wrapper.localGraphs(target.name))
+          })
+
+          val targetNames = call.targets.map(v => v.name)
+          val nodeChecksNeeded: mutable.Iterable[Stmt] = wrapper.localNodes.flatMap({
+            case (node, graphs) =>
+
+              def targetNamesContainsGraphs(graphNames: Set[String]): Boolean =
+                graphNames.exists(graphName => targetNames.contains(graphName))
+
+              if(targetNames.contains(node) || targetNamesContainsGraphs(graphs)) {
+                val localGraphsMapping: mutable.Map[String, (LocalVarDecl, GraphState)] = getLocalGraphMapping(wrapper)
+                val graphsExp = OurNode.getGraphExp(graphs, localGraphsMapping)
+                def nodeExp = LocalVar(node)(Ref)
+                val nodeInGraphs = AnySetContains(nodeExp, graphsExp)()
+                val ifNonNull = Implies(NeCmp(nodeExp, NullLit()())(), nodeInGraphs)()
+                val assert = Assert(ifNonNull)(
+                  call.pos,
+                  SimpleInfo(Seq("", s"Checking that $node still remains in $graphsExp.", "")),
+                  OuroborosErrorTransformers.nodeNotInGraphErrTrafo(nodeExp, graphsExp))
+
+                Seq(assert)
+              } else {
+                Seq()
+              }
+          })
+
+          val updateUniverseAndInit = graphTargets.flatMap(tuple => {
+            val graphIsInit = tuple._2
+            val initDecl = graphIsInit.isInitDecl
+            val typ = graphIsInit.typ
+            val graph = tuple._1
+            wrapper.localGraphs.put(graph.name, GraphIsInit(typ, initDecl, GraphState.ALWAYS_INITIALIZED))
             val initTrue = initDecl.typ match {
               case Bool => Seq(LocalVarAssign(LocalVar(initDecl.name)(Bool), TrueLit()())())
               case Int => Seq()
@@ -372,9 +480,9 @@ class OuroborosStmtHandler {
             call
           else
             Seqn(
-              call +: updateUniverseAndInit,
+              (call +: updateUniverseAndInit) ++ nodeChecksNeeded,
               Seq()
-            )(call.pos, SimpleInfo(Seq("", s"enlarge Universe by $graphTargets\n")))
+            )(call.pos, SimpleInfo(Seq("", s"enlarge Universe by $graphTargets", "")))
       }
     }
   }
@@ -400,19 +508,36 @@ class OuroborosStmtHandler {
             val initVarName = OuroborosNames.getNewName(s"${thisGraph}_init")
             val typ = if (OuroborosConfig.type_check) Int else Bool
             val initVarDecl = LocalVarDecl(initVarName, typ)()
+            val isInit: GraphState = GraphState.NEVER_INITIALIZED
+            val graphIsInit = GraphIsInit(ourType, initVarDecl, isInit)
 
             lazy val newTypeDeclFuncApp = FuncApp(func.funcname, func.args ++ Seq(LocalVar(initVarName)(Int)))(NoPosition, NoInfo, Bool, Seq(), NoTrafos) //TODO check if this causes error
             lazy val newInhale = Inhale(newTypeDeclFuncApp)()
 
             //val framingFunctions = getFramingAxioms(thisGraph, input, wrapper)
-            wrapper.userDefinedGraphs.put(thisGraph.name, (ourType, initVarDecl))
+            wrapper.localGraphs.put(thisGraph.name, graphIsInit)
             wrapper.newlyDeclaredInitVariables += initVarDecl
 
             if(OuroborosConfig.type_check)
               newInhale
             else
              Seqn(Seq(),Seq())(inhale.pos, inhale.info, inhale.errT)
-          case None => inhale
+          case None =>
+            OurTypes.getNodeAndGraphsFromFunctionCall(func) match {
+              case None =>
+                inhale
+              case Some((node, graphs)) =>
+                wrapper.localNodes.put(node.name, graphs)
+                val localGraphsMapping: mutable.Map[String, (LocalVarDecl, GraphState)] = getLocalGraphMapping(wrapper)
+                val graphExp = OurNode.getGraphExp(graphs, localGraphsMapping)
+                val nodeInGraph = AnySetContains(node, graphExp)(func.pos, NoInfo, func.errT)
+                val ifNonNull = Implies(NeCmp(node, NullLit()())(), nodeInGraph)(func.pos, NoInfo, func.errT)
+                val assumeNodeInGraphs = Inhale(ifNonNull)(inhale.pos, SimpleInfo(Seq("", s"Assuming that $node is in $graphExp.", "")), inhale.errT)
+                if(OuroborosConfig.type_check)
+                  Seqn(Seq(inhale, assumeNodeInGraphs), Seq())(inhale.pos, inhale.info, inhale.errT)
+                else
+                  assumeNodeInGraphs
+            }
         }
       case _ => inhale //TODO other cases (Type Invariance)
     }
@@ -426,69 +551,97 @@ class OuroborosStmtHandler {
         val field = fa.lhs.field
         val updateName = OuroborosNames.getIdentifier(s"update_${field.name}")
         val updateMethod = input.findMethod(updateName)
+        val updateMethodCall: MethodCall = MethodCall(updateMethod, Seq(universe(), fa.lhs.rcv, fa.rhs), Seq())(
+          fa.pos, SimpleInfo(Seq("", "Changed from field Assign to Method Call.", "")), fa.errT)
 
-          handleMethodCall(MethodCall(updateMethod, Seq(universe(), fa.lhs.rcv, fa.rhs), Seq())(), wrapper)
+          handleMethodCall(updateMethodCall, wrapper)
       case _ => fa
     }
 
   }
 
-  def handleLocalVarAssign(assign: LocalVarAssign, wrapper: OuroborosStmtWrapper): Stmt = { //TODO Type Invariance
+  def handleLocalVarAssign(assign: LocalVarAssign, wrapper: OuroborosStmtWrapper): Stmt = {
 
+    val lhs = assign.lhs
+    wrapper.localGraphs.get(lhs.name) match {
+      case Some(graphIsInit) =>
+        val initDecl = graphIsInit.isInitDecl
+        val nodeChecks: Iterable[Stmt] = wrapper.localNodes.collect({
+          case (nodeName, graphs) if graphs.contains(lhs.name) =>
+            val localGraphsMapping: mutable.Map[String, (LocalVarDecl, GraphState)] = getLocalGraphMapping(wrapper)
+            val graphsExp = OurNode.getGraphExp(graphs, localGraphsMapping)
+            val nodeExp = LocalVar(nodeName)(Ref)
+            val nodeInGraph = AnySetContains(nodeExp, graphsExp)()
+            val ifNonNull = Implies(NeCmp(nodeExp, NullLit()())(), nodeInGraph)()
 
-    assign.lhs match{
-      case lhs:LocalVar =>
-        wrapper.getUserDefinedGraphInitDecl(lhs.name) match {
-          case None => assign
-          case Some(initDecl) =>
-            val initTrue = initDecl.typ match {
-              case Bool => Seq(LocalVarAssign(LocalVar(initDecl.name)(Bool),TrueLit()())())
-              case Int => Seq()
-            }
-            val newUniverse = LocalVarAssign(universe(), AnySetUnion(universe(), lhs.duplicateMeta((lhs.pos,lhs.info,lhs.errT)).asInstanceOf[LocalVar])())()
-            Seqn(
-              (assign +: initTrue) :+ newUniverse, Seq()
-            )(assign.pos, SimpleInfo(Seq("",s"update Universe and set $initDecl to true\n")), assign.errT)
+            Assert(ifNonNull)(
+              assign.pos, SimpleInfo(Seq("", s"Check that $lhs is still in $graphs", "")),
+              OuroborosErrorTransformers.nodeNotInGraphErrTrafo(nodeExp, graphsExp)
+            )
+        })
+
+        wrapper.localGraphs.put(lhs.name, GraphIsInit(graphIsInit.typ, initDecl, GraphState.ALWAYS_INITIALIZED))
+        val initTrue = initDecl.typ match {
+          case Bool => Seq(LocalVarAssign(LocalVar(initDecl.name)(Bool),TrueLit()())(
+            assign.pos, SimpleInfo(Seq("",s"update Universe and set ${initDecl.name} to true", "")), assign.errT))
+          case Int => Seq()
         }
-      case _ => assign
+        val newUniverse = LocalVarAssign(universe(), AnySetUnion(universe(), lhs.duplicateMeta((lhs.pos,lhs.info,lhs.errT)).asInstanceOf[LocalVar])())()
+        Seqn(
+          ((assign +: initTrue) :+ newUniverse) ++ nodeChecks, Seq()
+        )(assign.pos, NoInfo, assign.errT)
+
+      case None => wrapper.localNodes.get(lhs.name) match {
+        case None =>
+          assign
+        case Some(graph) =>
+          val localGraphsMapping: mutable.Map[String, (LocalVarDecl, GraphState)] = getLocalGraphMapping(wrapper)
+          val graphs = OurNode.getGraphExp(graph, localGraphsMapping)
+          val lhsInGraph = AnySetContains(LocalVar(lhs.name)(Ref),
+            graphs.duplicateMeta((assign.pos, assign.info, assign.errT)).asInstanceOf[Exp])(assign.pos, NoInfo, assign.errT)
+          val ifNonNull = Implies(NeCmp(LocalVar(lhs.name)(Ref), NullLit()())(), lhsInGraph)(assign.pos, NoInfo, assign.errT)
+          val assert = Assert(ifNonNull)(assign.pos, SimpleInfo(Seq("", s"Check that $lhs is still in $graphs", "")), OuroborosErrorTransformers.nodeNotInGraphErrTrafo(lhs, graphs))
+          Seqn(Seq(assign, assert), Seq())(assign.pos, NoInfo, assign.errT)
+      }
+}
+  }
+
+  def handleNewStmt(stmt: NewStmt, wrapper: OuroborosStmtWrapper): Stmt = {
+    val ref_fields = graphHandler.ref_fields(wrapper.input.fields)
+    def rcvr: LocalVar = stmt.lhs.duplicateMeta((stmt.lhs.pos, stmt.lhs.info, stmt.lhs.errT)).asInstanceOf[LocalVar]
+    stmt.fields match {
+      case x if ref_fields.forall(x.contains(_)) =>
+        val call = MethodCall(OuroborosNames.getIdentifier("NEW"), Seq(), Seq(stmt.lhs))(stmt.pos, stmt.info, stmt.errT) //TODO get field access to other fields
+        val newNodeRefFields = handleMethodCall(call, wrapper)
+        val accessToNotRefFields = x.collect({
+          case field if !ref_fields.contains(field) =>
+            FieldAccessPredicate(FieldAccess(rcvr, field)(), FullPerm()())()
+        })
+
+        if(accessToNotRefFields.isEmpty) {
+          newNodeRefFields
+        } else {
+          val accessExp = OuroborosHelper.ourFold[Exp](
+            accessToNotRefFields,
+            TrueLit()(),
+            (exp1, exp2) => And(exp1, exp2)()
+          )
+          val inhaleExp = Inhale(accessExp)(stmt.pos, SimpleInfo(Seq("","Inhaling access permissions for all non Node Fields.", "")),stmt.errT)
+          Seqn(Seq(newNodeRefFields, inhaleExp), Seq())()
+        }
+      case _ => stmt
     }
   }
 
-  def handleNewStmt(stmt: NewStmt, wrapper: OuroborosStmtWrapper): Stmt = stmt.fields.size match {
-    case x if x == wrapper.input.fields.size =>
-      val call = MethodCall(OuroborosNames.getIdentifier("NEW"), Seq(), Seq(stmt.lhs))(stmt.pos, stmt.info, stmt.errT) //TODO get field access to other fields
-      handleMethodCall(call, wrapper)
-    case _ => stmt
-  }
-
-  def getGraphPropertiesExceptAccess(tuple: (String, Topology with Closedness), input: Program, pos: Infoed with Positioned with TransformableErrors, isSetType: Boolean): Seq[Exp] = {
-    //TODO Type Invariance Checking
+  def getGraphPropertiesExceptAccess(tuple: (String, Topology with Closedness), qpsNeeded: Boolean, noNullNeeded: Boolean, input: Program, pos: Infoed with Positioned with TransformableErrors, isSetType: Boolean): Seq[Exp] = {
     val ourType: Topology with Closedness = tuple._2
     val name: String = tuple._1
-    val fields = input.fields
-    val acyclicGraphName = OuroborosNames.getIdentifier("acyclic_graph")
-    val $$FunctionName = OuroborosNames.getIdentifier("$$")
-    val acyclicGraphFunction = input.findDomainFunction(acyclicGraphName)
-    val $$Function = input.findFunction($$FunctionName)
     def graph = if(isSetType)
       LocalVar(name)(SetType(Ref), pos.pos, pos.info, pos.errT)
+
     else
       ExplicitSet(Seq(LocalVar(name)(Ref)))(pos.pos, pos.info, pos.errT)
-    val closednessProp = ourType match {
-      case _: Closed =>
-        //graphHandler.GRAPH(LocalVar(name)(SetType(Ref), pos.pos, pos.info, pos.errT), fields, input, true, false)
-        Seq(graphHandler.CLOSED(graph, input))
-      case _ =>
-        //graphHandler.GRAPH(LocalVar(name)(SetType(Ref), pos.pos, pos.info, pos.errT), fields, input, false, false)
-        Seq()
-    }
-
-    val topologyProp = ourType match {
-      case _: DAG =>
-        Seq(DomainFuncApp(acyclicGraphFunction, Seq(FuncApp($$Function, Seq(graph))()), Map.empty[TypeVar,Type])(pos.pos, NoInfo, OuroborosErrorTransformers.acyclicGraphErrTrafo(graph))) //TODO ErrorTrafo
-      case _ => Seq()
-    }
-    closednessProp ++ topologyProp
+    graphHandler.GRAPH(graph, graphHandler.ref_fields(input.fields), input, ourType.isInstanceOf[Closed], qpsNeeded, noNullNeeded, ourType.isInstanceOf[DAG])
   }
 
   def getNoExitAxioms(thisGraph: Exp, input: Program, wrapper: OuroborosStmtWrapper): Seqn = {
@@ -552,7 +705,7 @@ class OuroborosStmtHandler {
       noneAxioms ++ condAxioms
       /*conditionedAxioms.toSeq*/,
       Seq()
-    )(info = SimpleInfo(Seq("", "insert NoExit Axioms for combinations of sets\n")))
+    )(info = SimpleInfo(Seq("", "insert NoExit Axioms for combinations of sets", "")))
   }
 
   def getFramingAxioms(thisGraph: Exp, input: Program, wrapper: OuroborosStmtWrapper) = {
@@ -562,14 +715,15 @@ class OuroborosStmtHandler {
       val graph: LocalVar = LocalVar(graphName)(SetType(Ref), thisGraph.pos, thisGraph.info, thisGraph.errT)
       Inhale(
         FuncApp(framingFunction, Seq(graph, AnySetMinus(thisGraph, graph)()))(thisGraph.pos, thisGraph.info, thisGraph.errT)
-      )(thisGraph.pos, SimpleInfo(Seq("", s"Apply TC Framing for $graph and $thisGraph setminus $graph\n")), thisGraph.errT)
+      )(thisGraph.pos, SimpleInfo(Seq("", s"Apply TC Framing for $graph and $thisGraph setminus $graph", "")), thisGraph.errT)
     })
 
 
-    val userDefinedFramingFunctions: Iterable[If] = wrapper.userDefinedGraphs.map(
+    val userDefinedFramingFunctions: Iterable[If] = wrapper.localGraphs.map(
       graphSpec => {
         val graphName = graphSpec._1
-        val graphInit = graphSpec._2._2
+        val graphIsInit = graphSpec._2
+        val graphInit = graphIsInit.isInitDecl
         val typ = graphInit.typ
         val graphInitVar = LocalVar(graphInit.name)(typ)
         val isInit = typ match {
@@ -583,7 +737,7 @@ class OuroborosStmtHandler {
           Seqn(
             Seq(Inhale(
               FuncApp(framingFunction, Seq(graph, AnySetMinus(thisGraph, graph)()))(thisGraph.pos, thisGraph.info, thisGraph.errT)
-            )(thisGraph.pos, SimpleInfo(Seq("", s"Apply TC Framing for $graph and $thisGraph setminus $graph\n")), thisGraph.errT)),
+            )(thisGraph.pos, SimpleInfo(Seq("", s"Apply TC Framing for $graph and $thisGraph setminus $graph", "")), thisGraph.errT)),
             Seq())(),
           Seqn(Seq(),Seq())()
         )()
@@ -599,7 +753,7 @@ class OuroborosStmtHandler {
           val graph: ExplicitSet = ExplicitSet(Seq(node))(thisGraph.pos, thisGraph.info, thisGraph.errT)
           Inhale(
             FuncApp(framingFunction, Seq(graph, AnySetMinus(thisGraph, graph)()))(thisGraph.pos, thisGraph.info, thisGraph.errT)
-          )(thisGraph.pos, SimpleInfo(Seq("", s"Apply TC Framing for Set($node) and $thisGraph setminus Set($node)\n")), thisGraph.errT)
+          )(thisGraph.pos, SimpleInfo(Seq("", s"Apply TC Framing for Set($node) and $thisGraph setminus Set($node)", "")), thisGraph.errT)
         })
 
       case tuple =>
@@ -612,7 +766,7 @@ class OuroborosStmtHandler {
           Inhale(
             FuncApp(framingFunction, Seq(graph, AnySetMinus(thisGraph, graph)()))(
               thisGraph.pos, thisGraph.info, thisGraph.errT))(
-            thisGraph.pos, SimpleInfo(Seq("", s"Apply TC Framing for Set($node) and $thisGraph setminus Set($node)\n")), thisGraph.errT)
+            thisGraph.pos, SimpleInfo(Seq("", s"Apply TC Framing for Set($node) and $thisGraph setminus Set($node)", "")), thisGraph.errT)
         })
         Set(If(
           LocalVar(scopeDecl.name)(Bool),
@@ -621,12 +775,12 @@ class OuroborosStmtHandler {
             Seq()
           )(thisGraph.pos, NoInfo, thisGraph.errT),
           Seqn(Seq(), Seq())()
-        )(thisGraph.pos, SimpleInfo(Seq("", s"Apply TC Framing for graphs in the scope of ${scopeDecl.name}\n")), thisGraph.errT))
+        )(thisGraph.pos, SimpleInfo(Seq("", s"Apply TC Framing for graphs in the scope of ${scopeDecl.name}", "")), thisGraph.errT))
     }).flatten
 
     val allFramingFunctions = inputGraphsFramingFunctions ++ userDefinedFramingFunctions ++ newlyDeclaredFramingFunctions
 
-    Seqn(allFramingFunctions.toSeq, Seq())(info = SimpleInfo(Seq("", s"Apply TC Framing for $thisGraph with all possible Graphs")))
+    Seqn(allFramingFunctions.toSeq, Seq())(info = SimpleInfo(Seq("", s"Apply TC Framing for $thisGraph with all possible Graphs.", "")))
   }
 
   def getExpOfTruesAndFalses(trues: Seq[Option[LocalVarDecl]], falses: Seq[Option[LocalVarDecl]]) = {
@@ -665,5 +819,11 @@ class OuroborosStmtHandler {
 
   def universe(pos: Position = NoPosition, info: Info = NoInfo, errT: ErrorTrafo = NoTrafos): LocalVar = {
     LocalVar(OuroborosNames.getIdentifier("UNIVERSE"))(SetType(Ref), pos, info, errT)
+  }
+
+  def getLocalGraphMapping(wrapper: OuroborosStmtWrapper): mutable.Map[String, (LocalVarDecl, GraphState.GraphState)] = {
+    wrapper.localGraphs.map({
+      case (gName, GraphIsInit(_, isInitDecl, graphState)) => (gName, (isInitDecl, graphState))
+    })
   }
 }

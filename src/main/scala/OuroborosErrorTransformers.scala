@@ -34,7 +34,7 @@ object OuroborosErrorTransformers {
             ),
             err.cached
           )
-        case r : AssertionFalse if r.readableMessage.contains(s"${OuroborosNames.getIdentifier("closed")}(")=> {
+        case r : AssertionFalse if r.readableMessage.contains(s"${OuroborosNames.getIdentifier("CLOSED")}(")=>
           OuroborosGraphSpecificactionError(
             g,
             err.offendingNode,
@@ -44,9 +44,8 @@ object OuroborosErrorTransformers {
             ),
             err.cached
           )
-        }
 
-        case r : AssertionFalse if r.readableMessage.contains(s"${OuroborosNames.getIdentifier("NoNullInGraph")}(") => {
+        case r : AssertionFalse if r.readableMessage.contains(s"${OuroborosNames.getIdentifier("NoNullInGraph")}(") =>
           OuroborosGraphSpecificactionError(
             g,
             err.offendingNode,
@@ -56,7 +55,6 @@ object OuroborosErrorTransformers {
             ),
             err.cached
           )
-        }
 
         case _ => err
       }
@@ -72,8 +70,7 @@ object OuroborosErrorTransformers {
   }
 
   def closedGraphErrTrafo(names: Seq[Node]) : ErrTrafo = ErrTrafo({
-    case x: ContractNotWellformed if x.reason.isInstanceOf[AssertionFalse] => OuroborosGraphSpecificactionError(
-      names.head.toString(),
+    case x: ContractNotWellformed if x.reason.isInstanceOf[AssertionFalse] => errors.OuroborosTypeError(
       x.offendingNode,
       OpenGraphReason(
         x.offendingNode,
@@ -82,12 +79,31 @@ object OuroborosErrorTransformers {
       x.cached
     )
 
-    case x if x.reason.isInstanceOf[AssertionFalse] => OuroborosGraphSpecificactionError(
-      names.head.toString(),
+    case x if x.reason.isInstanceOf[AssertionFalse] => errors.OuroborosTypeError(
       x.offendingNode,
       OpenGraphReason(
         x.offendingNode,
         s"Graph ${names.head} might not be closed."
+      ),
+      x.cached
+    )
+  })
+
+  def DAGErrTrafo(name: Node) : ErrTrafo = ErrTrafo({
+    case x: ContractNotWellformed if x.reason.isInstanceOf[AssertionFalse] => errors.OuroborosTypeError(
+      x.offendingNode,
+      OpenGraphReason(
+        x.offendingNode,
+        s"There might not be enough permissions to check acyclicity of $name."
+      ),
+      x.cached
+    )
+
+    case x if x.reason.isInstanceOf[AssertionFalse] => errors.OuroborosTypeError(
+      x.offendingNode,
+      CyclicGraphReason(
+        x.offendingNode,
+        s"Graph $name might not be acyclic."
       ),
       x.cached
     )
@@ -118,7 +134,7 @@ object OuroborosErrorTransformers {
 
   def closedGraphParametersErrTrafo(methodName: String, graph: Node, pre: Boolean): ErrTrafo = ErrTrafo(
     {
-      case x if x.reason.isInstanceOf[AssertionFalse] => OuroborosGraphSpecificactionError(
+      case x if x.reason.isInstanceOf[AssertionFalse] => OuroborosClosedGraphSpecificactionError(
         graph.toString(),
         x.offendingNode,
         OpenGraphReason(
@@ -208,5 +224,11 @@ object OuroborosErrorTransformers {
     case x =>
       OuroborosNotSupportedError(x.offendingNode,
         ZOPGCheckNotSupportedReason(x.offendingNode, s"Dynamically checking that $exp is of type ZOPG is not supported."), false)
+  })
+
+  def nodeNotInGraphErrTrafo(node: Node, graph: Node): ErrTrafo = ErrTrafo({
+    case x =>
+      OuroborosNodeCheckError(x.offendingNode,
+        NotInGraphReason(x.offendingNode, s"The Node $node might not be in the declared Graph $graph."), false)
   })
 }

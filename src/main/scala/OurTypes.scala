@@ -2,8 +2,8 @@
 package viper.silver.plugin
 
 import viper.silver.FastMessaging
-import viper.silver.ast.{NoPosition, SourcePosition}
-import viper.silver.parser.{FilePosition, PDomainType, PNode}
+import viper.silver.ast._
+import viper.silver.parser._
 import viper.silver.verifier.AbstractError
 
 import scala.collection.mutable
@@ -11,21 +11,23 @@ import scala.collection.mutable
 object OurTypes {
   //val ourTypes = Seq("Graph", "ClosedGraph", "List")
 
-  def getOurObject(ourType : PDomainType) : (Option[Topology with Closedness], Seq[AbstractError]) = ourType.domain.name match {
+  def getError(message: String, pos: PNode): Seq[AbstractError] = {
+    val newMessage = FastMessaging.message(pos, message)
+    newMessage.map(m => {
+      OuroborosInvalidIdentifierError( m.label,
+        m.pos match {
+          case fp: FilePosition =>
+            SourcePosition(fp.file, m.pos.line, m.pos.column)
+          case _ =>
+            NoPosition
+        }
+      )
+    })
+  }
+
+  def getOurGraphObject(ourType : PDomainType) : (Option[Topology with Closedness], Seq[AbstractError]) = ourType.domain.name match {
     case "Graph" =>
-      def getError(message: String, pos: PNode): Seq[AbstractError] = {
-        val newMessage = FastMessaging.message(pos, message)
-        newMessage.map(m => {
-          OuroborosInvalidIdentifierError( m.label,
-            m.pos match {
-              case fp: FilePosition =>
-                SourcePosition(fp.file, m.pos.line, m.pos.column)
-              case _ =>
-                NoPosition
-            }
-          )
-        })
-      }
+
       if(ourType.typeArguments.size < 2) {
         val error = getError(s"Closedness is not specified.", ourType)
         return (None, error)
@@ -78,6 +80,64 @@ object OurTypes {
     //TODO more types
   }
 
+  def getGraphOfNodePExp(domain: PDomainType): (PExp, Seq[AbstractError], Set[String]) = {
+    assert(domain.domain.name == "Node", "Wrong use of function getGraphOfNodePExp")
+    val univName = OuroborosNames.getIdentifier("UNIVERSE")
+    val universe = Set(univName)
+    val graphAndErrors = getGraphOfNode(domain, universe, false)
+    val graphs = if(graphAndErrors._1.contains(univName))
+      Set(univName)
+    else
+      graphAndErrors._1
+    val graphExp = if(graphs.contains(univName))
+      PIdnUse(univName).setPos(domain)
+    else
+      OuroborosHelper.transformAndFold[String, PExp](
+        graphs.toSeq,
+        PEmptySet(PSetType(TypeHelper.Ref)).setPos(domain),
+        (exp1, exp2) => PBinExp(exp1, "union", exp2).setPos(exp2),
+        string => PIdnUse(string).setPos(domain)
+    )
+
+    (graphExp, graphAndErrors._2, graphs)
+  }
+
+  def getGraphOfNode(domain : PDomainType, universe: Set[String], checkIfGraphExists: Boolean) : (Set[String], Seq[AbstractError]) = {
+    assert(domain.domain.name == "Node", "Wrong use of function getGraphOfNode")
+    var errorsToReport: Seq[AbstractError] = Seq()
+    if(universe.isEmpty) {
+      errorsToReport ++= getError("The node could be assigned to a graph.", domain)
+    }
+    if(domain.typeArguments.isEmpty) {
+      val error = getError("Declarations of type Node need to specify in which Graph they are.", domain)
+      (universe, errorsToReport ++ error)
+    } else {
+      val graph: Seq[String] = domain.typeArguments.map {
+        case d: PDomainType =>
+          if (d.typeArguments.nonEmpty) {
+            val error = getError(s"A Graph cannot have type arguments.", d)
+            errorsToReport ++= error
+          }
+          d.domain.name match {
+            case "_" =>
+              universe
+            case name =>
+              if(checkIfGraphExists && !universe.contains(name)) {
+                val error = getError(s"Graph $name could not be found.", d)
+                errorsToReport ++= error
+              }
+              Set(name)
+          }
+        case typ =>
+          val error = getError(s"$typ is not a Graph.", typ)
+          errorsToReport ++= error
+          Set()
+      }.flatten
+
+      (graph.toSet, errorsToReport)
+    }
+  }
+
   //  def getOurTypeName(ourType: Topology with Closedness): String = ourType match {
   //    case OurClosedGraph => "ClosedGraph"
   //    case OurGraph => "Graph"
@@ -109,6 +169,28 @@ object OurTypes {
     case x if x == OuroborosNames.getIdentifier("CLOSED_ZOPG_decl") => Some(OurClosedZOPG)
     case x if x == OuroborosNames.getIdentifier("FOREST_decl") => Some(OurForest)
     case x if x == OuroborosNames.getIdentifier("CLOSED_FOREST_decl") => Some(OurClosedForest)
+    case _ => None
+  }
+
+  def getNodeDeclFunctionCall(node: String, graphs: Set[String]): PInhale = {
+    val nodePExp = PIdnUse(node)
+    val graphsPExp = OuroborosHelper.transformAndFold[String, PExp](
+      graphs.toSeq,
+      PEmptySet(TypeHelper.Ref),
+      (exp1, exp2) => PBinExp(exp1, "union", exp2),
+      graphName => PIdnUse(graphName)
+    )
+    PInhale(PCall(PIdnUse(OuroborosNames.getIdentifier("Node_decl")),Seq(nodePExp, graphsPExp), None))
+  }
+
+  def getNodeAndGraphsFromFunctionCall(call: FuncApp): Option[(LocalVar, Set[String])] = call.funcname match {
+    case name if name == OuroborosNames.getIdentifier("Node_decl") =>
+      assert(call.args.size == 2)
+      assert(call.args.head.isInstanceOf[LocalVar])
+      val node = call.args.head.asInstanceOf[LocalVar]
+      val graph = call.args.last
+      val graphs = OurNode.getGraphs(graph)
+      Some(node, graphs)
     case _ => None
   }
 

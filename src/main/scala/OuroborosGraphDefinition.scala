@@ -14,7 +14,8 @@ import viper.silver.{FastMessaging, ast, parser}
 import viper.silver.ast.utility.Rewriter.{ContextC, Rewritable, StrategyBuilder}
 import viper.silver.ast._
 import viper.silver.ast.utility.Rewriter
-import viper.silver.parser.{PFormalArgDecl, _}
+import viper.silver.parser.{PBinExp, PFormalArgDecl, _}
+import viper.silver.plugin.GraphState.GraphState
 import viper.silver.plugin.errors.OuroborosAssignmentError
 import viper.silver.plugin.reasons.{InsufficientGraphPermission, NotInGraphReason}
 import viper.silver.verifier.AbstractError
@@ -58,12 +59,58 @@ case class GraphType[T <: Topology, C <: Closedness]()
 
 
 case class OurObject(name: String, typ: Topology with Closedness)
+case class OurNode(name: String, graphs: Set[String])
+
+object OurNode {
+  def getGraphExp(graphs: Set[String], localGraphs: mutable.Map[String, (LocalVarDecl, GraphState)]): Exp = OuroborosHelper.transformAndFold[String, Exp](
+    graphs.toSeq,
+    EmptySet(SetType(Ref))(),
+    (exp1, exp2) => AnySetUnion(exp1, exp2)(),
+    graphName => {
+      val graph = LocalVar(graphName)(SetType(Ref))
+      val graphExp: Exp = localGraphs.get(graphName) match {
+        case None =>
+          graph
+        case Some(tuple) => tuple._2 match {
+          case GraphState.ALWAYS_INITIALIZED =>
+            graph
+          case GraphState.NEVER_INITIALIZED =>
+            EmptySet(Ref)()
+          case GraphState.UNKNOWN =>
+            val decl = tuple._1
+            val initVar: LocalVar = LocalVar(decl.name)(decl.typ)
+            val cond: Exp = decl.typ match {
+              case Int =>
+                NeCmp(initVar, IntLit(0)())()
+              case Bool =>
+                initVar
+            }
+
+            CondExp(cond, graph, EmptySet(Ref)())()
+        }
+      }
+
+
+      graphExp
+    }
+  )
+
+  def getGraphs(graphExp: Exp): Set[String] = graphExp match {
+    case AnySetUnion(l, r) => getGraphs(l) ++ getGraphs(r)
+    case LocalVar(n) => Set(n)
+  }
+}
+
+object GraphState extends Enumeration {
+  type GraphState = Value
+  val ALWAYS_INITIALIZED, NEVER_INITIALIZED, UNKNOWN = Value
+}
 
 trait OurOperation
 //case class OurLink(name: String) extends OurOperation
 //case class OurUnlink(name: String) extends OurOperation
 case class OurOperPair(name: String) extends OurOperation
-case class OurGraphSpec(inputs: Seq[OurObject], outputs: Seq[OurObject])
+case class OurGraphSpec(inputGraphs: Seq[OurObject], outputGraphs: Seq[OurObject], inputNodes: Seq[OurNode], outputNodes: Seq[OurNode])
 
 class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
 
@@ -247,6 +294,10 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
   private def ACYCLIC_LIST_SEGMENT(prog: PProgram, graph_exp: PExp, c: PCall): PExp = PBinExp(
     ACYCLIC(prog, graph_exp.deepCopyAll[PExp], c), "&&", PBinExp(FUNCTIONAL(prog, graph_exp.deepCopyAll[PExp], c), "&&", UNSHARED(prog, graph_exp.deepCopyAll[PExp], c))).setPos(c)
 
+  private def explicitGraph(program: PProgram, elems: Seq[PExp], call: PCall): PExp = {
+    PExplicitSet(elems).setPos(call)
+  }
+
   def ref_fields(prog: PProgram): Seq[String] = prog.fields.collect {
     case PField(f, t) if t == TypeHelper.Ref => Seq(f.name)
     case x:PField => x.typ match {
@@ -268,25 +319,40 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
   }
 
 
+
   def handlePMethod(input: PProgram, m: PMethod): (PNode, Seq[AbstractError]) = {
 
     var errors: Seq[AbstractError] = Seq()
 
     def collect_objects(collection: Seq[PFormalArgDecl]): Seq[OurObject] = collection.flatMap {
-      case x:PFormalArgDecl => x.typ match {
-        case d: PDomainType =>
-          val getOurObject = OurTypes.getOurObject(d)
-          errors ++= getOurObject._2
-          getOurObject._1 match {
-          case None => Seq()
-          case Some(ourType) => Seq(OurObject(x.idndef.name, ourType))
-        }
-        case _ => Seq()
-      }//TODO set of Graphs
+      x: PFormalArgDecl => x.typ match {
+          case d: PDomainType =>
+            val getOurObject = OurTypes.getOurGraphObject(d)
+            errors ++= getOurObject._2
+            getOurObject._1 match {
+              case None => Seq()
+              case Some(ourType) => Seq(OurObject(x.idndef.name, ourType))
+            }
+          case _ => Seq()
+        } //TODO set of Graphs
     }
 
+    def collect_nodes(decls: Seq[PFormalArgDecl], universe: Set[String]): Seq[OurNode] = decls.flatMap(decl => {
+      decl.typ match {
+        case d: PDomainType if d.domain.name == "Node" =>
+          val getGraphAndErrors = OurTypes.getGraphOfNode(d, universe, true)
+          errors ++= getGraphAndErrors._2
+          Seq(OurNode(decl.idndef.name, getGraphAndErrors._1))
+        case _ => Seq()
+      }
+    })
+
     val input_graphs: Seq[OurObject] = collect_objects(m.formalArgs)
+    val inputGraphNames: Set[String] = input_graphs.map(ourObject => ourObject.name).toSet
+    val input_nodes: Seq[OurNode] = collect_nodes(m.formalArgs, inputGraphNames)
     val output_graphs: Seq[OurObject] = collect_objects(m.formalReturns)
+    val inputOutputGraphNames: Set[String] = inputGraphNames ++ output_graphs.map(ourObject => ourObject.name)
+    val output_nodes: Seq[OurNode] = collect_nodes(m.formalReturns, inputOutputGraphNames)
 
 
     //TODO handle MethodBody in a separate method
@@ -301,7 +367,8 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
         (PLocalVarDecl(PIdnDef(getIdentifier("UNIVERSE")), PSetType(TypeHelper.Ref), None) +:
         output_graphs.map(f =>
           PInhale(PCall(PIdnUse(OurTypes.getTypeDeclFunctionName(f.typ)), Seq(PIdnUse(f.name))))
-      )) ++ pSeqn.ss.flatMap(s => handlePStmtInBody(s)))
+      )) ++ output_nodes.map(ourNode => OurTypes.getNodeDeclFunctionCall(ourNode.name, ourNode.graphs)) ++
+          pSeqn.ss.flatMap(s => handlePStmtInBody(s)))
       case _ => body
     }
 
@@ -312,9 +379,22 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
         //TODO are there more cases?
       case l: PLocalVarDecl => l.typ match {
         case d: PDomainType => d.domain.name match {
-          case "Node" => Seq(PLocalVarDecl(l.idndef, TypeHelper.Ref, l.init).setPos(l))
+          case "Node" =>
+            //TODO put inhale into method body, such that we can use this information for field updates
+            val graphOfNodeErrors = OurTypes.getGraphOfNodePExp(d)
+            errors ++= graphOfNodeErrors._2
+//            val nodeInGraphExp = PBinExp(PIdnUse(l.idndef.name), "in", graphOfNodeErrors._1).setPos(l)
+            val graphNames = graphOfNodeErrors._3
+//            val assume = PAssume(nodeInGraphExp).setPos(l)
+            val nodeDecl = OurTypes.getNodeDeclFunctionCall(l.idndef.name, graphNames)
+            val init = l.init match {
+              case None => Seq()
+              case Some(x) => Seq(PVarAssign(PIdnUse(l.idndef.name), x).setPos(x))
+            }
+            val newDecl = PLocalVarDecl(l.idndef, TypeHelper.Ref, None).setPos(l)
+            Seq(newDecl, nodeDecl) ++ init
           case _ =>
-            val getOurObject = OurTypes.getOurObject(d)
+            val getOurObject = OurTypes.getOurGraphObject(d)
             errors ++= getOurObject._2
             getOurObject._1 match {
               case None => Seq(l)
@@ -341,7 +421,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
     }
 
     // Store the graph specifications for future reference.
-    graph_definitions(m.idndef.name) = OurGraphSpec(input_graphs, /*local_graphs, */output_graphs)
+    graph_definitions(m.idndef.name) = OurGraphSpec(input_graphs, output_graphs, input_nodes, output_nodes)
 
     var objects: Seq[OurObject] = Seq()
     val presAndPostsRewriter = StrategyBuilder.Slim[PNode](
@@ -426,6 +506,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
       case "UNSHARED" if m.args.length == 1 => UNSHARED(input, m.args.head, m)
       case "ACYCLIC" if m.args.length == 1 => ACYCLIC(input, m.args.head, m)
       case "ACYCLIC_LIST_SEGMENT" if m.args.length == 1 => ACYCLIC_LIST_SEGMENT(input, m.args.head, m)
+      case "Graph" => explicitGraph(input, m.args, m)
       case _ => m
     }
 
@@ -572,7 +653,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
     case _ => m
   }
 
-  private def getNoExitWisdom(input: Program, g0:Exp, g1:Exp)(pos: Position = NoPosition, info: Info = NoInfo, errT: ErrorTrafo = NoTrafos): Stmt = {
+  /*private def getNoExitWisdom(input: Program, g0:Exp, g1:Exp)(pos: Position = NoPosition, info: Info = NoInfo, errT: ErrorTrafo = NoTrafos): Stmt = {
     val $$_func = input.findFunction(getIdentifier("$$"))
     val exists_path_funbc = input.findDomainFunction(getIdentifier("exists_path"))
 
@@ -625,7 +706,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
   private def getOperationalWisdoms(input: Program, local_m: Method, ctx: ContextC[Node, String])(pos: Position = NoPosition, info: Info = NoInfo, errT: ErrorTrafo = NoTrafos): Stmt = {
 
     val graph_defs: OurGraphSpec = graph_definitions(local_m.name)
-    val distinct_graphs: Seq[OurObject] = graph_defs.inputs.collect {
+    val distinct_graphs: Seq[OurObject] = graph_defs.inputGraphs.collect {
       case o => o.typ match {
         case g@ OurGraph => o
         case g@ OurClosedGraph => o //TODO more graphs types
@@ -697,10 +778,10 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
         case some_fa: FieldAssign if some_fa == fa =>
           val graph_defs = graph_definitions(m.name)
           val local_g =
-            if (graph_defs.outputs.nonEmpty)
-              LocalVar(graph_defs.outputs.last.name)(SetType(Ref), fa.pos, fa.info, unlinkErrTrafo)//TODO change for multiple graph_definitions
+            if (graph_defs.outputGraphs.nonEmpty)
+              LocalVar(graph_defs.outputGraphs.last.name)(SetType(Ref), fa.pos, fa.info, unlinkErrTrafo)//TODO change for multiple graph_definitions
             else
-              seqOfExpToUnionExp(graph_defs.inputs.map { in => LocalVar(in.name)(SetType(Ref), fa.pos, fa.info, unlinkErrTrafo) })(fa.pos, fa.info, unlinkErrTrafo) //TODO causes an error, if there is no graph as input
+              seqOfExpToUnionExp(graph_defs.inputGraphs.map { in => LocalVar(in.name)(SetType(Ref), fa.pos, fa.info, unlinkErrTrafo) })(fa.pos, fa.info, unlinkErrTrafo) //TODO causes an error, if there is no graph as input
 
           val unlinkMethodCall = MethodCall(getIdentifier(s"unlink_${fa.lhs.field.name}"), Seq(local_g, fa.lhs.rcv), Seq())(fa.pos, fa.info, unlinkErrTrafo)
           val linkMethodCall = MethodCall(getIdentifier(s"link_${fa.lhs.field.name}"), Seq(local_g, fa.lhs.rcv, fa.rhs), Seq())(fa.pos, fa.info, linkErrTrafo)
@@ -724,7 +805,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
             Seq())(fa.pos, fa.info, unlinkErrTrafo)
       })
     } flatten, Seq())(fa.pos, fa.info, unlinkErrTrafo)
-  }
+  }*/
 
   def getIdentifier(name : String): String = OuroborosNames.getIdentifier(name)
 

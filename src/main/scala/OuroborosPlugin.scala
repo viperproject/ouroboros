@@ -219,8 +219,8 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
           methodAndErrors._1
         case m: PCall => graph_handler.handlePCall(pprog, m, None)
         case m: PMethodCall => graph_handler.handlePMethodCall(pprog, m)
-        case m: PField => graph_handler.handlePField(pprog, m) //TODO Fields, Domains
-        case f: PFormalArgDecl => graph_handler.handlePFormalArgDecl(pprog, f) //TODO maybe register graphs?
+        case m: PField => graph_handler.handlePField(pprog, m)
+        case f: PFormalArgDecl => graph_handler.handlePFormalArgDecl(pprog, f)
         //case l: PLocalVarDecl => graph_handler.handlePLocalVarDecl(pprog, l) //
       }
     )
@@ -246,7 +246,8 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
     val ourRewriter = StrategyBuilder.Context[Node, String](
       {
         case (m: Method, ctx) if graph_defs.contains(m.name) =>
-          stmtHandler.handleMethod(graphAST_handler.handleMethod(input, m, graph_defs.get(m.name), ctx), graph_defs.get(m.name), input)
+          val first = graphAST_handler.handleMethod(input, m, graph_defs.get(m.name), ctx)
+          stmtHandler.handleMethod(first, graph_defs.get(m.name), input)
         case (f:FuncApp, ctx) if !OuroborosConfig.type_check =>
           usedMacroCalls += f.funcname
           f

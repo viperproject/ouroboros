@@ -1,6 +1,6 @@
 package viper.silver.plugin
 
-import viper.silver.ast.{And, Assert, EqCmp, Exp, FalseLit, Int, IntLit, LocalVar, LocalVarAssign, LocalVarDecl, MethodCall, NeCmp, NoInfo, Node, Or, Positioned, Ref, SetType, SimpleInfo, Stmt, TransformableErrors, TrueLit}
+import viper.silver.ast.{And, Assert, EqCmp, Exp, FalseLit, Implies, Int, IntLit, LocalVar, LocalVarAssign, LocalVarDecl, MethodCall, NeCmp, NoInfo, Node, Not, Or, Positioned, Ref, SetType, SimpleInfo, Stmt, TransformableErrors, TrueLit}
 import viper.silver.ast.utility.Rewriter.Rewritable
 import viper.silver.plugin.errors.OuroborosTypeError
 import viper.silver.plugin.reasons.WrongTypeReason
@@ -33,7 +33,7 @@ class OuroborosTypeCheck {
           val checkExp = OuroborosHelper.ourFold[Exp](checkExps, TrueLit()(), (exp1, exp2) => And(exp1, exp2)())
           val assertCheck = Assert(checkExp)(
             exp.pos,
-            SimpleInfo(Seq("", s"added assertion for typechecking.\n")),
+            SimpleInfo(Seq("", s"added assertion for typechecking.", "")),
             OuroborosErrorTransformers.wrongTypeErrTrafo(exp, wantedType)
           )
 
@@ -55,6 +55,10 @@ class OuroborosTypeCheck {
         checkTypeOfSetBinExp(wantedType, setBinExp, wrapper, takeSuperTypes, maybeStateCopy, position)
       case explicitSetExp: ExplicitSetExp =>
         checkTypeOfExplicitSetExp(wantedType, explicitSetExp, wrapper, takeSuperTypes, maybeStateCopy, position)
+      case condSetExp: CondSetExp =>
+        checkTypeOfCondSetExp(wantedType, condSetExp, wrapper, takeSuperTypes, maybeStateCopy, position)
+      case _: EmptySetExp => //We don't need to check anything, as an empty set is always closed, and fulfills all topologies
+        Some(Seq())
     }
   }
 
@@ -104,7 +108,7 @@ class OuroborosTypeCheck {
           val dag = wantedType.isInstanceOf[DAG] && !setVar.ourType.isInstanceOf[DAG]
           val closed = wantedType.isInstanceOf[Closed] && !setVar.ourType.isInstanceOf[Closed]
           val ref_fields = graphHandler.ref_fields(wrapper.input.fields)
-          graphHandler.fold_GRAPH(setVarExp, ref_fields, wrapper.input, closed, qpsNeeded = false, nonNullNeeded = false, dag, TrueLit()(), (exp1, exp2) => And(exp1, exp2)())
+          graphHandler.fold_GRAPH(setVarExp, ref_fields, wrapper.input, closed, qpsNeeded = false, noNullNeeded = false, dag, TrueLit()(), (exp1, exp2) => And(exp1, exp2)())
       }
 
       return Some(Seq(allChecksExp))
@@ -274,7 +278,7 @@ class OuroborosTypeCheck {
       specs.get(methodName) match {
         case None => //TODO should not happen?
         case Some(graphSpec) =>
-          graphSpec.outputs.collect( {
+          graphSpec.outputGraphs.collect( {
             case obj: OurObject if obj.name == returnName =>
               maybeReturnType = Some(obj.typ)
           })
@@ -429,7 +433,12 @@ class OuroborosTypeCheck {
             LocalVar(varName)(SetType(Ref), position.pos, NoInfo, position.errT)
         }
     }
+
+    val isForest: Boolean = explicitSetExp.elems.size <= 1 //If at most one element is in the explicit Set, the set is automatically a forest
     wantedType match {
+      case _ if isForest =>
+        val checkQPs = graphHandler.fold_GRAPH(astExp, graphHandler.ref_fields(wrapper.input.fields), wrapper.input, closed = wantedType.isInstanceOf[Closed], true, true, dag = false, TrueLit()(), (exp1, exp2) => And(exp1, exp2)())
+        Some(Seq(checkQPs))
       case _: ZOPG =>
         None
       case _ =>
@@ -438,6 +447,28 @@ class OuroborosTypeCheck {
     }
   }
 
+  def checkTypeOfCondSetExp(wantedType: Topology with Closedness, condSetExp: CondSetExp, wrapper: OuroborosStateWrapper, takeSuperTypes: Set[String], maybeStateCopy: Option[StateCopyWrapper], position: Node with Positioned with TransformableErrors with Rewritable): Option[Seq[Exp]] = {
+    def transformToImplies(exps: Seq[Exp], lhsOfImplies: Exp) = {
+      def lhsCopy = lhsOfImplies.duplicateMeta(position.pos, NoInfo, position.errT).asInstanceOf[Exp]
+
+      exps.map(exp => Implies(lhsCopy, exp)(position.pos, NoInfo, position.errT))
+    }
+
+    val checkTypeForThn: Seq[Exp] = checkTypeOfSetExp(wantedType, condSetExp.thn, wrapper, takeSuperTypes, maybeStateCopy, position) match {
+      case None => return None
+      case Some(exps) => exps
+    }
+    val thnTransformed = transformToImplies(checkTypeForThn, condSetExp.cond)
+
+    val checkTypeForEls: Seq[Exp] = checkTypeOfSetExp(wantedType, condSetExp.els, wrapper, takeSuperTypes, maybeStateCopy, position) match {
+      case None => return None
+      case Some(exps) => exps
+    }
+    val elsTransformed = transformToImplies(checkTypeForEls, Not(condSetExp.cond)(position.pos, NoInfo, position.errT))
+
+
+    Some(thnTransformed ++ elsTransformed)
+  }
   //returns set of pairs of type and boolean
   //type: boolean says, if Closed needs to be checked for this subtype
   //the type is a subtype of ourType, if the boolean is false. Otherwise, its Closed Type is a subtype of ourType

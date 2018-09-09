@@ -3,7 +3,7 @@ package viper.silver.plugin
 import viper.silver.ast._
 import viper.silver.plugin.{Closedness, OuroborosStateWrapper, Topology}
 
-trait SetExp {
+sealed trait SetExp {
   def getDuplicateExp(pos: Position = NoPosition, info: Info = NoInfo, errT: ErrorTrafo = NoTrafos): Exp
 
 }
@@ -15,7 +15,7 @@ object SetExp {
     case setminus: AnySetMinus =>
       SetMinus(getSetExp(setminus.left, wrapper), getSetExp(setminus.right, wrapper))
     case localVar: LocalVar =>
-      val mayBeInitName = wrapper.userDefinedGraphs.get(localVar.name) match {
+      val mayBeInitName = wrapper.localGraphs.get(localVar.name) match {
         case None =>
           //must be an inputGraph, cannot be reassigned
           None
@@ -26,6 +26,11 @@ object SetExp {
       SetVar(localVar.name, mayBeInitName, wrapper.getType(localVar.name))
     case explicitSet: ExplicitSet =>
       ExplicitSetExp(Seq() ++ explicitSet.elems)
+
+    case _: EmptySet =>
+      EmptySetExp()
+    case condExp: CondExp =>
+      CondSetExp(condExp.cond, getSetExp(condExp.thn, wrapper), getSetExp(condExp.els, wrapper))
     //case _ => //TODO throw error
   }
 
@@ -43,8 +48,12 @@ object SetExp {
       lhsGraphs ++ rhsGraphs
     case setVar: SetVar =>
       Seq(setVar.varName)
-    case setExp: ExplicitSetExp =>
+    case _: ExplicitSetExp | _: EmptySetExp =>
       Seq(OuroborosNames.getIdentifier("UNIVERSE")) //TODO do it nicer
+    case condSetExp: CondSetExp =>
+      val thnGraphs = getSuperSetOfGraphs(condSetExp.thn, false)
+      val elsGraphs = getSuperSetOfGraphs(condSetExp.els, false)
+      thnGraphs ++ elsGraphs
   }
 }
 
@@ -77,13 +86,30 @@ case class SetMinus(lhsSetMinus:SetExp, rhsSetMinus:SetExp) extends SetBinExp {
     AnySetMinus(lhsExp, rhsExp)(pos, info, errT)
   }
 }
+
 case class SetVar(varName: String, initVarName: Option[String], ourType: Topology with Closedness) extends SetExp {
   override def getDuplicateExp(pos: Position, info: Info, errT: ErrorTrafo): Exp = {
     LocalVar(varName)(SetType(Ref), pos, info, errT)
   }
 }
+
 case class ExplicitSetExp(elems: Seq[Exp]) extends SetExp {
   override def getDuplicateExp(pos: Position, info: Info, errT: ErrorTrafo): Exp = {
     ExplicitSet(elems.map(exp => exp.duplicateMeta(pos, info, errT).asInstanceOf[Exp]))(pos, info, errT)
+  }
+}
+
+case class EmptySetExp() extends SetExp {
+  override def getDuplicateExp(pos: Position, info: Info, errT: ErrorTrafo): Exp = {
+    EmptySet(Ref)(pos, info, errT)
+  }
+}
+
+case class CondSetExp(cond: Exp, thn: SetExp, els: SetExp) extends SetExp {
+  override def getDuplicateExp(pos: Position, info: Info, errT: ErrorTrafo): Exp = {
+    val thnExp = thn.getDuplicateExp(pos, info, errT)
+    val elsExp = els.getDuplicateExp(pos, info, errT)
+    val condCopy = cond.duplicateMeta(pos, info, errT).asInstanceOf[Exp]
+    CondExp(condCopy, thnExp, elsExp)(pos, info, errT)
   }
 }

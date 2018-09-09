@@ -53,7 +53,7 @@ method create_node(u: Set[Ref]) returns (node: Ref)
 
 method link_$field$(g:Set[Ref], x:Ref, y:Ref)
     requires x in g
-    requires y != null ==> y in g
+    requires y != null ==> y in g && y != x
     //requires !(edge($$(g), x, y))
     requires PROTECTED_GRAPH(g,x,$field$)
     ensures PROTECTED_GRAPH(g,x,$field$)
@@ -128,7 +128,7 @@ function update_DAG_invariant(g:Set[Ref], x:Ref, y:Ref): Bool
 
 method link_DAG_$field$(g:Set[Ref], x:Ref, y:Ref)
     requires x in g
-    requires y != null ==> y in g
+    requires y != null ==> y in g && y != x
     requires PROTECTED_GRAPH(g,x,$field$) //&& !(exists_path($$(g), y, x))
     ensures PROTECTED_GRAPH(g,x,$field$)
     ensures x.$field$ == y
@@ -163,6 +163,10 @@ function CLOSED_DAG_decl(g: Set[Ref]): Bool
 function FOREST_decl(g:Set[Ref]): Bool
 
 function CLOSED_FOREST_decl(g: Set[Ref]): Bool
+
+function Node_decl(n: Ref, g: Set[Ref]): Bool
+
+function IS_INITIALIZED(g: Set[Ref]): Bool
 
 method update_$field$(g:Set[Ref], x:Ref, y:Ref)
 

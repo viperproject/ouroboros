@@ -9,10 +9,13 @@ import viper.silver.parser._
 import scala.collection.mutable
 
 object OuroborosNames {
-  val keywords = Set("FRAMING", "NO_EXIT",
+  val keywords = Set(
+    "FRAMING", "NO_EXIT",
     /*"CLOSED_ZOPG", "ZOPG",*/ "CLOSED_GRAPH", "GRAPH", //TODO CLOSED_ZOPG needed?
     "Graph", "ZOPG", /*"ClosedZOPG",*/ "Node", "DAG", "Closed", //TODO ClosedZOPG needed?
-    "ACYCLIC", "FUNCTIONAL", "CLOSED", "DISJOINT", "NEW",
+    "ACYCLIC", "FUNCTIONAL", "CLOSED", "IS_INITIALIZED",
+    "DISJOINT",
+    "NEW",
     "UPDATE",
     "UPDATE_ZOPG", "UNLINK_ZOPG", "LINK_ZOPG",
     "UPDATE_DAG", "UNLINK_DAG", "LINK_DAG",

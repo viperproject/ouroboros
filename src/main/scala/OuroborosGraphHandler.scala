@@ -1,14 +1,9 @@
 package viper.silver.plugin
 
 import viper.silver.ast._
-import viper.silver.ast.utility.Rewriter.{ContextC, StrategyBuilder}
-import viper.silver.plugin.errors.{OuroborosGraphSpecificactionError, OuroborosInternalEncodingError}
-import viper.silver.plugin.reasons.{InsufficientGraphPermission, NullInGraphReason, OpenGraphReason}
-import viper.silver.verifier.AbstractVerificationError
-import viper.silver.verifier.errors.PostconditionViolated
-import viper.silver.verifier.reasons.{AssertionFalse, InsufficientPermission, InternalReason}
-
-import scala.collection.mutable
+import viper.silver.ast.utility.Rewriter.ContextC
+import viper.silver.plugin.errors.OuroborosInternalEncodingError
+import viper.silver.verifier.reasons.InternalReason
 
 class OuroborosGraphHandler {
 
@@ -21,19 +16,26 @@ class OuroborosGraphHandler {
     case None => m
     case Some(ss) =>
       val refFields = ref_fields(input.fields)
-      val inputObjects: Seq[(OurObject, LocalVarDecl)] = ss.inputs.map(obj => (obj,m.formalArgs.filter(arg => arg.name == obj.name).head))
-      val outputObjects: Seq[(OurObject, LocalVarDecl)] = ss.outputs.map(obj => (obj,m.formalReturns.filter(arg => arg.name == obj.name).head))
+      val inputObjects: Seq[(OurObject, LocalVarDecl)] = ss.inputGraphs.map(obj => (obj,m.formalArgs.filter(arg => arg.name == obj.name).head))
+      val inputNodesAndDecls: Seq[(OurNode, LocalVarDecl)] = ss.inputNodes.map(node => (node,m.formalArgs.filter(arg => arg.name == node.name).head))
+      val outputObjects: Seq[(OurObject, LocalVarDecl)] = ss.outputGraphs.map(obj => (obj,m.formalReturns.filter(arg => arg.name == obj.name).head))
+      val outputNodesAndDecls: Seq[(OurNode, LocalVarDecl)] = ss.outputNodes.map(node => (node,m.formalReturns.filter(arg => arg.name == node.name).head))
       val inputGraphs = {
-        val ssInputNames = ss.inputs.map(y => y.name)
+        val ssInputNames = ss.inputGraphs.map(y => y.name)
         m.formalArgs.filter(x => ssInputNames.contains(x.name))
       }
-      val outputGraphs = m.formalReturns.filter(x => ss.outputs.map(y => y.name).contains(x.name))
+
+
+      val inpNodes = nodesInGraphs(inputNodesAndDecls)
+
+      val outputGraphs = m.formalReturns.filter(x => ss.outputGraphs.map(y => y.name).contains(x.name))
+      val outNodes = nodesInGraphs(outputNodesAndDecls)
       Method(
         m.name,
         m.formalArgs,
         m.formalReturns,
-        disjointGraphs(inputGraphs, input) ++ inputTypesAndClosed(inputObjects, refFields, input, m) ++ m.pres,
-        outputTypes(outputObjects ++ inputObjects, refFields, input, m) ++ m.posts,
+        disjointGraphs(inputGraphs, input) ++ inputTypesAndClosed(inputObjects, refFields, input, m) ++ inpNodes ++ m.pres,
+        outputTypes(outputObjects ++ inputObjects, refFields, input, m) ++ outNodes ++ m.posts,
         handleMethodBody(input, m.body, inputGraphs, outputGraphs, inputObjects) /* ++ TCFraming*/
       ) (m.pos, m.info, m.errT)
   }
@@ -107,7 +109,6 @@ class OuroborosGraphHandler {
 
   def outputTypes(objects: Seq[(OurObject, LocalVarDecl)], fields: Seq[Field], input: Program, method: Method): Seq[Exp] =
     {
-      val noNullInGraph = input.findFunction(OuroborosNames.getIdentifier("NoNullInGraph"))
       var additionalPostConditions : Seq[Exp] = Seq()
       var allGraphs : Option[Exp] = None
       objects.map(
@@ -139,8 +140,8 @@ class OuroborosGraphHandler {
               CLOSED(LocalVar(decl.name)(decl.typ, decl.pos, decl.info, decl.errT), input))*/
           GRAPH(LocalVar(decl.name)(decl.typ, decl.pos, decl.info, decl.errT), fields, input, isClosed, false, true, isDag)
 
-          additionalPostConditions = additionalPostConditions :+
-            OuroborosHelper.ourFold[Exp](postConditions, TrueLit()(), (foldedExp, exp) => And(foldedExp, exp)(exp.pos, exp.info, graphErrTrafo))
+          additionalPostConditions = additionalPostConditions ++ postConditions//:+
+           // OuroborosHelper.ourFold[Exp](postConditions, TrueLit()(), (foldedExp, exp) => And(foldedExp, exp)(exp.pos, exp.info, graphErrTrafo))
 
           mapping
         }
@@ -154,6 +155,23 @@ class OuroborosGraphHandler {
       }
     }
 
+  def nodesInGraphs(nodes: Seq[(OurNode, LocalVarDecl)]): Seq[Exp] =  nodes.map ({
+    case (ourNode, decl) =>
+      val nodeName = ourNode.name
+      val graphNames = ourNode.graphs
+      val graphUnion = OuroborosHelper.transformAndFold[String, Exp](
+        graphNames.toSeq,
+        EmptySet(SetType(Ref))(),
+        (exp1, exp2) => AnySetUnion(exp1, exp2)(),
+        graphName => LocalVar(graphName)(SetType(Ref), decl.pos, decl.info, decl.errT)
+      )
+      def node = LocalVar(nodeName)(Ref, decl.pos, decl.info, decl.errT)
+
+      val nodeInGraphs = AnySetContains(node, graphUnion)(decl.pos, decl.info, decl.errT)
+      val ifNonNull = Implies(NeCmp(node, NullLit()())(), nodeInGraphs)(decl.pos, decl.info, OuroborosErrorTransformers.nodeNotInGraphErrTrafo(node, graphUnion))
+
+      ifNonNull
+  })
 def NO_NULL(decl: Exp, input: Program)= {
   val noNullInGraph = input.findFunction("NoNullInGraph")
   val noNullErrTrafo = OuroborosErrorTransformers.NullInGraphErrTrafo(Seq(decl))
@@ -164,21 +182,21 @@ def NO_NULL(decl: Exp, input: Program)= {
     noNullCall
 }
 
-def foldAndTransformGRAPH[B](graph: Exp, fields: Seq[Field], input: Program, closed: Boolean, qpsNeeded: Boolean, nonNullNeeded: Boolean, dag: Boolean, initialValue: B, transformFunction: (Exp => B), foldFunction: ((B, B) => B)): B = {
-  OuroborosHelper.transformAndFold[Exp, B](GRAPH(graph, fields, input, closed, qpsNeeded, nonNullNeeded, dag), initialValue, foldFunction, transformFunction)
+def foldAndTransformGRAPH[B](graph: Exp, ref_fields: Seq[Field], input: Program, closed: Boolean, qpsNeeded: Boolean, noNullNeeded: Boolean, dag: Boolean, initialValue: B, transformFunction: (Exp => B), foldFunction: ((B, B) => B)): B = {
+  OuroborosHelper.transformAndFold[Exp, B](GRAPH(graph, ref_fields, input, closed, qpsNeeded, noNullNeeded, dag), initialValue, foldFunction, transformFunction)
 }
 
-def fold_GRAPH(graph: Exp, fields: Seq[Field], input: Program, closed: Boolean, qpsNeeded: Boolean, nonNullNeeded: Boolean, dag: Boolean, initialValue: Exp, foldFunction: ((Exp, Exp) => Exp)): Exp = {
-  OuroborosHelper.ourFold[Exp](GRAPH(graph, fields, input, closed, qpsNeeded, nonNullNeeded, dag), initialValue, foldFunction)
+def fold_GRAPH(graph: Exp, ref_fields: Seq[Field], input: Program, closed: Boolean, qpsNeeded: Boolean, noNullNeeded: Boolean, dag: Boolean, initialValue: Exp, foldFunction: ((Exp, Exp) => Exp)): Exp = {
+  OuroborosHelper.ourFold[Exp](GRAPH(graph, ref_fields, input, closed, qpsNeeded, noNullNeeded, dag), initialValue, foldFunction)
 }
 
-def GRAPH(graph: Exp, fields: Seq[Field], input: Program, closed: Boolean, qpsNeeded: Boolean, nonNullNeeded: Boolean, dag: Boolean): Seq[Exp] = {
+def GRAPH(graph: Exp, ref_fields: Seq[Field], input: Program, closed: Boolean, qpsNeeded: Boolean, noNullNeeded: Boolean, dag: Boolean): Seq[Exp] = {
   val qpsForRefFieldErrTrafo = OuroborosErrorTransformers.qpsForRefFieldErrTrafo(graph.toString())
-  val noNullProperty : Seq[Exp]= if(nonNullNeeded)
+  val noNullProperty : Seq[Exp]= if(noNullNeeded)
     Seq(NO_NULL(graph, input))
   else Seq()
   val QPForRefFields : Seq[Exp] = if(qpsNeeded)
-    collectQPsForRefFields(fields, graph.duplicateMeta(graph.pos, graph.info, qpsForRefFieldErrTrafo).asInstanceOf[Exp], FullPerm()(graph.pos, graph.info, qpsForRefFieldErrTrafo))
+    collectQPsForRefFields(ref_fields, graph.duplicateMeta(graph.pos, graph.info, qpsForRefFieldErrTrafo).asInstanceOf[Exp], FullPerm()(graph.pos, graph.info, qpsForRefFieldErrTrafo))
   else Seq()
   val closedProperty = if(closed)
     Seq(
@@ -303,7 +321,7 @@ def GRAPH(graph: Exp, fields: Seq[Field], input: Program, closed: Boolean, qpsNe
     )(graph1.pos, graph1.info, TCFraming.typ, TCFraming.formalArgs, errTrafo)
     val inhaleCall = Inhale(
       apply_TCFramingCall
-    )(graph1.pos, SimpleInfo(Seq("", s"Apply TC Framing for input graphs ${graph1.name} and ${graph2.name} \n")), errTrafo)
+    )(graph1.pos, SimpleInfo(Seq("", s"Apply TC Framing for input graphs ${graph1.name} and ${graph2.name} ", "")), errTrafo)
 
 //    if(OuroborosNames.macroNames.contains(apply_TCFramingCall.funcname))
 //      OuroborosMemberInliner.inlineInhaleFunction(inhaleCall, apply_TCFramingCall, input, inhaleCall.pos, inhaleCall.info, inhaleCall.errT)
@@ -334,6 +352,6 @@ def GRAPH(graph: Exp, fields: Seq[Field], input: Program, closed: Boolean, qpsNe
         LocalVar(closedGraph.name)(SetType(Ref)),
         LocalVar(graph2.name)(SetType(Ref))
       ))()
-    )(closedGraph.pos, SimpleInfo(Seq("", s"Assume there are no paths from closed Graph ${closedGraph.name} to disjoint Graph ${graph2.name} \n")))
+    )(closedGraph.pos, SimpleInfo(Seq("", s"Assume there are no paths from closed Graph ${closedGraph.name} to disjoint Graph ${graph2.name}", "")))
   }
 }

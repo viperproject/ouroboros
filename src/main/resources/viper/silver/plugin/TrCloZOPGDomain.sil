@@ -173,7 +173,7 @@ function update_ZOPG_invariant(g:Set[Ref], from:Ref, to:Ref): Bool
 
 method link_ZOPG_$field$(g:Set[Ref], from:Ref, to:Ref)
     requires from in g
-    requires to != null ==> to in g
+    requires to != null ==> to in g && to != from
     requires PROTECTED_GRAPH(g,from, $field$) && from.$field$ == null //!exists_path($$(g), from, to)
     ensures PROTECTED_GRAPH(g,from, $field$)
     ensures from.$field$ == to
@@ -204,7 +204,7 @@ method link_ZOPG_$field$(g:Set[Ref], from:Ref, to:Ref)
                 // x != y && u != from && v != to ==> (
                     DEP($$(g), x, y, u, v) && !DEP($$(g), x, y, from, to) ==> DEP(old($$(g)), x, y, u, v)
                 // )
-    //trigge wisdom: UnrollFromHead
+    //trigger wisdom: UnrollFromHead
     ensures to != null ==> forall n:Ref :: { exists_path($$(g), to, n) }{ exists_path($$(g), from, n) } n in g && n != from ==> __learn_trigger__(DEP($$(g), from, n, from, from.$field$))
     ensures to != null ==> forall n:Ref :: { exists_path($$(g), to, n) }{ exists_path($$(g), from, n) } n in g && n != to   ==> __learn_trigger__(DEP($$(g),   to, n,   to,   to.$field$))
     ensures to != null ==> forall n:Ref :: { exists_path($$(g), n, to) }{ exists_path($$(g), n, from) } n in g && n != from ==> __learn_trigger__(DEP($$(g), n, from, n, n.$field$))
