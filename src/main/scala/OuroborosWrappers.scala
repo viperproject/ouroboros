@@ -18,7 +18,7 @@ case class OuroborosStmtWrapper(
                                )
 {
 
-  def setScope(newScope: Option[LocalVarDecl]): OuroborosStmtWrapper = {
+  def setScopeAndCopyLocalVars(newScope: Option[LocalVarDecl]): OuroborosStmtWrapper = {
     val localGraphsCopy: mutable.Map[String, GraphIsInit]
     = mutable.Map.empty ++ localGraphs
     val localNodesCopy: mutable.Map[String, Set[String]] =
@@ -96,7 +96,6 @@ case class OuroborosStateWrapper(//immutable
 
   //This Function is used, if the next line executed with this Wrapper and otherWrapper are the same
   def joinAfterWhile(otherWrapper: OuroborosStateWrapper): Unit = {
-    //TODO inputGraphs: get new lastDefValues (use method getLastDefValues)
     //input, specs, inputGraphs, userDefinedGraphs and typeChecks stay
     //definitions: All definitions, that have not been locally declared, are added
     otherWrapper.definitions.collect({

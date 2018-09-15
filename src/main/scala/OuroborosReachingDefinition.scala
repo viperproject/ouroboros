@@ -151,6 +151,7 @@ class OuroborosReachingDefinition {
     val newBody = handleSeqn(newStmt, secondBodyWrapper, isTop = false)
 
     wrapper.joinAfterWhile(secondBodyWrapper)
+    wrapper.getLastDefinitionValues(secondBodyWrapper)
 
     val whileInvs: Seq[Exp] = if(wrapper.typeCheck) wrapper.localGraphs.collect({
       case (graphName, (_, initVarDecl, _)) =>
@@ -217,7 +218,9 @@ class OuroborosReachingDefinition {
     //We collect all the checked vars, such that we don't check them twice.
     var alreadyCheckedVars: Set[String] = Set()
 
-    //first check types of the targets
+
+
+    //first check types of the targets and assignments to unique values
     val targetChecksAfterCall: Seq[Stmt] = call.targets.collect({
       //If !wrapper.typeCheck, we still need to add the definition to the wrapper.
       case localVar if wrapper.localGraphs.contains(localVar.name) =>
@@ -230,7 +233,7 @@ class OuroborosReachingDefinition {
 
           alreadyCheckedVars += localVar.name
 
-          maybeCheckExp match {
+          val asserts = maybeCheckExp match {
             case None =>
               //the type of the method call does not return the wanted Type
               wrapper.errors += OuroborosTypeError(call, WrongTypeReason(call, s"Variable $localVar might not be of wished type after the method call $call."))
@@ -252,9 +255,11 @@ class OuroborosReachingDefinition {
                   SimpleInfo(Seq("", s"Added assertion to type check MethodCall.", "")),
                   OuroborosErrorTransformers.wrongTypeErrTrafo(call, localVarType)
                 )
-                Seq(assignUniqueValue, assertCheck)
+                Seq(assertCheck)
               }
           }
+
+          assignUniqueValue +: asserts
         } else Seq()
     }).flatten
 
@@ -306,10 +311,11 @@ class OuroborosReachingDefinition {
               case _ =>
                 val dag = varType.isInstanceOf[DAG] && !formalType.isInstanceOf[DAG]
                 val closed = varType.isInstanceOf[Closed] && !formalType.isInstanceOf[Closed]
+                val zopg = varType.isInstanceOf[ZOPG] && !formalType.isInstanceOf[ZOPG]
                 val qpsNeeded = false
                 val nonNullNeeded = false
                 val newArgExp = setExp.getDuplicateExp(arg.pos, arg.info, arg.errT)
-                val checkExp = graphHandler.fold_GRAPH(newArgExp, graphHandler.ref_fields(wrapper.input.fields), wrapper.input, closed, qpsNeeded, nonNullNeeded, dag, TrueLit()(), (exp1, exp2) => And(exp1, exp2)())
+                val checkExp = graphHandler.fold_GRAPH(newArgExp, graphHandler.ref_fields(wrapper.input.fields), wrapper.input, closed, qpsNeeded, nonNullNeeded, dag, zopg, TrueLit()(), (exp1, exp2) => And(exp1, exp2)())
                 val assertCheck = Assert(checkExp)(call.pos,
                   SimpleInfo(Seq("", s"Checking that $arg is of type $varType after the method call.", "")),
                   OuroborosErrorTransformers.wrongTypeAfterCallErrTrafo(arg, varType)
@@ -384,6 +390,7 @@ class OuroborosReachingDefinition {
               Some(assertSeqn)
             case _ =>
               val dag = graphType.isInstanceOf[DAG]
+              val zopg = graphType.isInstanceOf[ZOPG]
               val closed = graphType.isInstanceOf[Closed]
               val qpsNeeded = false //TODO do we need to check qps?
               val nonNullNeeded = false
@@ -391,7 +398,7 @@ class OuroborosReachingDefinition {
               val checks: Seq[Exp] = if(!dag && !closed && !qpsNeeded)
                 Seq()
               else
-                graphHandler.GRAPH(graph, graphHandler.ref_fields(wrapper.input.fields), wrapper.input, closed, qpsNeeded, nonNullNeeded, dag)
+                graphHandler.GRAPH(graph, graphHandler.ref_fields(wrapper.input.fields), wrapper.input, closed, qpsNeeded, nonNullNeeded, dag, zopg)
 
               if(checks.isEmpty)
                 None
@@ -425,13 +432,14 @@ class OuroborosReachingDefinition {
     }
   }
 
-  def replaceGraphUpdateCall(newCall: MethodCall, graph: Exp, from: Exp, wrapper: OuroborosStateWrapper): MethodCall = graph match {
+  def replaceGraphUpdateCall(newCall: MethodCall, graph: Exp, from: Exp, to: Option[Exp], wrapper: OuroborosStateWrapper): MethodCall = graph match {
     case LocalVar(graphName) if graphName == OuroborosNames.getIdentifier("UNIVERSE") => from match {
-      case LocalVar(fromName) =>
-        (wrapper.inputNodes ++ wrapper.localNodes).get(fromName) match {
-          case None =>
-            newCall
-          case Some(graphNames) =>
+      case LocalVar(fromName) if to.isEmpty || to.get.isInstanceOf[LocalVar] =>
+        val toName = if(to.isEmpty) None else Some(to.get.asInstanceOf[LocalVar].name)
+        val allNodes = wrapper.inputNodes ++ wrapper.localNodes
+        allNodes.get(fromName) match {
+          case Some(graphNames) if toName.isEmpty || allNodes.get(toName.get ).contains(graphNames) =>
+            //We only replace the graph, if it is an unlink, or if the specified graphs of allNodes are equivalent.
             val localGraphsMapping = wrapper.localGraphs.map({
               case (gName, triple) =>
                 val reachingDefs: mutable.Map[Integer, (Stmt, OuroborosStateWrapper)] = wrapper.definitions(gName)
@@ -445,12 +453,14 @@ class OuroborosReachingDefinition {
                 (gName, (triple._2, graphState))
             })
 
-            val newGraph = OurNode.getGraphExp(graphNames, localGraphsMapping).duplicateMeta((graph.pos, graph.info, graph.errT)).asInstanceOf[Exp]
+            val newGraph = OurNode.getGraphExp(graphNames, localGraphsMapping, optimize = true).duplicateMeta((graph.pos, graph.info, graph.errT)).asInstanceOf[Exp]
             val replaceGraphStrategy = StrategyBuilder.Slim[Node]({
               case x: Exp if x == graph => newGraph
             })
 
             replaceGraphStrategy.execute[MethodCall](newCall)
+          case _ =>
+            newCall
         }
       case _ =>
         newCall
@@ -499,19 +509,20 @@ class OuroborosReachingDefinition {
     val ZOPGInvFunction = input.findFunction(updateZOPGInvariantName)
     val DAGInvFunction = input.findFunction(updateDAGInvariantName)
 
-    def callArgsCopy: Seq[Exp] = call.args.map(exp => exp.duplicateMeta((exp.pos, exp.info, exp.errT)).asInstanceOf[Exp])
-    def ZOPGInvCall(args: Seq[Exp]) = FuncApp(ZOPGInvFunction, args)(call.pos, call.info, call.errT)
-    def DAGInvCall(args: Seq[Exp]) = FuncApp(DAGInvFunction, args)(call.pos, call.info, call.errT)
-
     var newCall: MethodCall = call
     var newType: Topology with Closedness = typ
+
+    def callArgsCopy: Seq[Exp] = newCall.args.map(exp => exp.duplicateMeta((exp.pos, exp.info, exp.errT)).asInstanceOf[Exp])
+    def ZOPGInvCall(args: Seq[Exp]) = FuncApp(ZOPGInvFunction, args)(call.pos, call.info, call.errT)
+    def DAGInvCall(args: Seq[Exp]) = FuncApp(DAGInvFunction, args)(call.pos, call.info, call.errT)
     def graph = newCall.args.head
+
     val from = newCall.args(1)
     val to = newCall.args.last
     def setGraph = SetExp.getSetExp(graph, wrapper)
     var checkStmtBeforeCall: Seq[Stmt] = typeChecker.checkTypeOfExp(typ, graph, wrapper, call)
 
-    newCall = replaceGraphUpdateCall(newCall, graph, from, wrapper)
+    newCall = replaceGraphUpdateCall(newCall, graph, from, Some(to), wrapper)
 
     val DAGLinkName = OuroborosNames.getIdentifier(s"link_DAG_${field.name}")
     val DAGLinkMethod = wrapper.input.findMethod(DAGLinkName)
@@ -557,7 +568,7 @@ class OuroborosReachingDefinition {
         Seq()
     }
 
-    val callDependentInvs: Seq[Exp] = newType match {
+    val callDependentInvs: Seq[Exp] = typ match { //Here, we only want to check the update invariant, if the user has told us to
       case _ if !OuroborosConfig.update_invariants => Seq()
       case _: DAG if !DAGChecked=>
         Seq(DAGInvCall(callArgsCopy))
@@ -635,7 +646,7 @@ class OuroborosReachingDefinition {
     var checkStmtBeforeCall: Seq[Stmt] = typeChecker.checkTypeOfExp(typ, graph, wrapper, call)
     var newCall: MethodCall = call
 
-    newCall = replaceGraphUpdateCall(newCall, graph, from, wrapper)
+    newCall = replaceGraphUpdateCall(newCall, graph, from, None, wrapper)
 
     val DAGUnlinkName = OuroborosNames.getIdentifier(s"unlink_DAG_${field.name}")
     val DAGUnlinkMethod = wrapper.input.findMethod(DAGUnlinkName)
@@ -720,12 +731,12 @@ class OuroborosReachingDefinition {
       case None => assign
       case Some((ourType, initDecl, lastDefVal)) =>
 
-        val assignUniqueValue = addDefinition(assign, lhs.name, wrapper)
 
         var allStmts: Seq[Stmt] = Seq()
 
         if(wrapper.typeCheck) {
           val typeCheckResult = typeChecker.checkTypeOfExp(ourType, assign.rhs, wrapper, assign)
+          val assignUniqueValue = addDefinition(assign, lhs.name, wrapper)
           // typeCheckResult is None, if no checks have to be added.
           allStmts =  Seq(assignUniqueValue, assign) ++ typeCheckResult
         }

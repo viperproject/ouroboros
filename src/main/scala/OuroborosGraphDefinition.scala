@@ -10,13 +10,13 @@ import java.util
 
 import scala.language.postfixOps
 import scala.collection.{immutable, mutable}
-import viper.silver.{FastMessaging, ast, parser}
+import viper.silver.{FastMessaging, ast, parser, plugin}
 import viper.silver.ast.utility.Rewriter.{ContextC, Rewritable, StrategyBuilder}
 import viper.silver.ast._
 import viper.silver.ast.utility.Rewriter
 import viper.silver.parser.{PBinExp, PFormalArgDecl, _}
 import viper.silver.plugin.GraphState.GraphState
-import viper.silver.plugin.errors.OuroborosAssignmentError
+import viper.silver.plugin.errors.{OuroborosAssignmentError, OuroborosNodeCheckError}
 import viper.silver.plugin.reasons.{InsufficientGraphPermission, NotInGraphReason}
 import viper.silver.verifier.AbstractError
 import viper.silver.verifier.errors.PreconditionInCallFalse
@@ -62,7 +62,9 @@ case class OurObject(name: String, typ: Topology with Closedness)
 case class OurNode(name: String, graphs: Set[String])
 
 object OurNode {
-  def getGraphExp(graphs: Set[String], localGraphs: mutable.Map[String, (LocalVarDecl, GraphState)]): Exp = OuroborosHelper.transformAndFold[String, Exp](
+
+  //optimize is only used for reaching definitions analysis, when we are sure that we have all reaching definitions
+  def getGraphExp(graphs: Set[String], localGraphs: mutable.Map[String, (LocalVarDecl, GraphState)], optimize: Boolean = false): Exp = OuroborosHelper.transformAndFold[String, Exp](
     graphs.toSeq,
     EmptySet(SetType(Ref))(),
     (exp1, exp2) => AnySetUnion(exp1, exp2)(),
@@ -72,11 +74,11 @@ object OurNode {
         case None =>
           graph
         case Some(tuple) => tuple._2 match {
-          case GraphState.ALWAYS_INITIALIZED =>
+          case GraphState.ALWAYS_INITIALIZED if optimize =>
             graph
-          case GraphState.NEVER_INITIALIZED =>
+          case GraphState.NEVER_INITIALIZED if optimize =>
             EmptySet(Ref)()
-          case GraphState.UNKNOWN =>
+          case _ =>
             val decl = tuple._1
             val initVar: LocalVar = LocalVar(decl.name)(decl.typ)
             val cond: Exp = decl.typ match {
@@ -116,18 +118,32 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
 
   val graph_definitions: mutable.Map[String, OurGraphSpec] = mutable.Map.empty[String, OurGraphSpec]
 
-  def handlePFormalArgDecl(input: PProgram, decl: PFormalArgDecl): PFormalArgDecl =
+  def handlePFormalArgDecl(input: PProgram, decl: PFormalArgDecl, isMethodSpec: Boolean): (PFormalArgDecl, Seq[AbstractError]) =
     //PFormalArgDecl(decl.idndef, getSilverType(decl.typ)).setPos(decl) //TODO Only duplicate if needed, PDEFINE cannot be duplicated
   decl.typ match {
     case d: PDomainType =>
       d.domain.name match {
-        case "Node" => PFormalArgDecl(decl.idndef, TypeHelper.Ref).setPos(decl)
-        case "Graph" => PFormalArgDecl(decl.idndef, PSetType(TypeHelper.Ref)).setPos(decl)
-        case _ => decl
+        case "Node" =>
+          val error = if(!isMethodSpec && d.typeArguments.nonEmpty)
+            OurTypes.getError("Nodes can only have type arguments in the method parameters, and in the local declarations of the method bodies.", d)
+          else
+            Seq()
+          (PFormalArgDecl(decl.idndef, TypeHelper.Ref).setPos(decl), error)
+        case "Graph" =>
+          val error = if(!isMethodSpec && d.typeArguments.nonEmpty)
+            OurTypes.getError("Graphs can only have type arguments in the method parameters, and in the local declarations of the method bodies.", d)
+          else
+            Seq()
+
+          (PFormalArgDecl(decl.idndef, PSetType(TypeHelper.Ref)).setPos(decl), error)
+        case _ => (decl, Seq())
       }
     case d: PSetType =>
-      PFormalArgDecl(decl.idndef, PSetType(handlePFormalArgDecl(input, PFormalArgDecl(decl.idndef, d.elementType)).typ)).setPos(decl)
-    case _ => decl
+      val handledRes = handlePFormalArgDecl(input, PFormalArgDecl(decl.idndef, d.elementType), isMethodSpec)
+      val handledDecl = handledRes._1
+      val errors = handledRes._2
+      (PFormalArgDecl(decl.idndef, PSetType(handledDecl.typ)).setPos(decl), errors)
+    case _ => (decl, Seq())
   }
 
 /*  def handlePLocalVarDecl(input: PProgram, decl: PLocalVarDecl): PLocalVarDecl =
@@ -216,10 +232,10 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
         PAccPred(PFieldAccess(mutable_node_exp.deepCopyAll[PExp], PIdnUse(f)), PFullPerm())
       else
         PAccPred(PFieldAccess(mutable_node_exp.deepCopyAll[PExp], PIdnUse(f)), PBinExp(PIntLit(1), "/", PIntLit(2)))) ++
-    collectQPsForRefFieldsProtected(fields, mutable_node_exp, graph_exp) :+ //TODO do Protected Graphs need to be closed?
+    collectQPsForRefFieldsProtected(fields, mutable_node_exp, graph_exp) /*:+
     OuroborosHelper.ourFold[PExp](
       collectInGraphForallsForRefFields(fields, graph_exp)
-      ,PBoolLit(true), (exp1, exp2) => PBinExp(exp1, "&&", exp2)), "&&", PBoolLit(true)).setPos(c)
+      ,PBoolLit(true), (exp1, exp2) => PBinExp(exp1, "&&", exp2))*/, "&&", PBoolLit(true)).setPos(c)
 
 
    /*
@@ -266,8 +282,20 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
       lhs_node_exp.deepCopyAll[PExp],
       rhs_node_exp.deepCopyAll[PExp])).setPos(c)
 
+  private def EDGES(program: PProgram, graph: PExp, c: PCall): PExp = PCall(
+    PIdnUse(getIdentifier("$$")),
+    Seq(graph)
+  ).setPos(c)
+
   private def EXISTS_PATH(prog: PProgram, graph_exp: PExp, lhs_node_exp: PExp, rhs_node_exp: PExp, c: PCall): PExp = PCall(
     PIdnUse(getIdentifier("exists_path")),
+    Seq(
+      PCall(PIdnUse(getIdentifier("$$")), Seq(graph_exp.deepCopyAll[PExp])).setPos(c),
+      lhs_node_exp.deepCopyAll[PExp],
+      rhs_node_exp.deepCopyAll[PExp])).setPos(c)
+
+  private def EXISTS_SPATH(prog: PProgram, graph_exp: PExp, lhs_node_exp: PExp, rhs_node_exp: PExp, c: PCall): PExp = PCall(
+    PIdnUse(getIdentifier("exists_spath")),
     Seq(
       PCall(PIdnUse(getIdentifier("$$")), Seq(graph_exp.deepCopyAll[PExp])).setPos(c),
       lhs_node_exp.deepCopyAll[PExp],
@@ -295,7 +323,16 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
     ACYCLIC(prog, graph_exp.deepCopyAll[PExp], c), "&&", PBinExp(FUNCTIONAL(prog, graph_exp.deepCopyAll[PExp], c), "&&", UNSHARED(prog, graph_exp.deepCopyAll[PExp], c))).setPos(c)
 
   private def explicitGraph(program: PProgram, elems: Seq[PExp], call: PCall): PExp = {
-    PExplicitSet(elems).setPos(call)
+    if(elems.nonEmpty) PExplicitSet(elems).setPos(call)
+    else PEmptySet(TypeHelper.Ref).setPos(call)
+  }
+
+  private def FRAMING(prog: PProgram, g0: PExp, g1: PExp, c: PCall): PCall = {
+    PCall(PIdnUse(getIdentifier("apply_TCFraming")), Seq(g0, g1)).setPos(c)
+  }
+
+  private def NO_EXIT(prog: PProgram, edgesFrom: PExp, u: PExp, m: PExp, c: PCall): PCall = {
+    PCall(PIdnUse(getIdentifier("apply_noExit")), Seq(PCall(PIdnUse(getIdentifier("$$")), Seq(edgesFrom)), u, m)).setPos(c)
   }
 
   def ref_fields(prog: PProgram): Seq[String] = prog.fields.collect {
@@ -306,17 +343,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
     }
   }.flatten
 
-  private def FRAMING(prog: PProgram, g0: PExp, g1: PExp, mc: PMethodCall): PStmt = {
-    PInhale(
-      PCall(PIdnUse(getIdentifier("apply_TCFraming")), Seq(g0, g1)).setPos(mc)
-    ).setPos(mc)
-  }
 
-  private def NO_EXIT(prog: PProgram, edgesFrom: PExp, u: PExp, m: PExp, mc: PMethodCall): PStmt = {
-    PInhale(
-      PCall(PIdnUse(getIdentifier("apply_noExit")), Seq(PCall(PIdnUse(getIdentifier("$$")), Seq(edgesFrom)), u, m)).setPos(mc)
-    ).setPos(mc)
-  }
 
 
 
@@ -377,6 +404,27 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
       case pIf: PIf => Seq(PIf(pIf.cond, handlePStmtInBody(pIf.thn).head.asInstanceOf[PSeqn], handlePStmtInBody(pIf.els).head.asInstanceOf[PSeqn]).setPos(pIf))
       case pWhile: PWhile => Seq(PWhile(pWhile.cond, pWhile.invs, handlePStmtInBody(pWhile.body).head.asInstanceOf[PSeqn]).setPos(pWhile))
         //TODO are there more cases?
+      case pNewStmt: PRegularNewStmt =>
+        val newFieldNames = pNewStmt.fields.map(_.name)
+        def getError(message: String, pos: PNode): Seq[AbstractError] = {
+          val newMessage = FastMessaging.message(pos, message)
+          newMessage.map(m => {
+            OuroborosInvalidNewStmtError( m.label,
+              m.pos match {
+                case fp: FilePosition =>
+                  SourcePosition(fp.file, m.pos.line, m.pos.column)
+                case _ =>
+                  NoPosition
+              }
+            )
+          })
+        }
+        if(ref_fields(input).exists(field => !newFieldNames.contains(field))) {
+          val errMessage = "New Statements need to have access permissions to all reference typed fields."
+          errors ++= getError(errMessage, pNewStmt)
+        }
+
+        Seq(pNewStmt)
       case l: PLocalVarDecl => l.typ match {
         case d: PDomainType => d.domain.name match {
           case "Node" =>
@@ -434,10 +482,10 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
       PMethod(
         m.idndef,
         m.formalArgs.map(x => {
-          handlePFormalArgDecl(input, x)
+          handlePFormalArgDecl(input, x, false)._1
         }),
         m.formalReturns.map(x => {
-          handlePFormalArgDecl(input, x)
+          handlePFormalArgDecl(input, x, false)._1
         }),
         m.pres.map(pre => {
           objects = input_graphs
@@ -453,36 +501,40 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
     )
   }
 
-  def handlePField(input: PProgram, m: PField): PField = {
+  def handlePField(input: PProgram, m: PField): (PField, Seq[AbstractError])= {
     m.typ match {//TODO If fields of type Graph are used in a method, do we need to put requires Graph and ensures Graph?
       case d: PDomainType =>
         d.domain.name match {
-          case "Node" => PField(m.idndef, TypeHelper.Ref)
-          case "Graph" => PField(m.idndef, PSetType(TypeHelper.Ref))
+          case "Node" if d.typeArguments.isEmpty => (PField(m.idndef, TypeHelper.Ref), Seq())
+          case "Node" => (PField(m.idndef, TypeHelper.Ref), OurTypes.getError("Node field cannot have any type arguments.", d))
+          case "Graph" =>
+            (PField(m.idndef, PSetType(TypeHelper.Ref)),OurTypes.getError("Cannot use fields of type Graph.", d))
           //case "ZOPG" | "ClosedZOPG" => PField(m.idndef, PSetType(TypeHelper.Ref))
-          case _ => m
+          case _ => (m, Seq())
         }
       case d: PSetType =>
-        PField(m.idndef, PSetType(handlePField(input, PField(m.idndef, d.elementType)).typ))
-      case _ => m
+        val res = handlePField(input, PField(m.idndef, d.elementType))
+        val handledField = res._1
+        (PField(m.idndef, PSetType(handledField.typ)), res._2)
+      case _ => (m, Seq())
     }
   }
-
-  def handlePExp(input: PProgram, m: PExp): PExp = {
-    m match {
-      case m: PQuantifier => handlePQuantifier(input, m)
-      case _ => m//TODO
-    }
-  }
-
-  def handlePQuantifier(input: PProgram, m: PQuantifier): PQuantifier = {
-    m match {
-      case m: PForall => PForall(m.vars.map(x => handlePFormalArgDecl(input, x)), m.triggers/*.map(x => PTrigger(x.exp.map(x => handlePExp(input, x))))*/,
-        handlePExp(input, m.body))
-      case m: PExists => PExists(m.vars.map(x => handlePFormalArgDecl(input, x)), m.body)//TODO handle PTrigger, PBody?
-      case m: PForPerm => m
-    }
-  }
+//
+//  def handlePExp(input: PProgram, m: PExp): PExp = {
+//    m match {
+//      case m: PQuantifier => handlePQuantifier(input, m)
+//      case _ => m//TODO
+//    }
+//  }
+//
+//  def handlePQuantifier(input: PProgram, m: PQuantifier): PQuantifier = {
+//    m match {
+//      case m: PForall => PForall(m.vars.map(x => handlePFormalArgDecl(input, x)), m.triggers/*.map(x => PTrigger(x.exp.map(x => handlePExp(input, x))))*/,
+//        handlePExp(input, m.body))
+//      case m: PExists => PExists(m.vars.map(x => handlePFormalArgDecl(input, x)), m.body)//TODO handle PTrigger, PBody?
+//      case m: PForPerm => m
+//    }
+//  }
 
   def handlePCall(input: PProgram, m: PCall, objects: Option[Seq[OurObject]]): PNode = {
 
@@ -498,8 +550,11 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
 
       case "EDGE" if m.args.length == 3 => EDGE(input, m.args.head, m.args(1), m.args(2), m)
       case "EDGE" if m.args.length == 2 => EDGE(input, if(objects.isEmpty) universeExp() else getUnion(objects.get), m.args.head, m.args.last, m)
+      case "EDGES" if m.args.length == 1 => EDGES(input, m.args.head, m)
       case "EXISTS_PATH" if m.args.length == 3 => EXISTS_PATH(input, m.args.head, m.args(1), m.args(2), m)
       case "EXISTS_PATH" if m.args.length == 2 => EXISTS_PATH(input, if(objects.isEmpty) universeExp() else getUnion(objects.get), m.args.head, m.args.last, m)
+      case "EXISTS_SPATH" if m.args.length == 3 => EXISTS_SPATH(input, m.args.head, m.args(1), m.args(2), m)
+      case "EXISTS_SPATH" if m.args.length == 2 => EXISTS_SPATH(input, if(objects.isEmpty) universeExp() else getUnion(objects.get), m.args.head, m.args.last, m)
       case "IS_GLOBAL_ROOT" if m.args.length == 2 => IS_GLOBAL_ROOT(input, m.args.head, m.args(1), m)
 
       case "FUNCTIONAL" if m.args.length == 1 => FUNCTIONAL(input, m.args.head, m)
@@ -507,6 +562,8 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
       case "ACYCLIC" if m.args.length == 1 => ACYCLIC(input, m.args.head, m)
       case "ACYCLIC_LIST_SEGMENT" if m.args.length == 1 => ACYCLIC_LIST_SEGMENT(input, m.args.head, m)
       case "Graph" => explicitGraph(input, m.args, m)
+      case "FRAMING" if m.args.length == 2 => FRAMING(input, m.args.head, m.args.last, m)
+      case "NO_EXIT" if m.args.length == 3 => NO_EXIT(input, m.args.head, m.args(1), m.args.last, m)
       case _ => m
     }
 
@@ -552,7 +609,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
 
       val updateMethodCall = PMethodCall(
         Seq(),
-        PIdnUse(updateMethodName),
+        PIdnUse(updateMethodName).setPos(m.method),
         Seq(graph, lhsNode, rhsNode) //TODO needed?
       ).setPos(m)
 
@@ -571,7 +628,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
       }
       val methodCall = PMethodCall(
         Seq(),
-        PIdnUse(methodName),
+        PIdnUse(methodName).setPos(m.method),
         Seq(graph, lhsNode) ++
           (if(rhsNode.isEmpty) Seq()
           else Seq(rhsNode.get))
@@ -588,7 +645,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
       //val copier = StrategyBuilder.Slim[PNode](PartialFunction.empty).duplicateEverything
       val updateMethodCall = PMethodCall(
         Seq(),
-        PIdnUse(updateMethodName),
+        PIdnUse(updateMethodName).setPos(m.method),
         Seq(graph, lhsNode, rhsNode) //TODO needed?
       ).setPos(m)
 
@@ -607,7 +664,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
 
       val methodCall = PMethodCall(
         Seq(),
-        PIdnUse(methodName),
+        PIdnUse(methodName).setPos(m.method),
         Seq(graph, lhsNode) ++
           (if (rhsNode.isEmpty) Seq()
           else Seq(rhsNode.get))
@@ -625,7 +682,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
       //val copier = StrategyBuilder.Slim[PNode](PartialFunction.empty).duplicateEverything
       val updateMethodCall = PMethodCall(
         Seq(),
-        PIdnUse(updateMethodName),
+        PIdnUse(updateMethodName).setPos(m.method),
         Seq(graph, lhsNode, rhsNode) //TODO needed?
       ).setPos(m)
 
@@ -642,7 +699,7 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
       }
       val methodCall = PMethodCall(
         Seq(),
-        PIdnUse(methodName),
+        PIdnUse(methodName).setPos(m.method),
         Seq(graph, lhsNode) ++
           (if (rhsNode.isEmpty) Seq()
           else Seq(rhsNode.get))
@@ -651,6 +708,18 @@ class OuroborosGraphDefinition(plugin: OuroborosPlugin) {
       methodCall
 
     case _ => m
+  }
+
+  private def FRAMING(prog: PProgram, g0: PExp, g1: PExp, mc: PMethodCall): PStmt = {
+    PInhale(
+      PCall(PIdnUse(getIdentifier("apply_TCFraming")), Seq(g0, g1)).setPos(mc)
+    ).setPos(mc)
+  }
+
+  private def NO_EXIT(prog: PProgram, edgesFrom: PExp, u: PExp, m: PExp, mc: PMethodCall): PStmt = {
+    PInhale(
+      PCall(PIdnUse(getIdentifier("apply_noExit")), Seq(PCall(PIdnUse(getIdentifier("$$")), Seq(edgesFrom)), u, m)).setPos(mc)
+    ).setPos(mc)
   }
 
   /*private def getNoExitWisdom(input: Program, g0:Exp, g1:Exp)(pos: Position = NoPosition, info: Info = NoInfo, errT: ErrorTrafo = NoTrafos): Stmt = {

@@ -16,6 +16,7 @@ function CLOSED(g: Set[Ref]): Bool
     (forall n: Ref :: { (n.$field$ in g) } { (n in g),n.$field$ } (n in g) && n.$field$ != null ==> (n.$field$ in g))
 }
 
+function IS_ZOPG(g: Set[Ref]): Bool
 function apply_TCFraming(g0:Set[Ref], g1:Set[Ref]): Bool
     //requires GRAPH(g0) && GRAPH(g1)
     //requires forall n:Ref :: {n.l} n in g0 ==> acc(n.l)
@@ -23,8 +24,7 @@ function apply_TCFraming(g0:Set[Ref], g1:Set[Ref]): Bool
     //requires forall n:Ref :: {n.l} n in g1 ==> acc(n.l)
     //requires forall n:Ref :: {n.r} n in g1 ==> acc(n.r)
 
-    //requires disjoint_sets(g0,g1) //Not needed at the moment, as input graphs are always disjoint, and otherwise we use setminus
-    requires (forall n:Ref :: { n in g0}{ n in g1 } n in g0 ==> !(n in g1))
+    //requires (forall n:Ref :: { n in g0}{ n in g1 } n in g0 ==> !(n in g1))
     //requires (forall n:Ref :: { n in g0}{ n in g1 } n in g1 ==> !(n in g0))
 
     // needed for triggering
@@ -36,24 +36,30 @@ function apply_TCFraming(g0:Set[Ref], g1:Set[Ref]): Bool
     ensures forall u:Ref, v:Ref :: { exists_path($$(g0),u,v)}{ exists_path($$(g0 union g1),u,v) } u in g0 && v in g0 && !exists_path($$(g0 union g1),u,v) ==> !exists_path($$(g0),u,v)
     ensures forall u:Ref, v:Ref :: { exists_path($$(g1),u,v) }{ exists_path($$(g1 union g0),u,v) } u in g1 && v in g1 && !exists_path($$(g1 union g0),u,v) ==> !exists_path($$(g1),u,v)
 
+    // only for disjoint graphs
+    ensures forall u:Ref, v:Ref :: { exists_path($$(g0),u,v) }{ exists_path($$(g0 union g1),u,v) }
+     u in g0 && v in g0 && !exists_path($$(g0),u,v) && (CLOSED(g0) || CLOSED(g1)) && DISJOINT(g0, g1) ==> !exists_path($$(g0 union g1),u,v)
+    ensures forall u:Ref, v:Ref :: { exists_path($$(g1),u,v) }{ exists_path($$(g0 union g1),u,v) }
+     u in g1 && v in g1 && !exists_path($$(g1),u,v) && (CLOSED(g0) || CLOSED(g1)) && DISJOINT(g0, g1) ==> !exists_path($$(g1 union g0),u,v)
+     ensures (CLOSED(g0) && DISJOINT(g0, g1)) ==> (forall u: Ref, v: Ref :: {exists_path($$(g0 union g1), u, v)} (u in g0 && v in g1) ==> !exists_path($$(g0 union g1), u, v))
+     ensures (CLOSED(g1) && DISJOINT(g0, g1)) ==> (forall u: Ref, v: Ref :: {exists_path($$(g0 union g1), v, u)} (u in g0 && v in g1) ==> !exists_path($$(g0 union g1), v, u))
 
-    //probably wrong
-    ensures forall u:Ref, v:Ref :: { exists_path($$(g0),u,v) }{ exists_path($$(g0 union g1),u,v) } u in g0 && v in g0 && !exists_path($$(g0),u,v) && (CLOSED(g0) || CLOSED(g1)) ==> !exists_path($$(g0 union g1),u,v)
-    ensures forall u:Ref, v:Ref :: { exists_path($$(g1),u,v) }{ exists_path($$(g0 union g1),u,v) } u in g1 && v in g1 && !exists_path($$(g1),u,v) && (CLOSED(g0) || CLOSED(g1))==> !exists_path($$(g1 union g0),u,v)
+//     ensures acyclic_graph($$(g0 union g1)) ==> acyclic_graph($$(g0))
+     ensures IS_ZOPG(g0 union g1) ==> IS_ZOPG(g0)
 
 method NEW() returns (node: Ref)
 
 method create_node(u: Set[Ref]) returns (node: Ref)
     requires PROTECTED_GRAPH(u)
-    requires CLOSED(u)
+    //requires CLOSED(u)
     ensures PROTECTED_GRAPH(u)
-    ensures CLOSED(u)
+    //ensures CLOSED(u)
     ensures !(node in u)
     ensures acc(node.$field$) && node.$field$ == null
 
 method link_$field$(g:Set[Ref], x:Ref, y:Ref)
     requires x in g
-    requires y != null ==> y in g && y != x
+    requires y != null ==> y in g
     //requires !(edge($$(g), x, y))
     requires PROTECTED_GRAPH(g,x,$field$)
     ensures PROTECTED_GRAPH(g,x,$field$)
@@ -76,6 +82,9 @@ method unlink_$field$(g:Set[Ref], x:Ref)
     ensures old(x.$field$) != null ==> forall v1:Ref, v2:Ref ::
         { edge($$(g),v1,v2) }
             edge($$(g),v1,v2) <==> edge(old($$(g)),v1,v2) && !(v1==x && v2==old(x.$field$))
+    ensures old(x.$field$) != null ==> forall v1: Ref, v2: Ref ::
+        {exists_path($$(g), v1, v2)}
+            !exists_path(old($$(g)), v1, v2)  ==> !exists_path($$(g), v1, v2)
 //    ensures old(x.$field$) != null ==> forall v1: Ref, v2:Ref ::
 //        { exists_path($$(g),v1, v2)}
 //            ( exists_path($$(g), v1, v2)) <==> (v1 == v2) ||
@@ -96,6 +105,9 @@ method unlink_DAG_$field$(g: Set[Ref], x:Ref)
     ensures old(x.$field$) != null ==> forall v1:Ref, v2:Ref ::
         { edge($$(g),v1,v2) }
             edge($$(g),v1,v2) <==> edge(old($$(g)),v1,v2) && !(v1==x && v2==old(x.$field$))
+    ensures old(x.$field$) != null ==> forall v1: Ref, v2: Ref ::
+        {exists_path($$(g), v1, v2)}
+            !exists_path(old($$(g)), v1, v2)  ==> !exists_path($$(g), v1, v2)
     ensures old(x.$field$) != null ==> forall v1:Ref, v2:Ref ::
         { exists_path($$(g),v1,v2) }
              exists_path($$(g),v1,v2) <==> (v1==v2) ||
@@ -144,9 +156,9 @@ method link_DAG_$field$(g:Set[Ref], x:Ref, y:Ref)
 function apply_no_exit_closed(EG: Set[Edge], g1: Set[Ref], g2: Set[Ref]): Bool
     requires PROTECTED_GRAPH(g1) && CLOSED(g1)
     requires PROTECTED_GRAPH(g2)
-    ensures forall v1: Ref, v2:Ref ::
+    ensures DISJOINT(g1, g2) ==> (forall v1: Ref, v2:Ref ::
     {exists_path(EG,v1,v2)}
-        v1 in g1 && v2 in g2 ==> !exists_path(EG, v1, v2)
+        v1 in g1 && v2 in g2 ==> !exists_path(EG, v1, v2))
 
 function GRAPH_decl(g: Set[Ref]): Bool
 

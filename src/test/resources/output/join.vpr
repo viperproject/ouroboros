@@ -111,7 +111,7 @@ field next: Ref
 
 function $$(nodes: Set[Ref]): Set[Edge]
   requires (forall n: Ref :: { n.next } (n in nodes) ==> acc(n.next, 1 / 2))
-  ensures (forall p: Ref, s: Ref :: { create_edge(p, s) } ((p in nodes) && (s in nodes) && p.next == s && p != s) == (create_edge(p, s) in result))
+  ensures (forall p: Ref, s: Ref :: { create_edge(p, s) } ((p in nodes) && (s in nodes) && p.next == s) == (create_edge(p, s) in result))
   ensures (forall p: Ref, s: Ref :: { (p in nodes),(s in nodes),exists_path(result, p, s) } (p in nodes) && exists_path(result, p, s) ==> (s in nodes))
   ensures (forall p: Ref, s: Ref :: { (p in nodes),(s in nodes),exists_path(result, p, s) } (s in nodes) && exists_path(result, p, s) ==> (p in nodes)) 
 
@@ -132,35 +132,39 @@ function CLOSED(g_0: Set[Ref]): Bool
   (forall n: Ref :: { (n.next in g_0) } { (n in g_0),n.next } (n in g_0) && n.next != null ==> (n.next in g_0))
 }
 
+function IS_ZOPG(g_0: Set[Ref]): Bool 
+
+
 function apply_TCFraming(g0: Set[Ref], g1_0: Set[Ref]): Bool
   requires (forall n: Ref :: { n.next } (n in g0) ==> acc(n.next, 1 / 2))
   requires (forall n: Ref :: { n.next } (n in g1_0) ==> acc(n.next, 1 / 2))
-  requires (forall n: Ref :: { (n in g0) } { (n in g1_0) } (n in g0) ==> !((n in g1_0)))
   ensures g0 union g1_0 == g1_0 union g0
   ensures (forall u: Ref, v: Ref :: { exists_path($$(g0), u, v) } { exists_path($$(g0 union g1_0), u, v) } (u in g0) && ((v in g0) && exists_path($$(g0), u, v)) ==> exists_path($$(g0 union g1_0), u, v))
   ensures (forall u: Ref, v: Ref :: { exists_path($$(g1_0), u, v) } { exists_path($$(g1_0 union g0), u, v) } (u in g1_0) && ((v in g1_0) && exists_path($$(g1_0), u, v)) ==> exists_path($$(g1_0 union g0), u, v))
   ensures (forall u: Ref, v: Ref :: { exists_path($$(g0), u, v) } { exists_path($$(g0 union g1_0), u, v) } (u in g0) && ((v in g0) && !exists_path($$(g0 union g1_0), u, v)) ==> !exists_path($$(g0), u, v))
   ensures (forall u: Ref, v: Ref :: { exists_path($$(g1_0), u, v) } { exists_path($$(g1_0 union g0), u, v) } (u in g1_0) && ((v in g1_0) && !exists_path($$(g1_0 union g0), u, v)) ==> !exists_path($$(g1_0), u, v))
-  ensures (forall u: Ref, v: Ref :: { exists_path($$(g0), u, v) } { exists_path($$(g0 union g1_0), u, v) } (u in g0) && ((v in g0) && (!exists_path($$(g0), u, v) && (CLOSED(g0) || CLOSED(g1_0)))) ==> !exists_path($$(g0 union g1_0), u, v))
-  ensures (forall u: Ref, v: Ref :: { exists_path($$(g1_0), u, v) } { exists_path($$(g0 union g1_0), u, v) } (u in g1_0) && ((v in g1_0) && (!exists_path($$(g1_0), u, v) && (CLOSED(g0) || CLOSED(g1_0)))) ==> !exists_path($$(g1_0 union g0), u, v)) 
+  ensures (forall u: Ref, v: Ref :: { exists_path($$(g0), u, v) } { exists_path($$(g0 union g1_0), u, v) } (u in g0) && ((v in g0) && (!exists_path($$(g0), u, v) && ((CLOSED(g0) || CLOSED(g1_0)) && DISJOINT(g0, g1_0)))) ==> !exists_path($$(g0 union g1_0), u, v))
+  ensures (forall u: Ref, v: Ref :: { exists_path($$(g1_0), u, v) } { exists_path($$(g0 union g1_0), u, v) } (u in g1_0) && ((v in g1_0) && (!exists_path($$(g1_0), u, v) && ((CLOSED(g0) || CLOSED(g1_0)) && DISJOINT(g0, g1_0)))) ==> !exists_path($$(g1_0 union g0), u, v))
+  ensures CLOSED(g0) && DISJOINT(g0, g1_0) ==> (forall u: Ref, v: Ref :: { exists_path($$(g0 union g1_0), u, v) } (u in g0) && (v in g1_0) ==> !exists_path($$(g0 union g1_0), u, v))
+  ensures CLOSED(g1_0) && DISJOINT(g0, g1_0) ==> (forall u: Ref, v: Ref :: { exists_path($$(g0 union g1_0), v, u) } (u in g0) && (v in g1_0) ==> !exists_path($$(g0 union g1_0), v, u))
+  ensures IS_ZOPG(g0 union g1_0) ==> IS_ZOPG(g0) 
 
 
 function apply_no_exit_closed(EG: Set[Edge], g1_0: Set[Ref], g2_0: Set[Ref]): Bool
   requires !((null in g1_0)) && (forall n: Ref :: { n.next } (n in g1_0) ==> acc(n.next, 1 / 2)) && CLOSED(g1_0)
   requires !((null in g2_0)) && (forall n: Ref :: { n.next } (n in g2_0) ==> acc(n.next, 1 / 2))
-  ensures (forall v1: Ref, v2: Ref :: { exists_path(EG, v1, v2) } (v1 in g1_0) && (v2 in g2_0) ==> !exists_path(EG, v1, v2)) 
+  ensures DISJOINT(g1_0, g2_0) ==> (forall v1: Ref, v2: Ref :: { exists_path(EG, v1, v2) } (v1 in g1_0) && (v2 in g2_0) ==> !exists_path(EG, v1, v2)) 
 
 
 method join(g1: Set[Ref], g2: Set[Ref]) returns (g: Set[Ref])
-  requires DISJOINT(g1, g2)
-  requires NoNullInGraph(g1) && ((forall n: Ref :: { n.next } (n in g1) ==> acc(n.next, write)) && CLOSED(g1))
-  requires NoNullInGraph(g2) && (forall n: Ref :: { n.next } (n in g2) ==> acc(n.next, write))
-  requires CLOSED(g1 union g2)
+  requires (forall n: Ref :: { n.next } (n in g1 union g2) ==> acc(n.next, write))
+  requires NoNullInGraph(g1) && CLOSED(g1)
+  requires NoNullInGraph(g2)
   ensures (forall n: Ref :: { n.next } (n in g union g1 union g2) ==> acc(n.next, write))
   ensures NoNullInGraph(g)
-  ensures NoNullInGraph(g1) && CLOSED(g1)
+  ensures NoNullInGraph(g1)
+  ensures CLOSED(g1)
   ensures NoNullInGraph(g2)
-  ensures CLOSED(g union g1 union g2)
 {
   var UNIVERSE: Set[Ref]
   var g_init: Bool
@@ -168,13 +172,29 @@ method join(g1: Set[Ref], g2: Set[Ref]) returns (g: Set[Ref])
   g_init := false
   
   // Apply TC Framing for input graphs g1 and g2 
-inhale apply_TCFraming(g1, g2)
+  inhale apply_TCFraming(g1, g2)
   
-  // Assume there are no paths from closed Graph g1 to disjoint Graph g2 
-inhale apply_no_exit_closed($$(g1 union g2), g1, g2)
+  // Assume there are no paths from closed Graph g1 to disjoint Graph g2
+  inhale apply_no_exit_closed($$(g1 union g2), g1, g2)
   
-  // update Universe and set g_init: Bool to true
-g := g1 union g2
+  // Initialize the unique variable of g.
+  g_init := false
+  
+  // Apply TC Framing for g with all possible Graphs.
+  g := g1 union g2
+  
+  // update Universe and set g_init to true
   g_init := true
   UNIVERSE := UNIVERSE union g
+  
+  // Apply TC Framing for g2 and g
+  inhale apply_TCFraming(g2, g)
+  
+  // Apply TC Framing for g1 and g
+  inhale apply_TCFraming(g1, g)
+  if (g_init) {
+    
+    // Apply TC Framing for g and g setminus g
+    inhale apply_TCFraming(g, g)
+  }
 }

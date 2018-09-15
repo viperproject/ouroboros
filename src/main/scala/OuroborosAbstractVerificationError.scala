@@ -124,6 +124,13 @@ object reasons {
 
     def withNode(offendingNode: errors.ErrorNode = this.offendingNode) = ZOPGCheckNotSupportedReason(offendingNode, this.explanation)
   }
+
+  case class WrongNoOfAccessPermissionsReason(offendingNode: ErrorNode, explanation: String)  extends AbstractErrorReason {
+    val id = "access.permissions"
+    val readableMessage = explanation
+
+    def withNode(offendingNode: errors.ErrorNode = this.offendingNode) = WrongNoOfAccessPermissionsReason(offendingNode, this.explanation)
+  }
 }
 
 abstract class OuroborosAbstractError extends AbstractError { }
@@ -131,5 +138,11 @@ abstract class OuroborosAbstractError extends AbstractError { }
 case class OuroborosInvalidIdentifierError(message: String, override val pos: Position) extends OuroborosAbstractError {
   def fullId = "invalid.identifier"
   def readableMessage: String = s"invalid Identifier: $message ($pos)"
+}
+
+
+case class OuroborosInvalidNewStmtError(message: String, override val pos: Position) extends OuroborosAbstractError {
+  def fullId = "invalid.new"
+  def readableMessage: String = s"invalid new Statement: $message ($pos)"
 }
 

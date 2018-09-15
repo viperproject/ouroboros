@@ -26,7 +26,7 @@ domain ZeroOnePathGraphTCs {
         forall EG:Set[Edge], x:Ref, y:Ref ::
             { DEP(EG,x,y,x,y) }
             { edge(EG,x,y) }
-                edge(EG, x, y) <==> DEP_(EG,x,y,x,y)
+                edge(EG, x, y) && x != y <==> DEP_(EG,x,y,x,y)
     }
 
     axiom ax_HeadTriangleImposable {
@@ -34,7 +34,7 @@ domain ZeroOnePathGraphTCs {
             { DEP(EG,x,y,x,v) }
             { exists_path_(EG,x,y), exists_path(EG,v,y) }
             { edge(EG,x,v), exists_path_(EG,v,y) }
-                exists_path_(EG,x,y) && edge(EG,x,v) && exists_path_(EG,v,y) ==> DEP_(EG,x,y,x,v)
+                exists_path_(EG,x,y) && edge(EG,x,v)  && x != v && exists_path_(EG,v,y) ==> DEP_(EG,x,y,x,v)
     }
 
     axiom ax_TailTriangleImposable {
@@ -42,13 +42,13 @@ domain ZeroOnePathGraphTCs {
             { DEP(EG,x,y,u,y) }
             { exists_path_(EG,x,y), exists_path(EG,x,u) }
             { edge(EG,u,y), exists_path_(EG,x,u) }
-                exists_path_(EG,x,y) && exists_path_(EG,x,u) && edge(EG,u,y) ==> DEP_(EG,x,y,u,y)
+                exists_path_(EG,x,y) && exists_path_(EG,x,u) && edge(EG,u,y) && u != y ==> DEP_(EG,x,y,u,y)
     }
 
     axiom ax_NoEdgeNoDEP {
         forall EG:Set[Edge], x:Ref, y:Ref, u:Ref, v:Ref ::
             { DEP(EG,x,y,u,v) }
-                !edge(EG,u,v) ==> !DEP_(EG,x,y,u,v)
+                !edge(EG,u,v) || u == v ==> !DEP_(EG,x,y,u,v)
     }
 
     /*axiom ax_TriangleImposable_Neg {
@@ -109,7 +109,7 @@ domain ZeroOnePathGraphTCs {
     axiom ax_DEP_trigger_magic {
         forall EG:Set[Edge], x:Ref, y:Ref, u:Ref, v:Ref ::
             { DEP(EG, x, y, u, v) }
-                DEP(EG, x, y, u, v) ==> exists_path(EG, x, y) && edge(EG, u, v)
+                DEP(EG, x, y, u, v) ==> exists_path(EG, x, y) && edge(EG, u, v) && u != v
     }
 
     axiom ax_DEP_6_head { // could be a cool lemma that needs a cool proof! :-)
@@ -128,7 +128,7 @@ domain ZeroOnePathGraphTCs {
         forall EG:Set[Edge], nu:Ref, n:Ref, mu:Ref, sigma:Ref ::
             { DEP(EG, nu, n, mu, sigma) }
                 nu != n && n != sigma && nu != mu && edge(EG, nu, sigma) && edge(EG, mu, sigma)
-                    ==> !DEP_(EG, nu, n, mu, sigma)
+                    ==> !DEP_(EG, nu, n, mu, sigma) || mu == sigma
     }
 
     /* -- Isn't being triggered without the right term. (Needs manual assertions?)
@@ -151,20 +151,21 @@ method unlink_ZOPG_$field$(g:Set[Ref], node:Ref)
         { edge($$(g),v1,v2) }
         { exists_path($$(g),v1,v2) }
             edge($$(g),v1,v2) <==> edge(old($$(g)),v1,v2) && !(v1==node && v2==old(node.$field$))
+    ensures old(node.$field$) != null ==> forall v1: Ref, v2: Ref ::
+        {exists_path($$(g), v1, v2)}
+            !exists_path(old($$(g)), v1, v2)  ==> !exists_path($$(g), v1, v2)
     ensures old(node.$field$) != null ==>
             forall x:Ref, y:Ref, u:Ref, v:Ref ::
                 { DEP($$(g), x, y, u, v) }
                 { DEP(old($$(g)), x, y, u, v) }
-                    //x != y && u != v ==>
                     (
-                        DEP(old($$(g)), x, y, u, v) && !DEP(old($$(g)), x, y, node, old(node.$field$)) ==> DEP($$(g), x, y, u, v)    // trigger wisdom: ax_UnrollFromHead
+                        DEP(old($$(g)), x, y, u, v) && !DEP(old($$(g)), x, y, node, old(node.$field$)) ==> DEP($$(g), x, y, u, v)
                     )
 
 function update_ZOPG_invariant(g:Set[Ref], from:Ref, to:Ref): Bool
-//    requires x in g && y in g //Not needed, as this function is only used after unlink, where it is already asserted
     requires PROTECTED_GRAPH(g)
 {
-    /*!exists_path($$(g),from,to)*/func_graph($$(g)) || unshared_graph($$(g)) || (forall u: Ref, v:Ref ::
+  func_graph($$(g)) || unshared_graph($$(g)) || (forall u: Ref, v:Ref ::
                     {exists_path($$(g),u,from), exists_path($$(g), to, v)} //TODO multipattern
                         u in g && v in g && u != v && exists_path($$(g), u, v) ==>
                             !(exists_path($$(g), u, from)) ||
@@ -173,8 +174,8 @@ function update_ZOPG_invariant(g:Set[Ref], from:Ref, to:Ref): Bool
 
 method link_ZOPG_$field$(g:Set[Ref], from:Ref, to:Ref)
     requires from in g
-    requires to != null ==> to in g && to != from
-    requires PROTECTED_GRAPH(g,from, $field$) && from.$field$ == null //!exists_path($$(g), from, to)
+    requires to != null ==> to in g
+    requires PROTECTED_GRAPH(g,from, $field$) && from.$field$ == null
     ensures PROTECTED_GRAPH(g,from, $field$)
     ensures from.$field$ == to
     ensures to == null ==> $$(g) == old($$(g))
@@ -192,19 +193,14 @@ method link_ZOPG_$field$(g:Set[Ref], from:Ref, to:Ref)
                         || ( exists w:Ref, z:Ref :: __psi__(old($$(g)), from,to, x,y, u,v, w,z) )
                         || ( exists U:Ref, V:Ref :: __psi__(old($$(g)), from,to, x,y, U,V, u,v) )
                         || u==from && v==to && ( exists U:Ref, V:Ref, w:Ref, z:Ref :: __psi__(old($$(g)), from,to, x,y, U,V, w,z) )
-//                        || !( forall w:Ref, z:Ref :: !(__psi__(old($$(g)), from,to, x,y, u,v, w,z) )) //TODO triggers
-//                        || !( forall U:Ref, V:Ref :: !(__psi__(old($$(g)), from,to, x,y, U,V, u,v) ))
-//                        || u==from && v==to && !( forall U:Ref, V:Ref, w:Ref, z:Ref :: !(__psi__(old($$(g)), from,to, x,y, U,V, w,z)) )
 
                             ==> DEP($$(g), x, y, u, v) )
     ensures to != null ==>
         forall x:Ref, y:Ref, u:Ref, v:Ref ::
             { DEP($$(g), x, y, u, v) }
             { DEP(old($$(g)), x, y, u, v) }
-                // x != y && u != from && v != to ==> (
                     DEP($$(g), x, y, u, v) && !DEP($$(g), x, y, from, to) ==> DEP(old($$(g)), x, y, u, v)
-                // )
-    //trigger wisdom: UnrollFromHead
+
     ensures to != null ==> forall n:Ref :: { exists_path($$(g), to, n) }{ exists_path($$(g), from, n) } n in g && n != from ==> __learn_trigger__(DEP($$(g), from, n, from, from.$field$))
     ensures to != null ==> forall n:Ref :: { exists_path($$(g), to, n) }{ exists_path($$(g), from, n) } n in g && n != to   ==> __learn_trigger__(DEP($$(g),   to, n,   to,   to.$field$))
     ensures to != null ==> forall n:Ref :: { exists_path($$(g), n, to) }{ exists_path($$(g), n, from) } n in g && n != from ==> __learn_trigger__(DEP($$(g), n, from, n, n.$field$))
@@ -212,7 +208,7 @@ method link_ZOPG_$field$(g:Set[Ref], from:Ref, to:Ref)
 
 
 define __psi__(EG, alpha,beta, x,y,u,v,w,z) (
-    ( forall u_:Ref, v_:Ref :: { DEP(EG,x,y,u_,v_) } !DEP(EG,x,y,u_,v_) ) &&  // !exists_path(EG,x,y) -- ?
+    ( forall u_:Ref, v_:Ref :: { DEP(EG,x,y,u_,v_) } !DEP(EG,x,y,u_,v_) ) &&
     ( DEP(EG,x,alpha,u,v) && x!=alpha || (x==u && u==alpha && v==beta) ) &&
     ( DEP(EG,beta,y,w,z)  && beta!=y  || (alpha==w && beta==z && z==y) )
 )

@@ -13,13 +13,16 @@ object OuroborosNames {
     "FRAMING", "NO_EXIT",
     /*"CLOSED_ZOPG", "ZOPG",*/ "CLOSED_GRAPH", "GRAPH", //TODO CLOSED_ZOPG needed?
     "Graph", "ZOPG", /*"ClosedZOPG",*/ "Node", "DAG", "Closed", //TODO ClosedZOPG needed?
-    "ACYCLIC", "FUNCTIONAL", "CLOSED", "IS_INITIALIZED",
+    "ACYCLIC", "FUNCTIONAL", "UNSHARED", "CLOSED", "IS_INITIALIZED", "IS_ZOPG",
     "DISJOINT",
     "NEW",
     "UPDATE",
     "UPDATE_ZOPG", "UNLINK_ZOPG", "LINK_ZOPG",
     "UPDATE_DAG", "UNLINK_DAG", "LINK_DAG",
-    "UNIVERSE")
+    "UNIVERSE",
+    "EXISTS_PATH", "EXISTS_SPATH", "EDGE", "EDGES",
+    "IS_GLOBAL_ROOT", "ACYCLIC_LIST_SEGMENT"
+  )
   val magic_fields = Set(
     "__CONFIG_OUROBOROS_INLINE",
     "__CONFIG_OUROBOROS_WISDOMS",

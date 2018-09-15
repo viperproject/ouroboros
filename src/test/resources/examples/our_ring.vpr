@@ -11,87 +11,51 @@ define RING(nodes)
         {n.next in nodes}
         {n in nodes, n.next}
             n in nodes ==> n.next in nodes )
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+field __CONFIG_OUROBOROS_TYPE_CHECK: Bool
+// field __CONFIG_OUROBOROS_UPDATE_INVARIANTS: Bool
 field next:Node
 field val:Int
 
 
-method ringInsert(g:Graph[ZOPG, _], start:Node, x:Int)
-    returns (new_g:Graph[ZOPG, Closed], new_node2:Node, new_start:Node)
+method ringInsert(g:Graph[ZOPG, _], start:Node[g], x:Int)
+    returns (new_g:Graph[ZOPG, Closed], new_node2:Node[new_g], new_start:Node[new_g])
 
     requires RING(g)
     requires UNSHARED_CONNECTED(g)//FUNCTIONAL(g) && UNSHARED(g) && (forall u: Ref, v: Ref :: {exists_path($$(g), v, u)}{exists_path($$(g), u, v)} u in g && v in g ==> exists_path($$(g), u, v) || exists_path($$(g), v, u)) //&& CONNECTED(g)
     requires CLOSED(g)
-    requires forall n: Ref :: {n.next} n in g ==> n.next in g && n.next != null
-    requires start in g
+    requires forall n: Node :: {n.next} n in g ==> n.next in g && n.next != null
+    requires start != null
 
     requires forall n:Node, m:Node ::
         { EXISTS_PATH(g,n,m) }
             n in g && m in g ==> EXISTS_PATH(g,n,m) && EXISTS_PATH(g,m,n)
 
-    requires forall n:Ref :: { n.val } n in g ==> acc(n.val)
+    requires forall n:Node :: { n.val } n in g ==> acc(n.val)
+      requires forall n:Ref :: { n.next.val } n in g && n.next != start ==> n.val <= n.next.val
+  requires forall n:Ref :: { n.next.val } n in g && n.next == start ==> n.next.val <= n.val 
 
     ensures RING(new_g)
     ensures UNSHARED_CONNECTED(new_g)//UNSHARED(new_g)
     ensures new_start in new_g
     ensures !(new_node2 in g) && new_node2 in new_g
 
-    // ensures forall n:Ref, m:Ref ::
-    //     { exists_path($$(new_g),n,m) }
-    //         n in new_g && m in new_g
-    //             ==> exists_path($$(new_g),n,m) && exists_path($$(new_g),m,n)
+    ensures forall n:Ref, m:Ref ::
+        { exists_path($$(new_g),n,m) }
+            n in new_g && m in new_g
+                ==> exists_path($$(new_g),n,m) && exists_path($$(new_g),m,n)
 {
     //var n:Node := NEW()
-    //new_g, 
-    new_node2 := NEW()//create_node(g/*, x*/)
+    //new_g,
+    assert IS_ZOPG(g) && IS_ZOPG(UNIVERSE) 
+    var tmp: Node := NEW()
+
+    assume IS_ZOPG(UNIVERSE)
+    new_g := UNIVERSE
+    new_node2 := tmp
     inhale acc(new_node2.val, write)
     new_g := UNIVERSE
 
-    var node:Node := start
+    var node:Node[new_g] := start
 
     //label beforeWhile
     while ( !( node.val <= x && x < node.next.val
@@ -100,8 +64,10 @@ method ringInsert(g:Graph[ZOPG, _], start:Node, x:Int)
         invariant RING(g)
         invariant CLOSED(g)
         invariant UNSHARED_CONNECTED(g)//FUNCTIONAL(g) && UNSHARED(g) && (forall u: Ref, v: Ref :: {exists_path($$(g), v, u)}{exists_path($$(g), u, v)} u in g && v in g ==> exists_path($$(g), u, v) || exists_path($$(g), v, u)) //&& CONNECTED(g)
-        invariant forall n: Ref :: {n.next} n in g ==> n.next in g && n.next != null
-        invariant forall n: Ref :: {n.val} n in new_g ==> acc(n.val, write)
+        invariant forall n: Node :: {n.next} n in g ==> n.next in g && n.next != null
+        invariant forall n: Node :: {n.val} n in new_g ==> acc(n.val, write)
+            invariant forall n:Ref :: { n.next.val } n in g && n.next != start ==> n.val <= n.next.val
+    invariant forall n:Ref :: { n.next.val } n in g && n.next == start ==> n.next.val <= n.val
         invariant node in g
 
         invariant forall n:Node, m:Node ::
@@ -119,10 +85,25 @@ method ringInsert(g:Graph[ZOPG, _], start:Node, x:Int)
     } else {
         new_start := start
     }
-    UPDATE_ZOPG(next, UNIVERSE, new_node2, node.next)//new_node2.next := node.next
-    UPDATE_ZOPG(next, UNIVERSE, node, new_node2) //node.next := new_node2
+
+    var nodeNext: Node[new_g] := node.next
+    // new_node2.next := nodeNext 
+    // node.next := new_node2
+
+    UNLINK(next, new_node2)
+    // FRAMING(g, Graph(tmp))
+    LINK(next, new_node2, nodeNext)
+    // FRAMING(g, Graph(tmp))
+
+    UNLINK(next, node)
+    // FRAMING(g, Graph(tmp))
+    LINK(next, node, new_node2)
+    // FRAMING(g, Graph(tmp))
+
+    // UPDATE(next, new_node2, nodeNext)//new_node2.next := node.next
+    // UPDATE(next, node, new_node2) //node.next := new_node2
     // assert forall n0: Ref :: {n0.next} n0 in new_g && n0 != new_node2 ==> n0.next != null && n0.next in new_g
     // assert new_node2.next in new_g
     // assert CLOSED(new_g)
-    //assert false
+    // assert false
 }

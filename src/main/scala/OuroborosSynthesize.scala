@@ -33,12 +33,11 @@ object OuroborosSynthesize {
   def synthesizeFunction(function: PFunction, fields: Seq[String]) = {
 
     function.idndef.name match {
-      case "apply_TCFraming" => {
+      case "apply_TCFraming" =>
         function.deepCopy(pres =
           collectQPsForRefFields(fields, PIdnUse("g0"), this.read) ++
             collectQPsForRefFields(fields, PIdnUse("g1"), this.read) ++
             function.pres)
-      }
 
       case "$$" => synthesize$$(function, fields)
 
@@ -60,7 +59,7 @@ object OuroborosSynthesize {
             PTrigger(Seq(
               PCall(PIdnUse("create_edge"),Seq(PIdnUse("p"),PIdnUse("s")))))),
           PBinExp(
-            PBinExp(
+            //PBinExp(
               PBinExp(
                 PBinExp(
                   PBinExp(PIdnUse("p"), "in", PIdnUse("nodes")),
@@ -69,8 +68,8 @@ object OuroborosSynthesize {
                 "&&",
                 OuroborosHelper.transformAndFold[String, PExp](fields, PBoolLit(false), (expr1, expr2) => PBinExp(expr1, "||", expr2), f => PBinExp(
                   PFieldAccess(PIdnUse("p"),PIdnUse(f) ), "==", PIdnUse("s")))),
-              "&&",
-              PBinExp(PIdnUse("p"), "!=", PIdnUse("s"))),
+             /* "&&",
+              PBinExp(PIdnUse("p"), "!=", PIdnUse("s"))),*/
             "<==>",
             PBinExp(
               PCall(PIdnUse("create_edge"),Seq(PIdnUse("p"),PIdnUse("s"))),
@@ -125,7 +124,7 @@ object OuroborosSynthesize {
         fields.map(
           { f =>
             val new_m = m.deepCopyWithNameSubstitution(
-              idndef = PIdnDef(s"link_${f}"))(
+              idndef = PIdnDef(s"link_$f"))(
               "$field$", f)
             new_m
           }

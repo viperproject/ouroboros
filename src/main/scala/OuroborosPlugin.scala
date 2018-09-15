@@ -219,8 +219,14 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
           methodAndErrors._1
         case m: PCall => graph_handler.handlePCall(pprog, m, None)
         case m: PMethodCall => graph_handler.handlePMethodCall(pprog, m)
-        case m: PField => graph_handler.handlePField(pprog, m)
-        case f: PFormalArgDecl => graph_handler.handlePFormalArgDecl(pprog, f)
+        case m: PField =>
+          val res = graph_handler.handlePField(pprog, m)
+          res._2.foreach(reportError)
+          res._1
+        case f: PFormalArgDecl =>
+          val declRes = graph_handler.handlePFormalArgDecl(pprog, f, false)
+          declRes._2.foreach(reportError)
+          declRes._1
         //case l: PLocalVarDecl => graph_handler.handlePLocalVarDecl(pprog, l) //
       }
     )

@@ -27,6 +27,9 @@ object OurTypes {
 
   def getOurGraphObject(ourType : PDomainType) : (Option[Topology with Closedness], Seq[AbstractError]) = ourType.domain.name match {
     case "Graph" =>
+      if(ourType.typeArguments.isEmpty) {
+        return (Some(OurGraph), Seq())
+      }
 
       if(ourType.typeArguments.size < 2) {
         val error = getError(s"Closedness is not specified.", ourType)
@@ -109,8 +112,7 @@ object OurTypes {
       errorsToReport ++= getError("The node could be assigned to a graph.", domain)
     }
     if(domain.typeArguments.isEmpty) {
-      val error = getError("Declarations of type Node need to specify in which Graph they are.", domain)
-      (universe, errorsToReport ++ error)
+      (universe, errorsToReport)
     } else {
       val graph: Seq[String] = domain.typeArguments.map {
         case d: PDomainType =>
@@ -339,6 +341,11 @@ object OurTypes {
   lazy val disjointSetminusMapping:
     mutable.Map[Topology with Closedness, Set[(Topology with Closedness, Topology with Closedness)]] =
     readCSV("/type_rules/disjoint_setminus.csv", false)
-
+  lazy val intersectionMapping:
+    mutable.Map[Topology with Closedness, Set[(Topology with Closedness, Topology with Closedness)]] =
+    readCSV("/type_rules/intersection.csv", false)
+  lazy val disjointIntersectionMapping:
+    mutable.Map[Topology with Closedness, Set[(Topology with Closedness, Topology with Closedness)]] =
+    readCSV("/type_rules/disjoint_intersection.csv", false)
 
 }

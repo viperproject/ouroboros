@@ -231,4 +231,10 @@ object OuroborosErrorTransformers {
       OuroborosNodeCheckError(x.offendingNode,
         NotInGraphReason(x.offendingNode, s"The Node $node might not be in the declared Graph $graph."), false)
   })
+
+  def newStmtNotHandledErrTrafo(): ErrTrafo = ErrTrafo({
+    case x =>
+      OuroborosNodeCheckError(x.offendingNode,
+        WrongNoOfAccessPermissionsReason(x.offendingNode, s"New Statements need to have access permissions to all reference typed fields."), false)
+  })
 }

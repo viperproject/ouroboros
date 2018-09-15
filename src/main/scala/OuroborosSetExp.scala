@@ -14,6 +14,8 @@ object SetExp {
       SetUnion(getSetExp(union.left, wrapper), getSetExp(union.right, wrapper))
     case setminus: AnySetMinus =>
       SetMinus(getSetExp(setminus.left, wrapper), getSetExp(setminus.right, wrapper))
+    case setIntersection: AnySetIntersection =>
+      SetIntersection(getSetExp(setIntersection.left, wrapper), getSetExp(setIntersection.right, wrapper))
     case localVar: LocalVar =>
       val mayBeInitName = wrapper.localGraphs.get(localVar.name) match {
         case None =>
@@ -34,7 +36,7 @@ object SetExp {
     //case _ => //TODO throw error
   }
 
-  def getSuperSetOfGraphs(setExp: SetExp, isTop: Boolean): Seq[String] = setExp match {
+  /*def getSuperSetOfGraphs(setExp: SetExp, isTop: Boolean): Seq[String] = setExp match {
     case setBinExp: SetBinExp if isTop =>
       val lhsGraphs = getSuperSetOfGraphs(setBinExp.lhs, false)
       val rhsGraphs = getSuperSetOfGraphs(setBinExp.rhs, false)
@@ -54,7 +56,7 @@ object SetExp {
       val thnGraphs = getSuperSetOfGraphs(condSetExp.thn, false)
       val elsGraphs = getSuperSetOfGraphs(condSetExp.els, false)
       thnGraphs ++ elsGraphs
-  }
+  }*/
 }
 
 abstract class SetBinExp extends SetExp {
@@ -82,10 +84,23 @@ case class SetMinus(lhsSetMinus:SetExp, rhsSetMinus:SetExp) extends SetBinExp {
 
   override def getDuplicateExp(pos: Position, info: Info, errT: ErrorTrafo): Exp = {
     val lhsExp = lhsSetMinus.getDuplicateExp(pos, info, errT)
-    val rhsExp = lhsSetMinus.getDuplicateExp(pos, info, errT)
+    val rhsExp = rhsSetMinus.getDuplicateExp(pos, info, errT)
     AnySetMinus(lhsExp, rhsExp)(pos, info, errT)
   }
 }
+
+case class SetIntersection(lhsSetIntersection:SetExp, rhsSetIntersection:SetExp) extends SetBinExp {
+  override val lhs: SetExp = lhsSetIntersection
+  override val rhs: SetExp = rhsSetIntersection
+  override def operator(): String = "set intersection"
+
+  override def getDuplicateExp(pos: Position, info: Info, errT: ErrorTrafo): Exp = {
+    val lhsExp = lhsSetIntersection.getDuplicateExp(pos, info, errT)
+    val rhsExp = rhsSetIntersection.getDuplicateExp(pos, info, errT)
+    AnySetIntersection(lhsExp, rhsExp)(pos, info, errT)
+  }
+}
+
 
 case class SetVar(varName: String, initVarName: Option[String], ourType: Topology with Closedness) extends SetExp {
   override def getDuplicateExp(pos: Position, info: Info, errT: ErrorTrafo): Exp = {

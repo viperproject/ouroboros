@@ -104,10 +104,9 @@ object OuroborosMemberInliner {
 
         //var impureExps : Seq[Stmt] = Seq()
         contractsInlined ++= func.pres.collect({
-          case exp: Exp if exp.isPure => {
+          case exp: Exp if exp.isPure =>
             //if (!exp.isPure) impureExps :+= Inhale(contractsRewriter.execute[Exp](exp))(pos, info, errT)
             Exhale(contractsRewriter.execute[Exp](exp))(pos, NoInfo, errT)
-          }
         }
         )
         // contractsInlined ++= impureExps

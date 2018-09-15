@@ -1,6 +1,6 @@
 package viper.silver.plugin
 
-import viper.silver.ast.{And, Assert, EqCmp, Exp, FalseLit, Implies, Int, IntLit, LocalVar, LocalVarAssign, LocalVarDecl, MethodCall, NeCmp, NoInfo, Node, Not, Or, Positioned, Ref, SetType, SimpleInfo, Stmt, TransformableErrors, TrueLit}
+import viper.silver.ast.{And, Assert, EqCmp, Exp, FalseLit, FuncApp, Implies, Int, IntLit, LocalVar, LocalVarAssign, LocalVarDecl, MethodCall, NeCmp, NoInfo, Node, Not, Or, Positioned, Ref, SetType, SimpleInfo, Stmt, TransformableErrors, TrueLit}
 import viper.silver.ast.utility.Rewriter.Rewritable
 import viper.silver.plugin.errors.OuroborosTypeError
 import viper.silver.plugin.reasons.WrongTypeReason
@@ -30,14 +30,27 @@ class OuroborosTypeCheck {
         if(checkExps.isEmpty) {
           Seq()
         } else {
-          val checkExp = OuroborosHelper.ourFold[Exp](checkExps, TrueLit()(), (exp1, exp2) => And(exp1, exp2)())
+          val pureCheckExps = checkExps.filter(_.isPure)
+          val nonPureCheckExps = checkExps.filter(exp => !exp.isPure)
+          val checkExp = OuroborosHelper.ourFold[Exp](pureCheckExps, TrueLit()(), (exp1, exp2) => And(exp1, exp2)())
           val assertCheck = Assert(checkExp)(
             exp.pos,
             SimpleInfo(Seq("", s"added assertion for typechecking.", "")),
             OuroborosErrorTransformers.wrongTypeErrTrafo(exp, wantedType)
           )
 
-          Seq(assertCheck)
+          val nonPureAssertCheck = nonPureCheckExps.map(nonPureExp => Assert(nonPureExp)(
+            exp.pos,
+            SimpleInfo(Seq("", s"added assertion for typechecking.", "")),
+            OuroborosErrorTransformers.wrongTypeErrTrafo(exp, wantedType)
+          ))
+
+          if(pureCheckExps.isEmpty)
+            nonPureAssertCheck
+          else if(nonPureCheckExps.isEmpty)
+            Seq(assertCheck)
+          else
+            nonPureAssertCheck :+ assertCheck
         }
 
     }
@@ -73,6 +86,18 @@ class OuroborosTypeCheck {
 
     if(isStaticSubType) {
       //As the static type is a sub type of the wanted type, we know that the dynamic type is also a sub type
+      wrapper.definitions.get(setVar.varName) match {
+        case Some(defs) if defs.contains(0) =>
+          val varExp = setVar.getDuplicateExp()
+          val res = wrapper.localGraphs(setVar.varName)
+          val initVarName = res._2.name
+          val initVar = LocalVar(initVarName)(Int)
+          val ref_fields = graphHandler.ref_fields(wrapper.input.fields)
+          val checkExps = NeCmp(initVar, IntLit(0)())()//graphHandler.fold_GRAPH(varExp, ref_fields, wrapper.input, false, true, true, false, TrueLit()(), (exp1, exp2) => And(exp1, exp2)())
+          return Some(Seq(checkExps))
+        case _ =>
+          return Some(Seq())
+      }
       return Some(Seq())//(true, Seq())
     }
 
@@ -101,14 +126,14 @@ class OuroborosTypeCheck {
       //We should not check the definitions of setVar, and setVar is not of type wantedType
 
       val allChecksExp: Exp = wantedType match {
-        case _: ZOPG if !setVar.ourType.isInstanceOf[ZOPG] =>
-          return None
         case _ =>
           //We know that either the topology or closedness of the setVar is not of wantedType
+          val zopg = wantedType.isInstanceOf[ZOPG] && !setVar.ourType.isInstanceOf[ZOPG]
           val dag = wantedType.isInstanceOf[DAG] && !setVar.ourType.isInstanceOf[DAG]
           val closed = wantedType.isInstanceOf[Closed] && !setVar.ourType.isInstanceOf[Closed]
           val ref_fields = graphHandler.ref_fields(wrapper.input.fields)
-          graphHandler.fold_GRAPH(setVarExp, ref_fields, wrapper.input, closed, qpsNeeded = false, noNullNeeded = false, dag, TrueLit()(), (exp1, exp2) => And(exp1, exp2)())
+
+          graphHandler.fold_GRAPH(setVarExp, ref_fields, wrapper.input, closed, qpsNeeded = false, noNullNeeded = false, dag, zopg, TrueLit()(), (exp1, exp2) => And(exp1, exp2)())
       }
 
       return Some(Seq(allChecksExp))
@@ -140,7 +165,17 @@ class OuroborosTypeCheck {
             return Some(Seq())
           } else {
             val input = wrapper.input
-            val closedFunc = graphHandler.CLOSED(setVarExp, input)
+            val closedFunc = if(defs.contains(0)){
+              val res = wrapper.localGraphs(setVar.varName)
+              val initVarName = res._2.name
+              val initVar = LocalVar(initVarName)(Int)
+              val closed = graphHandler.CLOSED(setVarExp, input)
+              val notZero = NeCmp(initVar, IntLit(0)())()
+              And(notZero, closed)()
+              //graphHandler.fold_GRAPH(setVarExp, graphHandler.ref_fields(wrapper.input.fields), wrapper.input, true, true, true, false, TrueLit()(), (exp1, exp2) => And(exp1, exp2)())
+            }
+            else
+              graphHandler.CLOSED(setVarExp, input)
             return Some(Seq(closedFunc))
           }
       }
@@ -158,17 +193,20 @@ class OuroborosTypeCheck {
         else
           Seq()
 
-      val acyclicFunc: Seq[Exp] = wantedType match {
-        case _: ZOPG if !varType.isInstanceOf[ZOPG] =>
-          //wantedType is either ZOPG or Forest, but varType is not ZOPG or Forest
-          return None
-        case _: DAG =>
-          Seq(graphHandler.DAG(setVarExp, wrapper.input))
+      val topoFunc: Seq[Exp] = wantedType match {
+        case _ =>
+          val dag = wantedType.isInstanceOf[DAG] && !varType.isInstanceOf[DAG]
+          val zopg = wantedType.isInstanceOf[ZOPG] && !varType.isInstanceOf[ZOPG]
+
+          val zopgFunc = if(zopg) Seq(graphHandler.ZOPG(setVarExp, wrapper.input)) else Seq()
+          val dagFunc = if(dag) Seq(graphHandler.DAG(setVarExp, wrapper.input)) else Seq()
+
+          zopgFunc ++ dagFunc
 
         //As we know that !isSubTopology, we know that wantedType is either of type Forest, ZOPG or DAG. We don't need more cases.
       }
 
-      val neededFuncs = closedFunc ++ acyclicFunc
+      val neededFuncs = closedFunc ++ topoFunc
       val assertFunc = OuroborosHelper.ourFold[Exp](neededFuncs, TrueLit()(), (exp1, exp2) => And(exp1, exp2)())
 
       return Some(Seq(assertFunc))
@@ -195,7 +233,7 @@ class OuroborosTypeCheck {
       case Some(defs) =>
         var isInit: Option[Exp] = None //Only needed, if fake definition reaches
 
-        val maybeCheckExps: Seq[Option[Exp]] = defs.collect({
+        val maybeCheckExps: Seq[Option[Seq[Exp]]] = defs.collect({
           case map if map._1 == 0 =>
             //We need to assert that the graph is already defined
             val initVar = LocalVar(initVarName)(Int)
@@ -208,13 +246,23 @@ class OuroborosTypeCheck {
             val definitionState = map._2._2
             val initVar = LocalVar(initVarName)(Int)
             val defReachesExp = EqCmp(initVar, IntLit(initValue)())()
-            val defCheckExp = checkDefinition(checkType, definition, setVar.varName, stateCopyNeeded, definitionState, takeSuperTypes, position)
+            val defCheckExp = checkDefinition(checkType, definition, setVar.varName, stateCopyNeeded, definitionState, takeSuperTypes, position, maybeStateCopy)
 
             defCheckExp match {
               case None => None
               case Some(toCheckExps) =>
-                val reachesAndCheck =
-                  Some(OuroborosHelper.ourFold[Exp](defReachesExp +: toCheckExps, TrueLit()(), (exp1, exp2) => And(exp1, exp2)()))
+                val pureToCheckExps = toCheckExps.filter(_.isPure)
+                val nonPureToCheckExps = toCheckExps.filter(exp => !exp.isPure)
+                val pureCheck = OuroborosHelper.ourFold[Exp](defReachesExp +: pureToCheckExps, TrueLit()(), (exp1, exp2) => And(exp1, exp2)())
+                val nonPureCheck =
+                  nonPureToCheckExps.map(nonPureExp => Implies(defReachesExp, nonPureExp)())
+                  OuroborosHelper.ourFold[Exp](defReachesExp +: nonPureToCheckExps, TrueLit()(), (exp1, exp2) => And(exp1, exp2)())
+                val reachesAndCheck = if(pureToCheckExps.isEmpty)
+                  Some(nonPureCheck)
+                else if(nonPureToCheckExps.isEmpty)
+                  Some(Seq(pureCheck))
+                else
+                  Some(nonPureCheck :+ pureCheck)
 
                 reachesAndCheck
             }
@@ -224,17 +272,27 @@ class OuroborosTypeCheck {
         val checkExps = maybeCheckExps.collect {
           case Some(checkExp) =>
             checkExp
-        }
+        }.flatten
 
         if(checkExps.isEmpty) {
           Some(Seq())
         } else {
-          val check = OuroborosHelper.ourFold[Exp](checkExps, FalseLit()(), (exp1, exp2) => Or(exp1, exp2)())
+          val pureExps = checkExps.filter(_.isPure)
+          val nonPureExps = checkExps.filter(exp => !exp.isPure)
+          val pureCheck = OuroborosHelper.ourFold[Exp](pureExps, FalseLit()(), (exp1, exp2) => Or(exp1, exp2)())
+          val check = if(pureExps.isEmpty)
+            nonPureExps
+          else if(nonPureExps.isEmpty)
+            Seq(pureCheck)
+          else
+            nonPureExps :+ pureCheck
+
           isInit match {
             case None =>
-              Some(Seq(check))
+              Some(check)
             case Some(checkIsInit) =>
-              Some(Seq(And(checkIsInit, check)()))
+              val checkWithIsInit = check.map(exp => And(checkIsInit, exp)())
+              Some(checkWithIsInit)
           }
         }
 
@@ -243,7 +301,14 @@ class OuroborosTypeCheck {
 
   }
 
-  def checkDefinition(wantedType: Topology with Closedness, definition: Stmt, definedVarName: String, stateCopyNeeded: Boolean, wrapper: OuroborosStateWrapper, takeSuperTypes: Set[String], position: Node with Positioned with TransformableErrors with Rewritable): Option[Seq[Exp]] = definition match {
+  def checkDefinition(wantedType: Topology with Closedness,
+                      definition: Stmt, definedVarName: String,
+                      stateCopyNeeded: Boolean,
+                      wrapper: OuroborosStateWrapper,
+                      takeSuperTypes: Set[String],
+                      position: Node with Positioned with TransformableErrors with Rewritable,
+                     //take State Copy is used for the case that we need to check the left hand side of a method call.
+                      takeStateCopy: Option[StateCopyWrapper] = None): Option[Seq[Exp]] = definition match {
     case assign: LocalVarAssign =>
       assert(definedVarName == assign.lhs.name)
       val rhs = assign.rhs
@@ -261,6 +326,11 @@ class OuroborosTypeCheck {
 
       checkTypeOfSetExp(wantedType, rhsSetExp, wrapper, takeSuperTypes + definedVarName, stateCopy, position)
     case call: MethodCall =>
+      val copiedVarName = if(takeStateCopy.isDefined) takeStateCopy.get.localVarNamesMapping.get(definedVarName) match {
+        case None => definedVarName
+        case Some(newNameWrapper) =>
+          newNameWrapper.newLocalVarName
+      } else definedVarName
       val specs = wrapper.specs
       val methodName = call.methodName
       val method = wrapper.input.findMethod(methodName)
@@ -294,21 +364,16 @@ class OuroborosTypeCheck {
       if(isSubTopology && isSubClosedness) {
         return Some(Seq())
       } else if (isSubTopology && !isSubClosedness) {
-        val closedExp = graphHandler.CLOSED(LocalVar(definedVarName)(SetType(Ref)), wrapper.input)
+        val closedExp = graphHandler.CLOSED(LocalVar(copiedVarName)(SetType(Ref)), wrapper.input)
         return Some(Seq(closedExp))
       } else { //!isSubTopology
-        wantedType match {
-          case _: Forest if !returnType.isInstanceOf[ZOPG] =>
-            //We cannot check ZOPG
-            return None
-          case _: DAG =>
-            val qpsNeeded = false
-            val nonNullNeeded = false
-            val ref_fields = graphHandler.ref_fields(wrapper.input.fields)
-            val checkExp = graphHandler.fold_GRAPH(LocalVar(definedVarName)(SetType(Ref)), ref_fields, wrapper.input, !isSubClosedness, qpsNeeded, nonNullNeeded, true, TrueLit()(), (exp1, exp2) => And(exp1, exp2)())
-            return Some(Seq(checkExp))
-          case _ => return None
-        }
+          val qpsNeeded = false
+          val nonNullNeeded = false
+          val isDag = wantedType.isInstanceOf[DAG]
+          val isZopg = wantedType.isInstanceOf[ZOPG]
+          val ref_fields = graphHandler.ref_fields(wrapper.input.fields)
+          val checkExp = graphHandler.fold_GRAPH(LocalVar(copiedVarName)(SetType(Ref)), ref_fields, wrapper.input, !isSubClosedness, qpsNeeded, nonNullNeeded, isDag, isZopg, TrueLit()(), (exp1, exp2) => And(exp1, exp2)())
+          return Some(Seq(checkExp))
       }
     //case _ => TODO are there other definition statements?
   }
@@ -317,36 +382,54 @@ class OuroborosTypeCheck {
     val binExp = setBinExp.getDuplicateExp(position.pos, NoInfo, position.errT)
     val lhs = setBinExp.lhs
     val rhs = setBinExp.rhs
-    val relevantGraphs = SetExp.getSuperSetOfGraphs(setBinExp, true) //Idea: if we get a superset of the setBinaryExp, which is a union of inputgraphs, then we know that the binary exp is disjoint
-    val onlyInputGraphs = relevantGraphs.forall(graphName => wrapper.inputGraphs.contains(graphName))
-    val isDisjointSetminus: Boolean = onlyInputGraphs && setBinExp.isInstanceOf[SetMinus]
+//    val relevantGraphs = SetExp.getSuperSetOfGraphs(setBinExp, true) //Idea: if we get a superset of the setBinaryExp, which is a union of inputgraphs, then we know that the binary exp is disjoint
+//    val onlyInputGraphs = relevantGraphs.forall(graphName => wrapper.inputGraphs.contains(graphName))
+//    val isDisjointSetminus: Boolean = onlyInputGraphs && setBinExp.isInstanceOf[SetMinus]
 
-    if(isDisjointSetminus) {
+    val maybeDisjointCheck: Seq[Exp] = setBinExp match {
+      case setMinus: SetMinus =>
+        //if the left hand side does not need any additional checks to be of wanted type, then
+        // we know that disjointness is sufficient for having the wished type.
+        val checkLhs = checkTypeOfSetExp(wantedType, lhs, wrapper, takeSuperTypes, maybeStateCopy, position)
+        if(checkLhs.isDefined && checkLhs.get.isEmpty) {
+          val disjointName = OuroborosNames.getIdentifier("DISJOINT")
+          val disjointFunction = wrapper.input.findFunction(disjointName)
+          val disjointFuncApp = FuncApp(disjointFunction, Seq(lhs.getDuplicateExp(), rhs.getDuplicateExp()))(position.pos, NoInfo, position.errT)
+          Seq(disjointFuncApp)
+        } else {
+          Seq()
+        }
+      case setIntersection: SetIntersection =>
+        //If the both graphs are disjoint, we get an empty closed forest. Hence,
+        //checking disjointness of graphs is always sufficient to obtain a specific type
+        val disjointName = OuroborosNames.getIdentifier("DISJOINT")
+        val disjointFunction = wrapper.input.findFunction(disjointName)
+        val disjointFuncApp = FuncApp(disjointFunction, Seq(lhs.getDuplicateExp(), rhs.getDuplicateExp()))(position.pos, NoInfo, position.errT)
+        Seq(disjointFuncApp)
+      case _ =>
+        Seq()
+    }
+
+/*      if(setBinExp.isInstanceOf[SetMinus]) {
       //We only need to check that the left hand side is of type wantedType
       return checkTypeOfSetExp(wantedType, lhs, wrapper, takeSuperTypes, maybeStateCopy, position)
-    }
+    }*/
 
     val mapping = setBinExp match {
-      case _: SetUnion => if(onlyInputGraphs) OurTypes.disjointUnionMapping else OurTypes.unionMapping
+      case _: SetUnion =>/* if(onlyInputGraphs) OurTypes.disjointUnionMapping else*/ OurTypes.unionMapping
       case _: SetMinus => OurTypes.setminusMapping
+      case _: SetIntersection => OurTypes.intersectionMapping
     }
 
-    val possibilities = getPossibilites(wantedType, setBinExp, onlyInputGraphs)
+    val possibilities = getPossibilites(wantedType, setBinExp, isDisjoint = false)// onlyInputGraphs)
 
     if(possibilities.isEmpty) {
       //We don't know, how to get the wished type with a binary expression
       val qpsNeeded: Boolean = true //TODO should we check the permissions?
       val nonNullNeeded: Boolean = true
 
-      var dag: Boolean = false
-      wantedType match {
-        case _: ZOPG => //Forests are also instances of ZOPG
-          //We don't know how to specify the ZOPG property
-          return None
-        case _: DAG =>
-          dag = true
-        case _ =>
-      }
+      val dag: Boolean = wantedType.isInstanceOf[DAG]
+      val zopg: Boolean = wantedType.isInstanceOf[ZOPG]
 
       val closed: Boolean = wantedType match {
         case _: Closed => true
@@ -354,7 +437,7 @@ class OuroborosTypeCheck {
       }
 
       val ref_fields = graphHandler.ref_fields(wrapper.input.fields)
-      val graphExps = graphHandler.GRAPH(binExp, ref_fields, wrapper.input, closed, qpsNeeded, nonNullNeeded, dag)
+      val graphExps = graphHandler.GRAPH(binExp, ref_fields, wrapper.input, closed, qpsNeeded, nonNullNeeded, dag, zopg)
 
       return Some(graphExps)
     }
@@ -362,7 +445,7 @@ class OuroborosTypeCheck {
     //val allOptions: Set[BinaryTypesWrapper] = possibilities.values.flatten.toSet
     var satisfyingTupleFound: Boolean = false
 
-    var allChecks: Seq[Exp] = Seq()
+    var allChecks: Seq[Exp] = maybeDisjointCheck
 
     possibilities.collect({
       case tuple if !satisfyingTupleFound =>
@@ -391,14 +474,21 @@ class OuroborosTypeCheck {
                     } else {
                       val closedCheck = if(checkClosed) Seq(graphHandler.CLOSED(binExp, wrapper.input)) else Seq()
                       val dagCheck = if(checkAcyclic) Seq(graphHandler.DAG(binExp, wrapper.input)) else Seq()
-                      val optionChecks = checkLHS ++ checkRHS ++ closedCheck ++ dagCheck
-                      val optionChecksExp = OuroborosHelper.ourFold[Exp](
-                        optionChecks,
+                      val pureLHSRHS = (checkLHS ++ checkRHS).filter(_.isPure)
+                      val nonPureLHSRHS = (checkLHS ++ checkRHS).filter(exp => !exp.isPure)
+
+                      val pureOptionChecks = pureLHSRHS ++ closedCheck ++ dagCheck
+                      val pureOptionChecksExp = OuroborosHelper.ourFold[Exp](
+                        pureOptionChecks,
                         TrueLit()(),
                         (exp1, exp2) => And(exp1, exp2)(position.pos, NoInfo, position.errT)
                       )
 
-                      allChecks :+= optionChecksExp
+                      allChecks ++= (if(pureLHSRHS.isEmpty) nonPureLHSRHS
+                      else if(nonPureLHSRHS.isEmpty)
+                        Seq(pureOptionChecksExp)
+                      else
+                        nonPureLHSRHS :+ pureOptionChecksExp)
                     }
                 }
             }
@@ -410,13 +500,20 @@ class OuroborosTypeCheck {
       //This means that we don't need to use allChecks, as we know that at least one of the options always holds
       Some(Seq())
     } else {
+      val pureChecks = allChecks.filter(_.isPure)
+      val nonPureChecks = allChecks.filter(exp => !exp.isPure)
       val check = OuroborosHelper.ourFold[Exp](
-        allChecks,
+        pureChecks,
         TrueLit()(),
         (exp1, exp2) => Or(exp1, exp2)(position.pos, NoInfo, position.errT)
       )
 
-      Some(Seq(check))
+      if(pureChecks.isEmpty)
+        Some(nonPureChecks)
+      else if(nonPureChecks.isEmpty)
+        Some(Seq(check))
+      else
+        Some(nonPureChecks :+ check)
     }
   }
 
@@ -437,12 +534,10 @@ class OuroborosTypeCheck {
     val isForest: Boolean = explicitSetExp.elems.size <= 1 //If at most one element is in the explicit Set, the set is automatically a forest
     wantedType match {
       case _ if isForest =>
-        val checkQPs = graphHandler.fold_GRAPH(astExp, graphHandler.ref_fields(wrapper.input.fields), wrapper.input, closed = wantedType.isInstanceOf[Closed], true, true, dag = false, TrueLit()(), (exp1, exp2) => And(exp1, exp2)())
+        val checkQPs = graphHandler.fold_GRAPH(astExp, graphHandler.ref_fields(wrapper.input.fields), wrapper.input, closed = wantedType.isInstanceOf[Closed], true, true, dag = false, zopg = false, TrueLit()(), (exp1, exp2) => And(exp1, exp2)())
         Some(Seq(checkQPs))
-      case _: ZOPG =>
-        None
       case _ =>
-        val checkQPs = graphHandler.fold_GRAPH(astExp, graphHandler.ref_fields(wrapper.input.fields), wrapper.input, closed = wantedType.isInstanceOf[Closed], true, true, dag = wantedType.isInstanceOf[DAG], TrueLit()(), (exp1, exp2) => And(exp1, exp2)())
+        val checkQPs = graphHandler.fold_GRAPH(astExp, graphHandler.ref_fields(wrapper.input.fields), wrapper.input, closed = wantedType.isInstanceOf[Closed], true, true, dag = wantedType.isInstanceOf[DAG], zopg = wantedType.isInstanceOf[ZOPG], TrueLit()(), (exp1, exp2) => And(exp1, exp2)())
         Some(Seq(checkQPs))
     }
   }
@@ -541,6 +636,7 @@ class OuroborosTypeCheck {
     val mapping = setBinaryExp match {
       case _: SetUnion => if(isDisjoint) OurTypes.disjointUnionMapping else OurTypes.unionMapping
       case _: SetMinus => if(isDisjoint) OurTypes.disjointSetminusMapping else OurTypes.setminusMapping
+      case _: SetIntersection => if(isDisjoint) OurTypes.disjointIntersectionMapping else OurTypes.intersectionMapping
     }
     var allPossibilities: mutable.Map[ClosedAcyclicWrapper, Set[BinaryTypesWrapper]] = mutable.Map.empty[ClosedAcyclicWrapper, Set[BinaryTypesWrapper]]
 

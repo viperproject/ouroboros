@@ -1,8 +1,8 @@
 field next: Node
 //Need to add CLOSED(g0 union g1) automatically in the beginning
-method test4(g0: Graph[_,_], g1: Graph[_,_], x: Node, y: Node) 
+method test4(g0: Graph[_,_], g1: Graph[_,_], x: Node[g0], y: Node[g1]) 
 //requires CLOSED(g0 union g1)
-requires x in g0 && y in g1
+requires x != null && y != null
  
 requires forall n:Ref, m:Ref :: n in g0 && m in g0 ==> EXISTS_PATH(g0,n,m)
 requires forall n:Ref, m:Ref :: n in g1 && m in g1 ==> EXISTS_PATH(g1,n,m)
@@ -12,7 +12,7 @@ ensures forall n: Ref, m:Ref :: n in g0 && m in g1 ==> EXISTS_PATH(g0 union g1, 
 {
 assert ((forall n: Ref :: (n in g0 union g1) && n.next != null ==> (n.next in g0 union g1)))
 unlink_next(g0 union g1, x)
-link_next(g0 union g1, x, y)
+//link_next(g0 union g1, x, y)
 //UPDATE(next, g0 union g1,)
 //x.next := y // does not terminate Commented out such that sbt testOnly terminates
 }
