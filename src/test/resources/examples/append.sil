@@ -1,0 +1,62 @@
+field __CONFIG_OUROBOROS_TYPE_CHECK: Bool
+field __CONFIG_OUROBOROS_UPDATE_INVARIANTS: Bool
+
+field next: Node
+method append(g:Graph[DAG, Closed], x:Node, y:Node) returns (res:Node, last:Node)
+
+    requires x != null && y != null && x != y
+
+    requires forall n:Ref :: n in g ==> ( EXISTS_PATH(g,x,n) ||  EXISTS_PATH(g,y,n))
+    requires forall n:Ref :: n in g ==> (!EXISTS_PATH(g,x,n) || !EXISTS_PATH(g,y,n))
+
+    requires FUNCTIONAL(g)
+    requires UNSHARED(g)
+
+    ensures FUNCTIONAL(g)
+    ensures UNSHARED(g)
+
+    ensures forall n:Ref :: n in g ==> EXISTS_PATH(g, x, n)
+    ensures forall n:Ref, m:Ref :: n in g && m in g ==> (old(EDGE(g, n, m)) || (n == last && m == y) <==> EDGE(g, n, m))
+{
+
+
+    last := x
+
+
+    if ( last == null ) { 
+
+        res := y
+    
+    } else { 
+    
+        while ( last.next != null ) 
+            invariant last in g
+
+            invariant forall n:Ref :: n in g ==> ( EXISTS_PATH(g,x,n) ||  EXISTS_PATH(g,y,n))
+            invariant forall n:Ref :: n in g ==> (!EXISTS_PATH(g,x,n) || !EXISTS_PATH(g,y,n))
+
+            invariant UNSHARED(g)
+
+            invariant EXISTS_PATH(g,x,last)
+                      && ( last.next != null ==> EDGE(g,last,last.next) && EXISTS_PATH(g,last.next,last.next) ==> EXISTS_PATH(g,last,last.next) )
+                      
+            invariant forall n: Ref, m: Ref :: old(EDGE(g, n, m)) <==> EDGE(g, n, m)
+        {
+
+            last := last.next
+        }
+
+        //The frontend will automatically change to LINK_DAG(next, g, last, y)
+        LINK(next, last,y)
+
+
+        // Triggers are needed
+        assume trigger(forall u:Ref, v:Ref :: !EXISTS_PATH(g,u,v) ==> u != v && forall w:Ref :: !EDGE(g,u,w) || !EXISTS_PATH(g,w,v))
+        assume trigger(forall u:Ref, v:Ref :: !EXISTS_PATH(g,u,v) ==> !EDGE(g,u,v))
+   
+        
+    }
+    res := x
+}
+
+function trigger(b: Bool): Bool

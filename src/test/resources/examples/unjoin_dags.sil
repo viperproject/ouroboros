@@ -1,0 +1,20 @@
+field next: Ref
+
+method unjoin_dags(g0: Graph[DAG, _], g1: Graph[DAG, _], x0: Node[g0], x1: Node[g1])
+requires DISJOINT(g0, g1)
+requires x0 != null && x1 != null
+requires forall n:Ref :: { EXISTS_PATH(g0,n,x0) } n in g0 ==> EXISTS_PATH(g0,n,x0)
+requires forall n:Ref :: { EXISTS_PATH(g1,x1,n), n in g1 } n in g1 ==> EXISTS_PATH(g1,x1,n)
+
+requires forall n:Ref, m:Ref :: { n in g0, m in g1 } n in g0 && m in g1 ==> (EDGE(g0 union g1,n,m) <==> n==x0 && m==x1)
+requires forall n:Ref, m:Ref :: { n in g1, m in g0 } n in g1 && m in g0 ==> !EDGE(g0 union g1,n,m)
+
+requires ACYCLIC(g0 union g1)
+requires x0.next == x1
+
+ensures forall n:Ref :: { EXISTS_PATH(g1,x1,n), n in g1 } n in g1 ==> EXISTS_PATH(g1,x1,n)
+
+{
+    UNLINK_DAG(next, g0 union g1, x0)
+    FRAMING(g0, g1) //Framing Axiom needs to be added in the end of the method
+}

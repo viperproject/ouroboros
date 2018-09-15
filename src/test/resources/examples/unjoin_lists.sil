@@ -1,0 +1,86 @@
+field __CONFIG_OUROBOROS_TYPE_CHECK: Bool
+field __CONFIG_OUROBOROS_UPDATE_INVARIANTS: Bool
+
+field next: Ref
+method unjoin(g0:Graph[DAG, _], g1:Graph[DAG, _], x0:Node, x1:Node) 
+    requires DISJOINT(g0,g1)
+    requires CLOSED(g0 union g1)
+
+    requires x0 in g0 && x1 in g1
+    requires forall n:Ref :: { EXISTS_PATH(g0,n,x0) } n in g0 ==> EXISTS_PATH(g0,n,x0)
+    requires forall n:Ref :: { EXISTS_PATH(g1,x1,n), n in g1 } n in g1 ==> EXISTS_PATH(g1,x1,n)
+
+    requires forall n:Ref, m:Ref :: { n in g0, m in g1 } n in g0 && m in g1 ==> (EDGE(g0 union g1,n,m) <==> n==x0 && m==x1)
+    requires forall n:Ref, m:Ref :: { n in g1, m in g0 } n in g1 && m in g0 ==> !EDGE(g0 union g1,n,m)
+
+
+    requires ACYCLIC_LIST_SEGMENT(g0 union g1)
+    requires x0.next == x1
+
+    ensures CLOSED(g0)
+    ensures CLOSED(g1)
+
+
+    ensures forall n:Ref :: { EXISTS_PATH(g1,x1,n), n in g1 } n in g1 ==> EXISTS_PATH(g1,x1,n)
+    //The carbon issue is wrong. I don't
+    //:: UnexpectedOutput(postcondition.violated:assertion.false, /Carbon/issue/173/)
+    ensures forall n:Ref :: { EXISTS_PATH(g0,n,x0) } n in g0 ==> EXISTS_PATH(g0,n,x0)
+{
+    var unionGraph: Graph[DAG, Closed] := g0 union g1
+    UNLINK(next, unionGraph, x0)
+    //assert ACYCLIC(unionGraph)
+    FRAMING(g0, g1)
+    //inhale apply_TCFraming3(g0, g1)
+//    inhale forall u:Ref, v:Ref :: 
+//         { exists_path($$(g0),u,v) }{ exists_path($$(g0 union g1),u,v) }
+//          u in g0 && v in g0 && exists_path($$(g0),u,v) ==> exists_path($$(g0 union g1),u,v)
+}
+
+function apply_TCFraming2(g0:Set[Ref], g1:Set[Ref]): Bool
+    //requires GRAPH(g0) && GRAPH(g1)
+    requires forall n:Ref :: {n.next} n in g0 ==> acc(n.next)
+    requires forall n:Ref :: {n.next} n in g1 ==> acc(n.next)
+    
+    requires g1 intersection g0 == Set()
+
+    // needed for triggering
+    ensures g0 union g1 == g1 union g0
+
+    // FIXME: Triggers in the following formulas are under question. 
+    ensures forall u:Ref, v:Ref :: { exists_path($$(g0),u,v) }{ exists_path($$(g0 union g1),u,v) } u in g0 && v in g0 && exists_path($$(g0),u,v) ==> exists_path($$(g0 union g1),u,v)
+    ensures forall u:Ref, v:Ref :: { exists_path($$(g1),u,v) }{ exists_path($$(g1 union g0),u,v) } u in g1 && v in g1 && exists_path($$(g1),u,v) ==> exists_path($$(g1 union g0),u,v)
+    ensures forall u:Ref, v:Ref :: { exists_path($$(g0),u,v) }{ exists_path($$(g0 union g1),u,v) } u in g0 && v in g0 && !exists_path($$(g0),u,v) ==> !exists_path($$(g0 union g1),u,v)
+    ensures forall u:Ref, v:Ref :: { exists_path($$(g1),u,v) }{ exists_path($$(g0 union g1),u,v) } u in g1 && v in g1 && !exists_path($$(g1),u,v) ==> !exists_path($$(g1 union g0),u,v)
+
+method unlink(g:Set[Ref], x:Ref)
+    requires x in g
+    requires PROTECTED_GRAPH(g,x, next)
+    ensures PROTECTED_GRAPH(g,x, next)
+    ensures x.next == null
+    ensures old(x.next) == null ==> $$(g) == old($$(g))
+    ensures old(x.next) != null ==> forall v1:Ref, v2:Ref :: 
+        { edge($$(g),v1,v2) } 
+            edge($$(g),v1,v2) <==> edge(old($$(g)),v1,v2) && !(v1==x && v2==old(x.next))
+    ensures old(x.next) != null ==> (forall v1:Ref, v2:Ref :: 
+        { exists_path($$(g),v1,v2) } 
+            (v1 != v2) ==> (
+                exists_path($$(g),v1,v2) <==> 
+                    exists_path(old($$(g)),v1,v2) && !(exists_path(old($$(g)),v1,x) && exists_path(old($$(g)),old(x.next),v2))))
+
+
+function apply_TCFraming3(g0_0: Set[Ref], g1_0: Set[Ref]): Bool
+  requires (forall n_0: Ref :: { n_0.next } (n_0 in g0_0) ==> acc(n_0.next, 1 / 2))
+  requires (forall n_0: Ref :: { n_0.next } (n_0 in g1_0) ==> acc(n_0.next, 1 / 2))
+  ensures g0_0 union g1_0 == g1_0 union g0_0
+  ensures (forall u_0: Ref, v_0: Ref :: 
+    { exists_path($$(g0_0), u_0, v_0) } { exists_path($$(g0_0 union g1_0), u_0, v_0) } 
+    (u_0 in g0_0) && ((v_0 in g0_0) && exists_path($$(g0_0), u_0, v_0)) ==> exists_path($$(g0_0 union g1_0), u_0, v_0))
+  ensures (forall u_0: Ref, v_0: Ref :: { exists_path($$(g1_0), u_0, v_0) } { exists_path($$(g1_0 union g0_0), u_0, v_0) } (u_0 in g1_0) && ((v_0 in g1_0) && exists_path($$(g1_0), u_0, v_0)) ==> exists_path($$(g1_0 union g0_0), u_0, v_0))
+  ensures (forall u_0: Ref, v_0: Ref :: { exists_path($$(g0_0), u_0, v_0) } { exists_path($$(g0_0 union g1_0), u_0, v_0) } (u_0 in g0_0) && ((v_0 in g0_0) && !exists_path($$(g0_0 union g1_0), u_0, v_0)) ==> !exists_path($$(g0_0), u_0, v_0))
+  ensures (forall u_0: Ref, v_0: Ref :: { exists_path($$(g1_0), u_0, v_0) } { exists_path($$(g1_0 union g0_0), u_0, v_0) } (u_0 in g1_0) && ((v_0 in g1_0) && !exists_path($$(g1_0 union g0_0), u_0, v_0)) ==> !exists_path($$(g1_0), u_0, v_0))
+  ensures (forall u_0: Ref, v_0: Ref :: { exists_path($$(g0_0), u_0, v_0) } { exists_path($$(g0_0 union g1_0), u_0, v_0) } (u_0 in g0_0) && ((v_0 in g0_0) && (!exists_path($$(g0_0), u_0, v_0) && ((CLOSED(g0_0) || CLOSED(g1_0)) && DISJOINT(g0_0, g1_0)))) ==> !exists_path($$(g0_0 union g1_0), u_0, v_0))
+  ensures (forall u_0: Ref, v_0: Ref :: { exists_path($$(g1_0), u_0, v_0) } { exists_path($$(g0_0 union g1_0), u_0, v_0) } (u_0 in g1_0) && ((v_0 in g1_0) && (!exists_path($$(g1_0), u_0, v_0) && ((CLOSED(g0_0) || CLOSED(g1_0)) && DISJOINT(g0_0, g1_0)))) ==> !exists_path($$(g1_0 union g0_0), u_0, v_0))
+  ensures CLOSED(g0_0) && DISJOINT(g0_0, g1_0) ==> (forall u_0: Ref, v_0: Ref :: { exists_path($$(g0_0 union g1_0), u_0, v_0) } (u_0 in g0_0) && (v_0 in g1_0) ==> !exists_path($$(g0_0 union g1_0), u_0, v_0))
+  ensures CLOSED(g1_0) && DISJOINT(g0_0, g1_0) ==> (forall u_0: Ref, v_0: Ref :: { exists_path($$(g0_0 union g1_0), v_0, u_0) } (u_0 in g0_0) && (v_0 in g1_0) ==> !exists_path($$(g0_0 union g1_0), v_0, u_0))
+//   ensures acyclic_graph($$(g0_0 union g1_0)) ==> acyclic_graph($$(g0_0))
+//   ensures IS_ZOPG(g0_0 union g1_0) ==> IS_ZOPG(g0_0) 

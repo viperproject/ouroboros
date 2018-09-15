@@ -1,0 +1,165 @@
+// field left:Ref
+// field right:Ref
+
+//method test_types(g0:Graph[_,_], n0:Node, g1:Graph[_,_], l0:List) returns (g_res:Graph[_,_], n_res:Node)
+
+/*
+method test_link(g0:Graph[_,_], x1:Node, x2:Node, x3:Node, g1:Graph[_,_])
+    requires x1 in g0
+    //requires
+{
+    x1.left := x1
+    x1.right := null
+}*/
+
+
+
+
+
+
+
+
+/*
+method test_link_1(g0:Graph[_,_], x:Node)
+    requires x in g0
+{
+    label l
+    x.left := x.right
+    x.right := null
+    //Doesn't verify because multigraphs are not allowed
+    assert(EDGE(g0, x, old[l](x.right)))
+}*/
+
+
+/*method test_link_2(g0:Graph[_,_], g1:Graph[_,_], x:Node)
+    requires x in g0
+{
+    x.left := x.right
+    x.right := null
+}*/
+
+
+/*
+method test_link_3(g0:Graph[_,_], g1:Graph[_,_], g2:Graph[_,_], x:Node)
+    requires x in g0
+{
+    x.left := x.right
+    x.right := null
+}*/
+
+/* //The more input graphs there are, the more no exit Axioms are inserted between unlink and link. This makes the verification slower
+method test_link_4(g0:Graph[_,_], g1:Graph[_,_], g2:Graph[_,_], g3: Graph[_,_], x:Node)
+    requires x in g0
+{
+    x.left := x.right
+    x.right := null
+}*/
+
+/*
+method test_link_3(g0:Graph[_,_], g1:Graph[_,_], g2:Graph[_,_], x:Node, y:Node)
+    requires x in g0
+{
+    x.left := x.right
+    x.right := null
+}*/
+
+/*
+method test_link_4(g0:Graph[_,_], g1:Graph[_,_], g2:Graph[_,_], g3:Graph[_,_], x:Node, y:Node)
+    requires x in g0
+{
+    x.left := x.right
+    x.right := null
+}*/
+
+
+
+/*
+method connect_DAGs(g0:Graph[_,_], g1:Graph[_,_], x0:Node, x1:Node, x:Node)
+    requires ACYCLIC(g0)
+    requires x0 in g0
+    requires x in g0
+
+    requires ACYCLIC(g1)
+    requires x1 in g1
+
+    requires forall n:Ref :: { EXISTS_PATH(g0,x,n) }  n in g0 ==> EXISTS_PATH(g0,x,n)
+    requires forall n:Ref :: { EXISTS_PATH(g0,n,x0) } n in g0 ==> EXISTS_PATH(g0,n,x0)
+
+    requires forall m:Ref :: { EXISTS_PATH(g1,x1,m) } m in g1 ==> EXISTS_PATH(g1,x1,m)
+
+    requires x0.left == null || x0.right == null
+
+    //ensures GRAPH(g0 union g1)
+    ensures forall n:Ref :: { EXISTS_PATH(g0 union g1,x,n) } n in (g0 union g1) ==> EXISTS_PATH(g0 union g1,x,n)
+
+    ensures ACYCLIC(g0 union g1)
+
+{
+    if ( x0.left == null ) {
+        //link_left(g0 union g1,x0,x1)
+        x0.right := x1
+    } else {
+        //link_right(g0 union g1,x0,x1)
+        x0.left := x1
+    }
+}*/
+
+field __CONFIG_OUROBOROS_TYPE_CHECK: Bool
+field __CONFIG_OUROBOROS_UPDATE_INVARIANTS: Bool
+field next:Node
+method join(g0:Graph[DAG,_], g1:Graph[DAG,Closed], x0:Node[g0], x1:Node[g1])
+  returns (x:Node[g0], last:Node[g0])
+    requires DISJOINT(g0, g1)
+    requires CLOSED(g0)
+    requires x0 in g0
+    requires x1 in g1
+    requires ACYCLIC_LIST_SEGMENT(g0)
+    requires ACYCLIC_LIST_SEGMENT(g1)
+    requires IS_GLOBAL_ROOT(g0,x0)
+    requires IS_GLOBAL_ROOT(g1,x1)
+    ensures forall u:Node :: EXISTS_PATH(g0 union g1,x,u) <==>
+                              old( EXISTS_PATH(g0,x0,u) ) ||
+			      old( EXISTS_PATH(g1,x1,u) )
+    ensures forall u:Node, v:Node :: EDGE(g0 union g1,u,v) <==>
+                                     old( EDGE(g0,u,v) ) ||
+				     old( EDGE(g1,u,v) ) ||
+				     (u==last && v==x1)
+    ensures ACYCLIC_LIST_SEGMENT(g0 union g1)
+{
+    last := x0
+    while ( last.next != null )
+    	invariant CLOSED(g0)
+        invariant ACYCLIC_LIST_SEGMENT(g0)
+        invariant ACYCLIC_LIST_SEGMENT(g1)
+        invariant IS_GLOBAL_ROOT(g0,x0)
+        invariant IS_GLOBAL_ROOT(g1,x1)
+        invariant last in g0
+        // invariant forall n:Node, m: Node :: {EDGE(g0, n, m)} EDGE(g0, n, m) <==> old(EDGE(g0, n, m) && create_edge(n, m) in EDGES(g0))
+        // invariant forall n:Node, m: Node :: {EDGE(g1, n, m)} EDGE(g1, n, m) <==> old(EDGE(g1, n, m) && create_edge(n, m) in EDGES(g1))
+        invariant EDGES(g0) == old(EDGES(g0))
+        invariant EDGES(g1) == old(EDGES(g1))
+    {
+        last := last.next
+    }
+    // assume trigger(forall n:Node, m: Node :: EDGE(g0, n, m) <==> create_edge(n, m) in EDGES(g0))
+    // assume trigger(forall n:Node, m: Node :: EDGE(g1, n, m) <==> create_edge(n, m) in EDGES(g1))
+
+    UNLINK(next, g0 union g1, last)
+
+    // NO_EXIT(g0 union g1, g0 union g1, g0) //TODO add automatically
+    // NO_EXIT(g0 union g1, g0 union g1, g1) //TODO add automatically
+    // FRAMING(g0, g1)                       //TODO add automatically
+    FRAMING(g0 union g1, g0)
+    // FRAMING(g0 union g1, g1)
+
+    LINK(next, g0 union g1, last, x1)
+    last.next := x1
+    x := x0
+    FRAMING(g0 union g1, g1)
+    FRAMING(g0 union g1, g0)
+}
+
+function trigger(b: Bool): Bool
+
+
+

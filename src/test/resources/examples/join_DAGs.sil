@@ -1,0 +1,41 @@
+field __CONFIG_OUROBOROS_TYPE_CHECK: Bool
+field __CONFIG_OUROBOROS_UPDATE_INVARIANTS: Bool
+
+field left: Node
+field right: Node
+method connect_DAGs(g0:Graph[DAG, _], g1:Graph[DAG, _], x0:Node[g0], x1:Node[g1], x:Node[g0])
+    requires CLOSED(g0)
+    requires ACYCLIC(g0)
+    requires x0 != null
+    requires x != null
+
+    requires CLOSED(g1)
+    requires ACYCLIC(g1)
+    requires x1 != null
+    
+    requires forall n:Ref :: { EXISTS_PATH(g0,x,n) } n in g0 ==> EXISTS_PATH(g0,x,n)
+    requires forall n:Ref :: { EXISTS_PATH(g0,n,x0) } n in g0 ==> EXISTS_PATH(g0,n,x0)
+    requires forall m:Ref :: { EXISTS_PATH(g1,x1,m) } m in g1 ==> EXISTS_PATH(g1, x1,m)
+
+    requires x0.left == null || x0.right == null
+
+    requires DISJOINT(g0,g1)
+
+    ensures CLOSED(g0 union g1)
+    ensures forall n:Ref :: { EXISTS_PATH(g0 union g1,x,n) } n in (g0 union g1) ==> EXISTS_PATH(g0 union g1,x,n)
+
+    ensures ACYCLIC(g0 union g1)
+
+{
+    var unionGraph: Graph[DAG, Closed] := g0 union g1
+
+    if ( x0.left == null ) {
+        LINK_DAG(left, g0 union g1,x0,x1)
+    } else {
+        LINK_DAG(right, g0 union g1,x0,x1)
+    }
+
+    FRAMING(g0, g1)
+    //assume ACYCLIC(g0 union g1) ==> ACYCLIC(g1) && ACYCLIC(g0)
+
+}

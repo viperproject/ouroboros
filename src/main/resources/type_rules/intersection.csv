@@ -1,0 +1,9 @@
+intersection,Graph,Closed Graph,DAG,Closed DAG,ZOPG,Closed ZOPG,Forest,Closed Forest
+Graph,Graph,Graph,DAG,DAG,ZOPG,ZOPG,Forest,Forest
+Closed Graph,Graph,Graph,DAG,DAG,ZOPG,ZOPG,Forest,Forest
+DAG,DAG,DAG,DAG,DAG,Forest,Forest,Forest,Forest
+Closed DAG,DAG,DAG,DAG,DAG,Forest,Forest,Forest,Forest
+ZOPG,ZOPG,ZOPG,Forest,Forest,ZOPG,ZOPG,Forest,Forest
+Closed ZOPG,ZOPG,ZOPG,Forest,Forest,ZOPG,ZOPG,Forest,Forest
+Forest,Forest,Forest,Forest,Forest,Forest,Forest,Forest,Forest
+Closed Forest,Forest,Forest,Forest,Forest,Forest,Forest,Forest,Forest

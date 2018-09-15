@@ -1,0 +1,91 @@
+field next: Node
+
+method reverse(g:Graph, xe:Node) returns (y:Node)
+    requires CLOSED(g)
+    requires xe != null
+
+    requires ACYCLIC(g)
+    requires UNSHARED(g)
+    requires FUNCTIONAL(g)
+
+    // total[xe,xe,ne]
+    requires forall v:Ref :: {EXISTS_PATH(g,xe,v)} v in g ==> EXISTS_PATH(g,xe,v)
+
+{
+    // Save the old graph
+    //var old_g:Set[Edge] := $$(g)
+
+    var t:Ref := null
+    var x:Node[g] := xe
+    y := null
+
+    while ( x != null )
+    
+        // Memory management
+        invariant CLOSED(g)
+        //invariant x != null ==> x in g 
+        //invariant y != null ==> y in g
+        
+        // (5.10)
+        
+        invariant forall n:Ref :: {EXISTS_PATH(g,x,n)}{EXISTS_PATH(g,y,n)} n in g ==> ( EXISTS_PATH(g,x,n) ||  EXISTS_PATH(g,y,n))
+        //invariant forall n:Ref :: {exists_path($$(g),x,n)}{exists_path($$(g),y,n)} n in g ==> (!exists_path($$(g),x,n) || !exists_path($$(g),y,n))
+        invariant ACYCLIC(g)
+        invariant UNSHARED(g)
+        invariant FUNCTIONAL(g)
+        
+
+        // (???)
+        invariant x != xe && x != null ==> !EXISTS_PATH(g,x,xe)
+        //invariant y != null ==> exists_path($$(g),y,xe)
+        invariant x != null ==> !EDGE(g,x,y)
+
+
+        // // (5.12)
+        // invariant forall v1:Ref, v2:Ref :: {edge(old_g,v1,v2)}{edge($$(g),v1,v2)} exists_path($$(g),x,v1)            ==> ( edge(old_g,v1,v2) <==> edge($$(g),v1,v2) )
+
+        // // (5.13)
+        // invariant forall v1:Ref, v2:Ref :: {edge(old_g,v1,v2)}{edge($$(g),v1,v2)} exists_path($$(g),y,v2) && v1 != y ==> ( edge(old_g,v1,v2) <==> edge($$(g),v2,v1) )
+        
+        // // (5.14)
+        // invariant y != null && x != null ==> edge(old_g,y,x)
+        
+        
+    {
+        // var save_g:Set[Edge] := $$(g)
+        var save_y: Ref := y
+        var save_x: Ref := x
+        
+        t := x.next
+        
+        //x.next := y
+        UNLINK_DAG(next, g,x)
+        LINK_DAG(next, g,x,y)
+
+        y := x
+        x := t
+
+        //Transformer (5.15)
+        //assert x != null ==> edge(save_g,save_x,x)
+        
+        //assert x != null ==> !edge($$(g),x,y)
+
+    
+        // assert save_y != null ==> forall v1:Ref, v2:Ref :: { v1 in g, v2 in g }//{edge(save_g,v1,v2)}{edge($$(g),v1,v2)} 
+        //     v1 in g && v2 in g ==> ( 
+        //         edge($$(g),v1,v2) <==> ( edge(save_g,v1,v2) && v1 != save_x ) || ( v1 == save_x && v2 == save_y )
+        //     )
+        
+        // Negated definition of TC[f] and the follow-up lemma 
+        //assert forall u:Ref, v:Ref :: !exists_path($$(g),u,v) ==> u != v && forall w:Ref :: !edge($$(g),u,w) || !exists_path($$(g),w,v)
+        //assert forall u:Ref, v:Ref :: !exists_path($$(g),u,v) ==> !edge($$(g),u,v)
+
+
+        //assert save_y != null && exists_path($$(g),y,save_x) && save_y != y ==> ( edge(old_g,save_y,save_x) <==> edge($$(g),save_x,save_y) )
+        //assert save_y != null ==> ( exists_path($$(g),y,save_x) && save_y != y ==> ( edge(old_g,save_y,save_x) <==> edge($$(g),save_x,save_y) ) )
+        //assert save_y != null ==> ( forall v1:Ref,v2:Ref :: exists_path($$(g),y,v2) && v1 != y ==> ( edge(old_g,v1,v2) <==> edge($$(g),v2,v1) ) )
+
+
+        //assert false    
+    }
+}

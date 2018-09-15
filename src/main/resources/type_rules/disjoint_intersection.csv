@@ -1,0 +1,9 @@
+disjoint intersection,Graph,Closed Graph,DAG,Closed DAG,ZOPG,Closed ZOPG,Forest,Closed Forest
+Graph,Closed Forest,Closed Forest,Closed Forest,Closed Forest,Closed Forest,Closed Forest,Closed Forest,Closed Forest
+Closed Graph,Closed Forest,Closed Forest,Closed Forest,Closed Forest,Closed Forest,Closed Forest,Closed Forest,Closed Forest
+DAG,Closed Forest,Closed Forest,Closed Forest,Closed Forest,Closed Forest,Closed Forest,Closed Forest,Closed Forest
+Closed DAG,Closed Forest,Closed Forest,Closed Forest,Closed Forest,Closed Forest,Closed Forest,Closed Forest,Closed Forest
+ZOPG,Closed Forest,Closed Forest,Closed Forest,Closed Forest,Closed Forest,Closed Forest,Closed Forest,Closed Forest
+Closed ZOPG,Closed Forest,Closed Forest,Closed Forest,Closed Forest,Closed Forest,Closed Forest,Closed Forest,Closed Forest
+Forest,Closed Forest,Closed Forest,Closed Forest,Closed Forest,Closed Forest,Closed Forest,Closed Forest,Closed Forest
+Closed Forest,Closed Forest,Closed Forest,Closed Forest,Closed Forest,Closed Forest,Closed Forest,Closed Forest,Closed Forest
