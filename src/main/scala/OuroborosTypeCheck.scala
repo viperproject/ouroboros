@@ -251,9 +251,9 @@ class OuroborosTypeCheck {
             defCheckExp match {
               case None => None
               case Some(toCheckExps) =>
-                val pureToCheckExps = toCheckExps.filter(_.isPure)
+                val pureToCheckExps = defReachesExp +: toCheckExps.filter(_.isPure)
                 val nonPureToCheckExps = toCheckExps.filter(exp => !exp.isPure)
-                val pureCheck = OuroborosHelper.ourFold[Exp](defReachesExp +: pureToCheckExps, TrueLit()(), (exp1, exp2) => And(exp1, exp2)())
+                val pureCheck = OuroborosHelper.ourFold[Exp](pureToCheckExps, TrueLit()(), (exp1, exp2) => And(exp1, exp2)())
                 val nonPureCheck =
                   nonPureToCheckExps.map(nonPureExp => Implies(defReachesExp, nonPureExp)())
                   OuroborosHelper.ourFold[Exp](defReachesExp +: nonPureToCheckExps, TrueLit()(), (exp1, exp2) => And(exp1, exp2)())

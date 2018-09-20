@@ -148,15 +148,16 @@ method join(g0:Graph[DAG,_], g1:Graph[DAG,Closed], x0:Node[g0], x1:Node[g1])
 
     // NO_EXIT(g0 union g1, g0 union g1, g0) //TODO add automatically
     // NO_EXIT(g0 union g1, g0 union g1, g1) //TODO add automatically
-    // FRAMING(g0, g1)                       //TODO add automatically
-    FRAMING(g0 union g1, g0)
+    FRAMING(g0, g1)                       //TODO add automatically
+    // FRAMING(g0 union g1, g0)
     // FRAMING(g0 union g1, g1)
 
     LINK(next, g0 union g1, last, x1)
     last.next := x1
     x := x0
-    FRAMING(g0 union g1, g1)
-    FRAMING(g0 union g1, g0)
+    FRAMING(g0, g1)
+    // FRAMING(g0 union g1, g1)
+    // FRAMING(g0 union g1, g0)
 }
 
 function trigger(b: Bool): Bool

@@ -39,10 +39,10 @@ method ringInsert(g:Graph[ZOPG, _], start:Node[g], x:Int)
     ensures new_start in new_g
     ensures !(new_node2 in g) && new_node2 in new_g
 
-    ensures forall n:Ref, m:Ref ::
-        { exists_path($$(new_g),n,m) }
-            n in new_g && m in new_g
-                ==> exists_path($$(new_g),n,m) && exists_path($$(new_g),m,n)
+    // ensures forall n:Ref, m:Ref ::
+    //     { exists_path($$(new_g),n,m) }
+    //         n in new_g && m in new_g
+    //             ==> exists_path($$(new_g),n,m) && exists_path($$(new_g),m,n)
 {
     //var n:Node := NEW()
     //new_g,
@@ -57,13 +57,15 @@ method ringInsert(g:Graph[ZOPG, _], start:Node[g], x:Int)
 
     var node:Node[new_g] := start
 
-    //label beforeWhile
+    label beforeWhile
+    //assert new_g == UNIVERSE
     while ( !( node.val <= x && x < node.next.val
                || node.next == start && ( node.val <= x || x < start.val ) ) )
 
         invariant RING(g)
         invariant CLOSED(g)
         invariant UNSHARED_CONNECTED(g)//FUNCTIONAL(g) && UNSHARED(g) && (forall u: Ref, v: Ref :: {exists_path($$(g), v, u)}{exists_path($$(g), u, v)} u in g && v in g ==> exists_path($$(g), u, v) || exists_path($$(g), v, u)) //&& CONNECTED(g)
+        invariant new_g == UNIVERSE
         invariant forall n: Node :: {n.next} n in g ==> n.next in g && n.next != null
         invariant forall n: Node :: {n.val} n in new_g ==> acc(n.val, write)
             invariant forall n:Ref :: { n.next.val } n in g && n.next != start ==> n.val <= n.next.val
@@ -73,7 +75,7 @@ method ringInsert(g:Graph[ZOPG, _], start:Node[g], x:Int)
         invariant forall n:Node, m:Node ::
             { EXISTS_PATH(g,n,m) }
                 n in g && m in g ==> EXISTS_PATH(g,n,m) && EXISTS_PATH(g,m,n)
-        //invariant (forall n: Ref :: {n.next} n in UNIVERSE ==> old[beforeWhile](n.next) == n.next)
+        invariant (forall n: Ref :: {n.next} n in UNIVERSE ==> old[beforeWhile](n.next) == n.next)
     {
         node := node.next
     }
