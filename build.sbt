@@ -33,7 +33,7 @@ lazy val silver = RootProject(new java.io.File("../silver"))
 lazy val ouroboros = {
     var p = (project in file("."))
 
-    if (isBuildServer) p = p.dependsOn(silver)
+    if (!isBuildServer) p = p.dependsOn(silver)
 
     p = p.settings(
       jenkins := { printWhetherIsJenkins },
