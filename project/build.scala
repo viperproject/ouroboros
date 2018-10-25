@@ -35,8 +35,8 @@ object ARPBuild extends Build {
         baseSettings
           ++ Seq(
           name := "Ouroboros",
-          mainClass in Compile := Some("viper.carbon.Carbon"),
-          mainClass in assembly := Some("viper.carbon.Carbon"),
+          //mainClass in Compile := Some("viper.carbon.Carbon"),
+          //mainClass in assembly := Some("viper.carbon.Carbon"),
           assemblyJarName in assembly := "carbon-ouroboros.jar",
           resourceDirectory in assembly := baseDirectory.value / "src/main/resources",
           test in assembly := {},
@@ -118,7 +118,7 @@ object ARPBuild extends Build {
   def internalDep = if (isBuildServer) Nil else Seq(
     // only one of silicon/carbon can be active at the same time!
     //dependencies.siliconSrc % "compile->compile;test->test",
-    dependencies.carbonSrc % "compile->compile;test->test",
+    //dependencies.carbonSrc % "compile->compile;test->test",
     dependencies.silSrc % "compile->compile;test->test"
   )
 
