@@ -8,30 +8,44 @@ lazy val baseSettings = Seq(
 
 def isBuildServer = sys.env.contains("BUILD_TAG")
 
+lazy val jenkins = taskKey[Unit]("Informs the builder whether Jenkins-specific build setting have been activated.")
+
+def printWhetherIsJenkins = {
+  if (isBuildServer)
+    println("[Arshavir] Using Jenkins-specific build settings.")
+  else
+    println("[Arshavir] Using local build settings. This might not work in Jenkins.")
+}
 
 //def internalDep = if (isBuildServer) Nil else Seq(
 //    dependencies.silSrc % "compile->compile;test->test"
 //)
 
-//def externalDep = Seq(
-//      dependencies.jgrapht,
-//      dependencies.commonsIO,
-//      dependencies.commonsPool,
- //     dependencies.scallop) ++ dependencies.logging
-      //++ (if (isBuildServer) Seq(dependencies.sil % "compile->compile;test->test") else Nil)
+def externalDep =
+    if (isBuildServer) {
+        Seq("viper" %% "silver" %  "0.1-SNAPSHOT" from s"file:///lib/silver.jar")
+    } else {
+        Nil
+    }
 
 lazy val silver = RootProject(new java.io.File("../silver"))
 
-lazy val ouroboros = (project in file("."))
-    .dependsOn(silver)
-    .settings(
+lazy val ouroboros = {
+    var p = (project in file("."))
+
+    if (isBuildServer) p = p.dependsOn(silver)
+
+    p = p.settings(
+      jenkins := { printWhetherIsJenkins },
+      (Compile / compile) := ((Compile / compile) dependsOn jenkins).value,
       baseSettings,
       name := "Ouroboros",
-      //libraryDependencies ++= Seq("viper" % "silver" %  "0.1-SNAPSHOT"),
+      libraryDependencies ++= externalDep,
       assembly / assemblyJarName := "carbon-ouroboros.jar",
       assembly / test := {}
     )
-
+    p
+}
 
 lazy val ourRun = taskKey[Unit]("A custom run task for our-plugin.")
 
