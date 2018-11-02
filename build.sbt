@@ -42,7 +42,12 @@ lazy val ouroboros = {
       name := "Ouroboros",
       libraryDependencies ++= externalDep,
       assembly / assemblyJarName := "carbon-ouroboros.jar",
-      assembly / test := {}
+      assembly / test := {},
+      testOptions in Test += Tests.Setup(classLoader =>
+          classLoader
+              .loadClass("org.slf4j.LoggerFactory")
+              .getMethod("getLogger", classLoader.loadClass("java.lang.String"))
+              .invoke(null, "ROOT"))
     )
     p
 }
