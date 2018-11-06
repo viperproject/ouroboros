@@ -1,0 +1,6 @@
+/**
+ * Even if the definitions in this file are inlined, they will still be available to the user.
+ * For (internal) definitions which are not available to the user after the frontend has completed inlining, please refer to TrCloMacros.sil
+ */
+
+function IS_ZOPG(g: Set[Ref]): Bool
