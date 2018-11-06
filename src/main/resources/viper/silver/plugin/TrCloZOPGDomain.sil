@@ -33,16 +33,16 @@ domain ZeroOnePathGraphTCs {
         forall EG:Set[Edge], x:Ref, y:Ref, v:Ref ::
             { DEP(EG,x,y,x,v) }
             { exists_path_(EG,x,y), exists_path(EG,v,y) }
-            { edge(EG,x,v), exists_path_(EG,v,y) }
-                exists_path_(EG,x,y) && edge(EG,x,v)  && x != v && exists_path_(EG,v,y) ==> DEP_(EG,x,y,x,v)
+            { edge(EG,x,v), exists_path(EG,v,y) }
+                /*exists_path_(EG,x,y) &&*/ edge(EG,x,v)  && x != v && exists_path_(EG,v,y) ==> DEP_(EG,x,y,x,v)
     }
 
     axiom ax_TailTriangleImposable {
         forall EG:Set[Edge], x:Ref, y:Ref, u:Ref ::
             { DEP(EG,x,y,u,y) }
             { exists_path_(EG,x,y), exists_path(EG,x,u) }
-            { edge(EG,u,y), exists_path_(EG,x,u) }
-                exists_path_(EG,x,y) && exists_path_(EG,x,u) && edge(EG,u,y) && u != y ==> DEP_(EG,x,y,u,y)
+            { edge(EG,u,y), exists_path(EG,x,u) }
+                /*exists_path_(EG,x,y) &&*/ exists_path_(EG,x,u) && edge(EG,u,y) && u != y ==> DEP_(EG,x,y,u,y)
     }
 
     axiom ax_NoEdgeNoDEP {
@@ -138,6 +138,13 @@ domain ZeroOnePathGraphTCs {
             { DEP(EG, x, n, x, y) }
                 DEP(EG, x, n, x, y) ==> exists_path(EG, x, n)
     }*/
+
+    axiom ax_DepNeedsCoAlignedPathAndEdge {
+          forall EG: Set[Edge], x:Ref, y:Ref, u:Ref, v:Ref ::
+            { DEP(EG, x, y, u, v) }
+            { exists_path(EG, x, u), exists_path(EG, v, y) }
+                !exists_path_(EG, x, u) || !exists_path_(EG, v, y) ==> !DEP_(EG, x, y, u, v)
+    }
 }
 
 
@@ -205,6 +212,7 @@ method link_ZOPG_$field$(g:Set[Ref], from:Ref, to:Ref)
     ensures to != null ==> forall n:Ref :: { exists_path($$(g), to, n) }{ exists_path($$(g), from, n) } n in g && n != to   ==> __learn_trigger__(DEP($$(g),   to, n,   to,   to.$field$))
     ensures to != null ==> forall n:Ref :: { exists_path($$(g), n, to) }{ exists_path($$(g), n, from) } n in g && n != from ==> __learn_trigger__(DEP($$(g), n, from, n, n.$field$))
     ensures to != null ==> forall n:Ref :: { DEP($$(g), to, n, to, to.$field$) }{ DEP($$(g), from, n, from, from.$field$) } n in g ==> __learn_trigger__(exists_path($$(g), to, n))   && __learn_trigger__(exists_path(old($$(g)), to, n))
+    ensures forall n:Ref, m:Ref :: { exists_path($$(g), n, m) } n in g && m in g ==> __learn_trigger__( exists_path($$(g), n, from) ) && __learn_trigger__( exists_path($$(g), from, m) )
 
 
 define __psi__(EG, alpha,beta, x,y,u,v,w,z) (
