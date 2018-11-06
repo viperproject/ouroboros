@@ -47,6 +47,8 @@ domain TrClo {
     function edge_(EG:Set[Edge], p:Ref, s:Ref): Bool
 
     function succs(EG:Set[Edge], pred:Ref): Set[Ref]
+    function skolem_w(EG: Set[Edge], start: Ref, end: Ref): Ref
+
 
     axiom ax_Succs {
         forall EG:Set[Edge], pred:Ref, succ:Ref ::
@@ -131,18 +133,37 @@ domain TrClo {
                 exists_path(EG,start,end) <==> exists_path_(EG,start,end)
     }
 
-    /** T1 -- Ref-oriented encoding */
-    axiom ax_ExistsPath {
+    axiom ax_EdgeMeansPath {
         forall EG:Set[Edge], start:Ref, end:Ref ::
-            { exists_path(EG,start,end) }
-            { edge(EG,start,end) }
-                exists_path_(EG,start,end) <==>
-                    start == end
-                    || !(forall w:Ref ::
-                        { edge(EG, start, w)}{ exists_path(EG, w, end) } //TODO multipattern; transformed exists to not forall
-                            !(edge(EG,start,w) && exists_path_(EG,w,end)))
-//                    || exists w:Ref :: edge(EG,start,w) && exists_path_(EG,w,end)
+            { exists_path(EG, start, end) }
+            // { edge(EG, start, end) }
+                edge(EG, start, end) ==> exists_path(EG, start, end)
     }
+
+    /** T1 -- Ref-oriented encoding */
+     axiom ax_ExistsPath {
+        (forall EG: Set[Edge], start: Ref, end: Ref ::
+            { exists_path(EG, start, end) }
+            //{ edge(EG, start, end) } -- using ax_EdgeMeansPath instead
+                exists_path_(EG, start, end) ==> (start == end || (edge(EG, start, skolem_w(EG,start,end)) && exists_path_(EG, skolem_w(EG,start,end), end))))
+        &&
+        (forall EG: Set[Edge], start: Ref, middle: Ref, end: Ref ::
+            { edge(EG, start, middle), exists_path(EG, middle, end) }
+            { edge(EG, start, middle), exists_path(EG, start, end) }
+            { exists_path(EG, middle, end), exists_path(EG, start, end) }
+                (start == end || (edge(EG, start, middle) && exists_path_(EG, middle, end))) ==> exists_path_(EG, start, end) )
+      }
+//    axiom ax_ExistsPath {
+//        forall EG:Set[Edge], start:Ref, end:Ref ::
+//            { exists_path(EG,start,end) }
+//            { edge(EG,start,end) }
+//                exists_path_(EG,start,end) <==>
+//                    start == end
+//                    || !(forall w:Ref ::
+//                        { edge(EG, start, w)}{ exists_path(EG, w, end) } //TODO multipattern; transformed exists to not forall
+//                            !(edge(EG,start,w) && exists_path_(EG,w,end)))
+////                    || exists w:Ref :: edge(EG,start,w) && exists_path_(EG,w,end)
+//    }
 
     /** Follows from T1 && IND */
     axiom ax_ExistsPathTrans {
@@ -196,3 +217,10 @@ domain TrClo {
     forall g: Set[Ref], g1: Set[Ref], g2: Set[Ref] :: {g union (g1 union g2)} {(g union g1) union g2} (g union (g1 union g2)) == ((g union g1) union g2)
   }
 }*/
+
+function $$(nodes: Set[Ref]): Set[Edge]
+  //requires (forall n: Ref :: { n.next } (n in nodes) ==> acc(n.next, 1 / 2))
+  //ensures (forall p: Ref, s: Ref :: { create_edge(p, s) } ((p in nodes) && (s in nodes) && p.next == s && p != s) == (create_edge(p, s) in result))
+  ensures (forall p: Ref, s: Ref :: { (p in nodes),(s in nodes),exists_path(result, p, s) } (p in nodes) && exists_path(result, p, s) ==> (s in nodes))
+  ensures (forall p: Ref, s: Ref :: { (p in nodes),(s in nodes),exists_path(result, p, s) } (s in nodes) && exists_path(result, p, s) ==> (p in nodes))
+
