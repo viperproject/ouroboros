@@ -369,7 +369,10 @@ class OuroborosStmtHandler {
         val createCall = MethodCall(OuroborosNames.getIdentifier("create_node"), Seq(universe), Seq(LocalVar(fresh_x)(Ref)))(call.pos, call.info, call.errT)
         val nodeAssign = LocalVarAssign(node, LocalVar(fresh_x)(Ref))(call.pos, call.info, call.errT)
 
-        val framingAxioms = getFramingAxioms(ExplicitSet(Seq(node.duplicateMeta((node.pos, node.info, node.errT)).asInstanceOf[Exp]))(), input, wrapper)
+        val framingAxioms = if (OuroborosConfig.wisdoms)
+          getFramingAxioms(ExplicitSet(Seq(node.duplicateMeta((node.pos, node.info, node.errT)).asInstanceOf[Exp]))(), input, wrapper)
+        else
+          Seqn(Seq(), Seq())()
 
         wrapper.newlyDeclaredVariables.get(wrapper.scope) match {
           case None => wrapper.newlyDeclaredVariables.put(wrapper.scope, Set(fresh_xDecl))
@@ -620,7 +623,10 @@ class OuroborosStmtHandler {
       case Some(graphIsInit) =>
         val initDecl = graphIsInit.isInitDecl
         wrapper.localGraphs.put(lhs.name, GraphIsInit(graphIsInit.typ, initDecl, GraphState.ALWAYS_INITIALIZED))
-        val framingAxioms = getFramingAxioms(LocalVar(lhs.name)(SetType(Ref)), wrapper.input, wrapper)
+        val framingAxioms = if (OuroborosConfig.wisdoms)
+          getFramingAxioms(LocalVar(lhs.name)(SetType(Ref)), wrapper.input, wrapper)
+        else
+          Seqn(Seq(), Seq())()
         val nodeChecks: Iterable[Stmt] = wrapper.localNodes.collect({
           case (nodeName, graphs) if graphs.contains(lhs.name) =>
             val localGraphsMapping: mutable.Map[String, (LocalVarDecl, GraphState)] = getLocalGraphMapping(wrapper)
@@ -776,7 +782,7 @@ class OuroborosStmtHandler {
     })
 
 
-    val userDefinedFramingFunctions: Iterable[If] = wrapper.localGraphs.map(
+    val userDefinedFramingFunctions: Iterable[Stmt] = wrapper.localGraphs.map(
       graphSpec => {
         val graphName = graphSpec._1
         val graphIsInit = graphSpec._2
@@ -789,15 +795,20 @@ class OuroborosStmtHandler {
         }
 
         val graph: LocalVar = LocalVar(graphName)(SetType(Ref), thisGraph.pos, thisGraph.info, thisGraph.errT)
-        If(
-          isInit,
-          Seqn(
-            Seq(Inhale(
-              FuncApp(framingFunction, Seq(graph, thisGraph))(thisGraph.pos, thisGraph.info, thisGraph.errT)
-            )(thisGraph.pos, SimpleInfo(Seq("", s"Apply TC Framing for $graph and $thisGraph setminus $graph", "")), thisGraph.errT)),
-            Seq())(),
-          Seqn(Seq(),Seq())()
-        )()
+        thisGraph match {
+          case tg: LocalVar if tg == graph =>
+            Seqn(Seq(),Seq())()
+          case _ =>
+            If(
+              isInit,
+              Seqn(
+                Seq(Inhale(
+                  FuncApp(framingFunction, Seq(graph, thisGraph))(thisGraph.pos, thisGraph.info, thisGraph.errT)
+                )(thisGraph.pos, SimpleInfo(Seq("", s"Apply TC Framing for $graph and $thisGraph setminus $graph", "")), thisGraph.errT)),
+                Seq())(),
+              Seqn(Seq(),Seq())()
+            )()
+        }
       }
     )
 
