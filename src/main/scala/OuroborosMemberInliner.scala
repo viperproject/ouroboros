@@ -27,14 +27,19 @@ object OuroborosMemberInliner {
   def inlineMethodCall(mc: MethodCall, input: Program, pos: Position, info: Info, errT: ErrorTrafo): Stmt = {
     val calledMethod = input.findMethod(mc.methodName)
     val methodArgs = calledMethod.formalArgs.map(arg => arg.name)
-    val callArgs = mc.args
+    val methodReturns = calledMethod.formalReturns.map(arg => arg.name)
+    val callArgs: Seq[Exp] = mc.args
+    val callTargets = mc.targets
     val label = Label(
       OuroborosNames.getNewName(s"inlinedMethodCall_${mc.methodName}"), Seq())()
     assert(methodArgs.size == callArgs.size)
     val contractsRewriter = StrategyBuilder.Slim[Node](
       {
         case x: LocalVar if methodArgs.contains(x.name) =>
+          // clone the call argument expression that corresponds to the local method argument x
           callArgs(methodArgs.indexOf(x.name)).duplicateMeta((pos, info, errT))
+        case y: LocalVar if methodReturns.contains(y.name) =>
+          callTargets(methodReturns.indexOf(y.name)).duplicateMeta((pos, info, errT))
         case o: Old => LabelledOld(o.exp, label.name)(pos, info, errT)
         case n => n.duplicateMeta((pos, info, errT))
       }

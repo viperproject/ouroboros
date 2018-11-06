@@ -149,6 +149,11 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
       case Some(p) => PProgram(p.imports, Seq(), p.domains, p.fields, p.functions, p.predicates, p.methods, p.errors)
     }
 
+    val persistentMacroFile : PProgram = preLoadSilFile("/viper/silver/plugin/TrCloPersistentMacros.sil") match {
+      case None => PProgram(Seq(), Seq(), Seq(), Seq(), Seq(), Seq(), Seq(), Seq())
+      case Some(p) => PProgram(p.imports, Seq(), p.domains, p.fields, p.functions, p.predicates, p.methods, p.errors)
+    }
+
     val zOPGDomain: PProgram  = preLoadSilFile("/viper/silver/plugin/TrCloZOPGDomain.sil") match {
       case None => PProgram(Seq(), Seq(), Seq(), Seq(), Seq(), Seq(), Seq(), Seq())
       case Some(p) => PProgram(p.imports, Seq(), p.domains, p.fields, p.functions, p.predicates, p.methods, p.errors)
@@ -164,24 +169,26 @@ class OuroborosPlugin(val reporter: Reporter, val logger: Logger, val cmdArgs: S
     //logger.debug("MethodKeyWords: " + methodKeyWords)
 
     val macroSynthesizedFile = OuroborosSynthesize.synthesize(macroFile, ref_fields)
+    val persistentMacroSynthesizedFile = OuroborosSynthesize.synthesize(persistentMacroFile, ref_fields)
     val zOPGDomainSynthesized = OuroborosSynthesize.synthesize(zOPGDomain, ref_fields)
 
     //Fresh Name Generation
     preamble = OuroborosNames.getNewNames(preamble, ref_fields)
     val macroDefinitivePAST: PProgram = OuroborosNames.getNewNames(macroSynthesizedFile, ref_fields)
+    val persistentMacroDefinitivePAST: PProgram = OuroborosNames.getNewNames(persistentMacroSynthesizedFile, ref_fields)
     val zOPGDomainDefinitive = OuroborosNames.getNewNames(zOPGDomainSynthesized, ref_fields)
 
     zOPGdomainNames ++= (zOPGDomainDefinitive.domains ++ zOPGDomainDefinitive.methods ++ zOPGDomainDefinitive.functions).map(d => d.idndef.name)
 
     preamble = PProgram(
-      preamble.imports ++ macroDefinitivePAST.imports,
+      preamble.imports ++ macroDefinitivePAST.imports ++ persistentMacroDefinitivePAST.imports,
       Seq(),//preamble.macros ++ macroDefinitivePAST.macros,
-      preamble.domains ++ macroDefinitivePAST.domains ++ zOPGDomainDefinitive.domains,
-      preamble.fields ++ macroDefinitivePAST.fields,
-      preamble.functions ++ macroDefinitivePAST.functions ++ zOPGDomainDefinitive.functions,
-      preamble.predicates ++ macroDefinitivePAST.predicates,
-      preamble.methods ++ macroDefinitivePAST.methods ++ zOPGDomainDefinitive.methods,
-      preamble.errors ++ macroDefinitivePAST.errors
+      preamble.domains ++ macroDefinitivePAST.domains ++ persistentMacroDefinitivePAST.domains ++ zOPGDomainDefinitive.domains,
+      preamble.fields ++ macroDefinitivePAST.fields ++ persistentMacroDefinitivePAST.fields,
+      preamble.functions ++ macroDefinitivePAST.functions ++ persistentMacroDefinitivePAST.functions ++ zOPGDomainDefinitive.functions,
+      preamble.predicates ++ macroDefinitivePAST.predicates ++ persistentMacroDefinitivePAST.predicates,
+      preamble.methods ++ macroDefinitivePAST.methods ++ persistentMacroDefinitivePAST.methods ++ zOPGDomainDefinitive.methods,
+      preamble.errors ++ macroDefinitivePAST.errors ++ persistentMacroDefinitivePAST.errors
     )
 
 

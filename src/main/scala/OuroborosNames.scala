@@ -35,17 +35,21 @@ object OuroborosNames {
 
   var graph_keywords: mutable.Map[String, String] = mutable.Map.empty[String, String]
   var used_names: Set[String] = Set[String]()
+  // Definitions that are not available to the user after inlining.
   var macroNames: mutable.Map[String, Option[ErrorTrafo]] = mutable.Map.empty[String, Option[ErrorTrafo]]//Set()
+  // Definitions that are available to the user after inlining.
+  var persistentMacroNames: mutable.Map[String, Option[ErrorTrafo]] = mutable.Map.empty[String, Option[ErrorTrafo]]
   var ref_fields: Seq[String] = Seq[String]()
 
   def reset() = {
     graph_keywords = mutable.Map.empty[String, String]
     used_names = Set[String]()
     macroNames = mutable.Map.empty[String, Option[ErrorTrafo]]
+    persistentMacroNames = mutable.Map.empty[String, Option[ErrorTrafo]]
     ref_fields = Seq[String]()
   }
 
-  def getIdentifier(name : String): String = graph_keywords.get(name) match{
+  def getIdentifier(name : String): String = graph_keywords.get(name) match {
     case None => name //TODO maybe throw error
     case Some(newName) => newName
   }
