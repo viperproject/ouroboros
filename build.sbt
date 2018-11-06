@@ -23,17 +23,22 @@ def printWhetherIsJenkins = {
 
 def externalDep =
     if (isBuildServer) {
-        Seq("viper" %% "silver" %  "0.1-SNAPSHOT" from s"file:///lib/silver.jar")
+        Seq("viper" %% "silver" %  "0.1-SNAPSHOT" from "file:///lib/silver.jar",
+            "viper" %% "carbon" % "0.1-SNAPSHOT" from "file:///lib/carbon.jar")
     } else {
         Nil
     }
 
+lazy val carbon = RootProject(new java.io.File("../carbon"))
 lazy val silver = RootProject(new java.io.File("../silver"))
 
 lazy val ouroboros = {
     var p = (project in file("."))
 
-    if (!isBuildServer) p = p.dependsOn(silver)
+    if (!isBuildServer) {
+      p = p.dependsOn(silver)
+      p = p.dependsOn(carbon)
+    }
 
     p = p.settings(
       jenkins := { printWhetherIsJenkins },
