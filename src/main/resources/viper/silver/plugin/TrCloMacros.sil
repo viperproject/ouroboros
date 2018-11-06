@@ -1,3 +1,7 @@
+/**
+ * If the definitions in this file are inlined, they will no longer be available to the user.
+ * For definitions which need to be available to the user even after the frontend has completed inlining, please refer to TrCloPersistentMacros.sil
+ */
 
 function DISJOINT(g1: Set[Ref], g2:Set[Ref]): Bool
 {
@@ -16,7 +20,6 @@ function CLOSED(g: Set[Ref]): Bool
     (forall n: Ref :: { (n.$field$ in g) } { (n in g),n.$field$ } (n in g) && n.$field$ != null ==> (n.$field$ in g))
 }
 
-function IS_ZOPG(g: Set[Ref]): Bool
 function apply_TCFraming(g0:Set[Ref], g1:Set[Ref]): Bool
     //requires GRAPH(g0) && GRAPH(g1)
     //requires forall n:Ref :: {n.l} n in g0 ==> acc(n.l)
