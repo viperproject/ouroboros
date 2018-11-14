@@ -15,6 +15,17 @@ requires x0.next == x1
 ensures forall n:Ref :: { EXISTS_PATH(g1,x1,n), n in g1 } n in g1 ==> EXISTS_PATH(g1,x1,n)
 
 {
+    var EG: Set[Edge] := EDGES(g0 union g1)
+    
     UNLINK_DAG(next, g0 union g1, x0)
     FRAMING(g0, g1) //Framing Axiom needs to be added in the end of the method
+
+    assert 
+        forall start: Node, middle: Node, end: Node :: 
+        { edge(EG, start, middle),exists_path(EG, middle, end) } 
+            edge(EG, start, middle) && exists_path(EG, middle, end) ==> exists_path(EG, start, end)
+    assert forall n: Node, m: Node :: { exists_path($$(g0 union g1), n, m)}
+        n in g0 union g1 && m in g0 union g1 && 
+        exists_path(EG, n, x0) &&  exists_path(EG, old(x0.next), m) 
+        ==> exists_path(EG, n, m)
 }

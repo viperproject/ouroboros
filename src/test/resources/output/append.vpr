@@ -39,6 +39,8 @@ domain TrClo {
   
   function succs(EG: Set[Edge], pred: Ref): Set[Ref]
   
+  function skolem_w(EG: Set[Edge], start: Ref, end: Ref): Ref
+  
   axiom ax_Succs {
     (forall EG: Set[Edge], pred: Ref, succ: Ref :: { (succ in succs(EG, pred)) } (succ in succs(EG, pred)) == edge_(EG, pred, succ))
   }
@@ -67,8 +69,12 @@ domain TrClo {
     (forall EG: Set[Edge], start: Ref, end: Ref :: { exists_path(EG, start, end) } exists_path(EG, start, end) == exists_path_(EG, start, end))
   }
   
+  axiom ax_EdgeMeansPath {
+    (forall EG: Set[Edge], start: Ref, end: Ref :: { exists_path(EG, start, end) } edge(EG, start, end) ==> exists_path(EG, start, end))
+  }
+  
   axiom ax_ExistsPath {
-    (forall EG: Set[Edge], start: Ref, end: Ref :: { exists_path(EG, start, end) } { edge(EG, start, end) } exists_path_(EG, start, end) == (start == end || !(forall w_0: Ref :: { edge(EG, start, w_0) } { exists_path(EG, w_0, end) } !(edge(EG, start, w_0) && exists_path_(EG, w_0, end)))))
+    (forall EG: Set[Edge], start: Ref, end: Ref :: { exists_path(EG, start, end) } exists_path_(EG, start, end) ==> start == end || edge(EG, start, skolem_w(EG, start, end)) && exists_path_(EG, skolem_w(EG, start, end), end)) && (forall EG: Set[Edge], start: Ref, middle: Ref, end: Ref :: { edge(EG, start, middle),exists_path(EG, middle, end) } { edge(EG, start, middle),exists_path(EG, start, end) } { exists_path(EG, middle, end),exists_path(EG, start, end) } start == end || edge(EG, start, middle) && exists_path_(EG, middle, end) ==> exists_path_(EG, start, end))
   }
   
   axiom ax_ExistsPathTrans {
@@ -107,6 +113,11 @@ domain List {
   
 }
 
+domain Assume {
+  
+  
+}
+
 field next: Ref
 
 function $$(nodes: Set[Ref]): Set[Edge]
@@ -132,14 +143,14 @@ function CLOSED(g_0: Set[Ref]): Bool
   (forall n_0: Ref :: { (n_0.next in g_0) } { (n_0 in g_0),n_0.next } (n_0 in g_0) && n_0.next != null ==> (n_0.next in g_0))
 }
 
-function IS_ZOPG(g_0: Set[Ref]): Bool 
-
-
 function update_DAG_invariant(g_0: Set[Ref], x_0: Ref, y_0: Ref): Bool
   requires !((null in g_0)) && (forall n_0: Ref :: { n_0.next } (n_0 in g_0) ==> acc(n_0.next, 1 / 2)) 
 {
   !exists_path($$(g_0), y_0, x_0)
 }
+
+function IS_ZOPG(g_0: Set[Ref]): Bool 
+
 
 function trigger(b: Bool): Bool 
 
@@ -196,7 +207,7 @@ method append(g: Set[Ref], x: Ref, y: Ref) returns (res: Ref, last: Ref)
     assert res != null ==> (res in g)
   } else {
     while (last.next != null)
-      invariant g subset UNIVERSE
+      invariant (g subset UNIVERSE)
       invariant NoNullInGraph(UNIVERSE)
       invariant (forall n_0: Ref :: { n_0.next } (n_0 in UNIVERSE) ==> acc(n_0.next, write))
       invariant CLOSED(g)

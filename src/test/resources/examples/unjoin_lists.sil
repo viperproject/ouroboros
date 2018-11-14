@@ -22,8 +22,6 @@ method unjoin(g0:Graph[DAG, _], g1:Graph[DAG, _], x0:Node, x1:Node)
 
 
     ensures forall n:Ref :: { EXISTS_PATH(g1,x1,n), n in g1 } n in g1 ==> EXISTS_PATH(g1,x1,n)
-    //The carbon issue is wrong. I don't
-    //:: UnexpectedOutput(postcondition.violated:assertion.false, /Carbon/issue/173/)
     ensures forall n:Ref :: { EXISTS_PATH(g0,n,x0) } n in g0 ==> EXISTS_PATH(g0,n,x0)
 {
     var unionGraph: Graph[DAG, Closed] := g0 union g1

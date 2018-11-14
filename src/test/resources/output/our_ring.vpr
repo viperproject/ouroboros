@@ -39,6 +39,8 @@ domain TrClo {
   
   function succs(EG: Set[Edge], pred: Ref): Set[Ref]
   
+  function skolem_w(EG: Set[Edge], start_0: Ref, end: Ref): Ref
+  
   axiom ax_Succs {
     (forall EG: Set[Edge], pred: Ref, succ: Ref :: { (succ in succs(EG, pred)) } (succ in succs(EG, pred)) == edge_(EG, pred, succ))
   }
@@ -67,8 +69,12 @@ domain TrClo {
     (forall EG: Set[Edge], start_0: Ref, end: Ref :: { exists_path(EG, start_0, end) } exists_path(EG, start_0, end) == exists_path_(EG, start_0, end))
   }
   
+  axiom ax_EdgeMeansPath {
+    (forall EG: Set[Edge], start_0: Ref, end: Ref :: { exists_path(EG, start_0, end) } edge(EG, start_0, end) ==> exists_path(EG, start_0, end))
+  }
+  
   axiom ax_ExistsPath {
-    (forall EG: Set[Edge], start_0: Ref, end: Ref :: { exists_path(EG, start_0, end) } { edge(EG, start_0, end) } exists_path_(EG, start_0, end) == (start_0 == end || !(forall w: Ref :: { edge(EG, start_0, w) } { exists_path(EG, w, end) } !(edge(EG, start_0, w) && exists_path_(EG, w, end)))))
+    (forall EG: Set[Edge], start_0: Ref, end: Ref :: { exists_path(EG, start_0, end) } exists_path_(EG, start_0, end) ==> start_0 == end || edge(EG, start_0, skolem_w(EG, start_0, end)) && exists_path_(EG, skolem_w(EG, start_0, end), end)) && (forall EG: Set[Edge], start_0: Ref, middle: Ref, end: Ref :: { edge(EG, start_0, middle),exists_path(EG, middle, end) } { edge(EG, start_0, middle),exists_path(EG, start_0, end) } { exists_path(EG, middle, end),exists_path(EG, start_0, end) } start_0 == end || edge(EG, start_0, middle) && exists_path_(EG, middle, end) ==> exists_path_(EG, start_0, end))
   }
   
   axiom ax_ExistsPathTrans {
@@ -129,11 +135,11 @@ domain ZeroOnePathGraphTCs {
   }
   
   axiom ax_HeadTriangleImposable {
-    (forall EG: Set[Edge], x_0: Ref, y: Ref, v_0: Ref :: { DEP(EG, x_0, y, x_0, v_0) } { exists_path_(EG, x_0, y),exists_path(EG, v_0, y) } { edge(EG, x_0, v_0),exists_path_(EG, v_0, y) } exists_path_(EG, x_0, y) && (edge(EG, x_0, v_0) && (x_0 != v_0 && exists_path_(EG, v_0, y))) ==> DEP_(EG, x_0, y, x_0, v_0))
+    (forall EG: Set[Edge], x_0: Ref, y: Ref, v_0: Ref :: { DEP(EG, x_0, y, x_0, v_0) } { exists_path_(EG, x_0, y),exists_path(EG, v_0, y) } { edge(EG, x_0, v_0),exists_path(EG, v_0, y) } edge(EG, x_0, v_0) && (x_0 != v_0 && exists_path_(EG, v_0, y)) ==> DEP_(EG, x_0, y, x_0, v_0))
   }
   
   axiom ax_TailTriangleImposable {
-    (forall EG: Set[Edge], x_0: Ref, y: Ref, u: Ref :: { DEP(EG, x_0, y, u, y) } { exists_path_(EG, x_0, y),exists_path(EG, x_0, u) } { edge(EG, u, y),exists_path_(EG, x_0, u) } exists_path_(EG, x_0, y) && (exists_path_(EG, x_0, u) && (edge(EG, u, y) && u != y)) ==> DEP_(EG, x_0, y, u, y))
+    (forall EG: Set[Edge], x_0: Ref, y: Ref, u: Ref :: { DEP(EG, x_0, y, u, y) } { exists_path_(EG, x_0, y),exists_path(EG, x_0, u) } { edge(EG, u, y),exists_path(EG, x_0, u) } exists_path_(EG, x_0, u) && (edge(EG, u, y) && u != y) ==> DEP_(EG, x_0, y, u, y))
   }
   
   axiom ax_NoEdgeNoDEP {
@@ -155,6 +161,15 @@ domain ZeroOnePathGraphTCs {
   axiom ax_DEP_7 {
     (forall EG: Set[Edge], nu: Ref, n_0: Ref, mu: Ref, sigma: Ref :: { DEP(EG, nu, n_0, mu, sigma) } nu != n_0 && (n_0 != sigma && (nu != mu && (edge(EG, nu, sigma) && edge(EG, mu, sigma)))) ==> !DEP_(EG, nu, n_0, mu, sigma) || mu == sigma)
   }
+  
+  axiom ax_DepNeedsCoAlignedPathAndEdge {
+    (forall EG: Set[Edge], x_0: Ref, y: Ref, u: Ref, v_0: Ref :: { DEP(EG, x_0, y, u, v_0) } { exists_path(EG, x_0, u),exists_path(EG, v_0, y) } !exists_path_(EG, x_0, u) || !exists_path_(EG, v_0, y) ==> !DEP_(EG, x_0, y, u, v_0))
+  }
+}
+
+domain Assume {
+  
+  
 }
 
 field next: Ref
@@ -185,21 +200,6 @@ function CLOSED(g_0: Set[Ref]): Bool
 }
 
 function IS_ZOPG(g_0: Set[Ref]): Bool 
-
-
-function apply_TCFraming(g0: Set[Ref], g1: Set[Ref]): Bool
-  requires (forall n_0: Ref :: { n_0.next } (n_0 in g0) ==> acc(n_0.next, 1 / 2))
-  requires (forall n_0: Ref :: { n_0.next } (n_0 in g1) ==> acc(n_0.next, 1 / 2))
-  ensures g0 union g1 == g1 union g0
-  ensures (forall u: Ref, v_0: Ref :: { exists_path($$(g0), u, v_0) } { exists_path($$(g0 union g1), u, v_0) } (u in g0) && ((v_0 in g0) && exists_path($$(g0), u, v_0)) ==> exists_path($$(g0 union g1), u, v_0))
-  ensures (forall u: Ref, v_0: Ref :: { exists_path($$(g1), u, v_0) } { exists_path($$(g1 union g0), u, v_0) } (u in g1) && ((v_0 in g1) && exists_path($$(g1), u, v_0)) ==> exists_path($$(g1 union g0), u, v_0))
-  ensures (forall u: Ref, v_0: Ref :: { exists_path($$(g0), u, v_0) } { exists_path($$(g0 union g1), u, v_0) } (u in g0) && ((v_0 in g0) && !exists_path($$(g0 union g1), u, v_0)) ==> !exists_path($$(g0), u, v_0))
-  ensures (forall u: Ref, v_0: Ref :: { exists_path($$(g1), u, v_0) } { exists_path($$(g1 union g0), u, v_0) } (u in g1) && ((v_0 in g1) && !exists_path($$(g1 union g0), u, v_0)) ==> !exists_path($$(g1), u, v_0))
-  ensures (forall u: Ref, v_0: Ref :: { exists_path($$(g0), u, v_0) } { exists_path($$(g0 union g1), u, v_0) } (u in g0) && ((v_0 in g0) && (!exists_path($$(g0), u, v_0) && ((CLOSED(g0) || CLOSED(g1)) && DISJOINT(g0, g1)))) ==> !exists_path($$(g0 union g1), u, v_0))
-  ensures (forall u: Ref, v_0: Ref :: { exists_path($$(g1), u, v_0) } { exists_path($$(g0 union g1), u, v_0) } (u in g1) && ((v_0 in g1) && (!exists_path($$(g1), u, v_0) && ((CLOSED(g0) || CLOSED(g1)) && DISJOINT(g0, g1)))) ==> !exists_path($$(g1 union g0), u, v_0))
-  ensures CLOSED(g0) && DISJOINT(g0, g1) ==> (forall u: Ref, v_0: Ref :: { exists_path($$(g0 union g1), u, v_0) } (u in g0) && (v_0 in g1) ==> !exists_path($$(g0 union g1), u, v_0))
-  ensures CLOSED(g1) && DISJOINT(g0, g1) ==> (forall u: Ref, v_0: Ref :: { exists_path($$(g0 union g1), v_0, u) } (u in g0) && (v_0 in g1) ==> !exists_path($$(g0 union g1), v_0, u))
-  ensures IS_ZOPG(g0 union g1) ==> IS_ZOPG(g0) 
 
 
 method create_node(u: Set[Ref]) returns (node_0: Ref)
@@ -234,6 +234,7 @@ method link_ZOPG_next(g_0: Set[Ref], from: Ref, to: Ref)
   ensures to != null ==> (forall n_0: Ref :: { exists_path($$(g_0), to, n_0) } { exists_path($$(g_0), from, n_0) } (n_0 in g_0) && n_0 != to ==> __learn_trigger__(DEP($$(g_0), to, n_0, to, to.next)))
   ensures to != null ==> (forall n_0: Ref :: { exists_path($$(g_0), n_0, to) } { exists_path($$(g_0), n_0, from) } (n_0 in g_0) && n_0 != from ==> __learn_trigger__(DEP($$(g_0), n_0, from, n_0, n_0.next)))
   ensures to != null ==> (forall n_0: Ref :: { DEP($$(g_0), to, n_0, to, to.next) } { DEP($$(g_0), from, n_0, from, from.next) } (n_0 in g_0) ==> __learn_trigger__(exists_path($$(g_0), to, n_0)) && __learn_trigger__(exists_path(old($$(g_0)), to, n_0)))
+  ensures (forall n_0: Ref, m_0: Ref :: { exists_path($$(g_0), n_0, m_0) } (n_0 in g_0) && (m_0 in g_0) ==> __learn_trigger__(exists_path($$(g_0), n_0, from)) && __learn_trigger__(exists_path($$(g_0), from, m_0)))
 
 
 method ringInsert(g: Set[Ref], start: Ref, x: Int) returns (new_g: Set[Ref], new_node2: Ref, new_start: Ref)
@@ -249,7 +250,7 @@ method ringInsert(g: Set[Ref], start: Ref, x: Int) returns (new_g: Set[Ref], new
   requires (forall n: Ref :: { n.val } (n in g) ==> acc(n.val, write))
   requires (forall n: Ref :: { n.next.val } (n in g) && n.next != start ==> n.val <= n.next.val)
   requires (forall n: Ref :: { n.next.val } (n in g) && n.next == start ==> n.next.val <= n.val)
-  ensures (forall n_0: Ref :: { n_0.next } (n_0 in new_g union g) ==> acc(n_0.next, write))
+  ensures (forall n_0: Ref :: { n_0.next } (n_0 in (new_g union g)) ==> acc(n_0.next, write))
   ensures NoNullInGraph(new_g)
   ensures CLOSED(new_g)
   ensures NoNullInGraph(g)
@@ -259,7 +260,6 @@ method ringInsert(g: Set[Ref], start: Ref, x: Int) returns (new_g: Set[Ref], new
   ensures (forall v1$0: Ref, v2$0: Ref, v$1: Ref :: { (v$1 in new_g),v1$0.next,v2$0.next } (v1$0 in new_g) && ((v2$0 in new_g) && (v$1 in new_g)) ==> v1$0.next == v$1 && v2$0.next == v$1 ==> v1$0 == v2$0) && (forall v$2: Ref :: { v$2.next } (v$2 in new_g) ==> (v$2 == v$2.next) == (new_g == Set(v$2)))
   ensures (new_start in new_g)
   ensures !((new_node2 in g)) && (new_node2 in new_g)
-  ensures (forall n: Ref, m: Ref :: { exists_path($$(new_g), n, m) } (n in new_g) && (m in new_g) ==> exists_path($$(new_g), n, m) && exists_path($$(new_g), m, n))
 {
   var UNIVERSE: Set[Ref]
   var tmp: Ref
@@ -286,23 +286,11 @@ method ringInsert(g: Set[Ref], start: Ref, x: Int) returns (new_g: Set[Ref], new
   // tmp := NEW()
   fresh_tmp := create_node(UNIVERSE)
   tmp := fresh_tmp
-  
-  // Apply TC Framing for Set(tmp) with all possible Graphs.
-  
-  // Apply TC Framing for g and Set(tmp)
-  inhale apply_TCFraming(g, Set(tmp))
-  if (new_g_init != 0) {
-    
-    // Apply TC Framing for new_g and Set(tmp) setminus new_g
-    inhale apply_TCFraming(new_g, Set(tmp))
-  }
-  UNIVERSE := UNIVERSE union Set(tmp)
+  UNIVERSE := (UNIVERSE union Set(tmp))
   
   // Assert that tmp stays in the graph UNIVERSE.
   assert (tmp in UNIVERSE)
   inhale IS_ZOPG(UNIVERSE)
-  
-  // Apply TC Framing for new_g with all possible Graphs.
   
   // assign unique value 1 to the assignment of new_g.
   new_g_init := 1
@@ -310,31 +298,18 @@ method ringInsert(g: Set[Ref], start: Ref, x: Int) returns (new_g: Set[Ref], new
   
   // added assertion for typechecking.
   assert CLOSED(UNIVERSE) && IS_ZOPG(UNIVERSE)
-  UNIVERSE := UNIVERSE union new_g
+  UNIVERSE := (UNIVERSE union new_g)
   
   // Check that new_g is still in Set(new_g)
   assert new_node2 != null ==> (new_node2 in (new_g_init != 0 ? new_g : Set[Ref]()))
   
   // Check that new_g is still in Set(new_g)
   assert new_start != null ==> (new_start in (new_g_init != 0 ? new_g : Set[Ref]()))
-  
-  // Apply TC Framing for g and new_g
-  inhale apply_TCFraming(g, new_g)
-  if (new_g_init != 0) {
-    
-    // Apply TC Framing for new_g and new_g setminus new_g
-    inhale apply_TCFraming(new_g, new_g)
-  }
-  
-  // Apply TC Framing for Set(fresh_tmp) and new_g
-  inhale apply_TCFraming(Set(fresh_tmp), new_g)
   new_node2 := tmp
   
   // Check that new_node2 is still in (new_g_init != 0 ? new_g : Set[Ref]())
   assert new_node2 != null ==> (new_node2 in (new_g_init != 0 ? new_g : Set[Ref]()))
   inhale acc(new_node2.val, write)
-  
-  // Apply TC Framing for new_g with all possible Graphs.
   
   // assign unique value 2 to the assignment of new_g.
   new_g_init := 2
@@ -342,7 +317,7 @@ method ringInsert(g: Set[Ref], start: Ref, x: Int) returns (new_g: Set[Ref], new
   
   // added assertion for typechecking.
   assert CLOSED(UNIVERSE) && IS_ZOPG(UNIVERSE)
-  UNIVERSE := UNIVERSE union new_g
+  UNIVERSE := (UNIVERSE union new_g)
   
   // Check that new_g is still in Set(new_g)
   assert new_node2 != null ==> (new_node2 in (new_g_init != 0 ? new_g : Set[Ref]()))
@@ -350,28 +325,18 @@ method ringInsert(g: Set[Ref], start: Ref, x: Int) returns (new_g: Set[Ref], new
   // Check that new_g is still in Set(new_g)
   assert new_start != null ==> (new_start in (new_g_init != 0 ? new_g : Set[Ref]()))
   
-  // Apply TC Framing for g and new_g
-  inhale apply_TCFraming(g, new_g)
-  if (new_g_init != 0) {
-    
-    // Apply TC Framing for new_g and new_g setminus new_g
-    inhale apply_TCFraming(new_g, new_g)
-  }
-  
-  // Apply TC Framing for Set(fresh_tmp) and new_g
-  inhale apply_TCFraming(Set(fresh_tmp), new_g)
-  
   // Assuming that node is in (new_g_init != 0 ? new_g : Set[Ref]()).
   inhale node != null ==> (node in (new_g_init != 0 ? new_g : Set[Ref]()))
   node := start
   
   // Check that node is still in (new_g_init != 0 ? new_g : Set[Ref]())
   assert node != null ==> (node in (new_g_init != 0 ? new_g : Set[Ref]()))
+  label beforeWhile
   while (!(node.val <= x && x < node.next.val || node.next == start && (node.val <= x || x < start.val)))
     invariant new_g_init == 2
-    invariant new_g subset UNIVERSE
+    invariant (new_g subset UNIVERSE)
     invariant (fresh_tmp in UNIVERSE)
-    invariant g subset UNIVERSE
+    invariant (g subset UNIVERSE)
     invariant NoNullInGraph(UNIVERSE)
     invariant (forall n_0: Ref :: { n_0.next } (n_0 in UNIVERSE) ==> acc(n_0.next, write))
     invariant CLOSED(new_g)
@@ -382,12 +347,14 @@ method ringInsert(g: Set[Ref], start: Ref, x: Int) returns (new_g: Set[Ref], new
     invariant (forall n$2: Ref :: { (n$2.next in g) } { (n$2 in g),n$2.next } (n$2 in g) ==> (n$2.next in g))
     invariant CLOSED(g)
     invariant (forall v1$1: Ref, v2$1: Ref, v$3: Ref :: { (v$3 in g),v1$1.next,v2$1.next } (v1$1 in g) && ((v2$1 in g) && (v$3 in g)) ==> v1$1.next == v$3 && v2$1.next == v$3 ==> v1$1 == v2$1) && (forall v$4: Ref :: { v$4.next } (v$4 in g) ==> (v$4 == v$4.next) == (g == Set(v$4)))
+    invariant new_g == UNIVERSE
     invariant (forall n: Ref :: { n.next } (n in g) ==> (n.next in g) && n.next != null)
     invariant (forall n: Ref :: { n.val } (n in new_g) ==> acc(n.val, write))
     invariant (forall n: Ref :: { n.next.val } (n in g) && n.next != start ==> n.val <= n.next.val)
     invariant (forall n: Ref :: { n.next.val } (n in g) && n.next == start ==> n.next.val <= n.val)
     invariant (node in g)
-    invariant (forall n: Ref, m: Ref :: { exists_path($$(g), n, m) } (n in g) && (m in g) ==> exists_path($$(g), n, m) && exists_path($$(g), m, n)) 
+    invariant (forall n: Ref, m: Ref :: { exists_path($$(g), n, m) } (n in g) && (m in g) ==> exists_path($$(g), n, m) && exists_path($$(g), m, n))
+    invariant (forall n: Ref :: { n.next } (n in UNIVERSE) ==> old[beforeWhile](n.next) == n.next) 
   {
     node := node.next
     

@@ -39,6 +39,8 @@ domain TrClo {
   
   function succs(EG: Set[Edge], pred: Ref): Set[Ref]
   
+  function skolem_w(EG: Set[Edge], start: Ref, end: Ref): Ref
+  
   axiom ax_Succs {
     (forall EG: Set[Edge], pred: Ref, succ: Ref :: { (succ in succs(EG, pred)) } (succ in succs(EG, pred)) == edge_(EG, pred, succ))
   }
@@ -67,8 +69,12 @@ domain TrClo {
     (forall EG: Set[Edge], start: Ref, end: Ref :: { exists_path(EG, start, end) } exists_path(EG, start, end) == exists_path_(EG, start, end))
   }
   
+  axiom ax_EdgeMeansPath {
+    (forall EG: Set[Edge], start: Ref, end: Ref :: { exists_path(EG, start, end) } edge(EG, start, end) ==> exists_path(EG, start, end))
+  }
+  
   axiom ax_ExistsPath {
-    (forall EG: Set[Edge], start: Ref, end: Ref :: { exists_path(EG, start, end) } { edge(EG, start, end) } exists_path_(EG, start, end) == (start == end || !(forall w: Ref :: { edge(EG, start, w) } { exists_path(EG, w, end) } !(edge(EG, start, w) && exists_path_(EG, w, end)))))
+    (forall EG: Set[Edge], start: Ref, end: Ref :: { exists_path(EG, start, end) } exists_path_(EG, start, end) ==> start == end || edge(EG, start, skolem_w(EG, start, end)) && exists_path_(EG, skolem_w(EG, start, end), end)) && (forall EG: Set[Edge], start: Ref, middle: Ref, end: Ref :: { edge(EG, start, middle),exists_path(EG, middle, end) } { edge(EG, start, middle),exists_path(EG, start, end) } { exists_path(EG, middle, end),exists_path(EG, start, end) } start == end || edge(EG, start, middle) && exists_path_(EG, middle, end) ==> exists_path_(EG, start, end))
   }
   
   axiom ax_ExistsPathTrans {
@@ -107,6 +113,11 @@ domain List {
   
 }
 
+domain Assume {
+  
+  
+}
+
 field next: Ref
 
 function $$(nodes: Set[Ref]): Set[Edge]
@@ -132,47 +143,47 @@ function CLOSED(g_0: Set[Ref]): Bool
   (forall n_1: Ref :: { (n_1.next in g_0) } { (n_1 in g_0),n_1.next } (n_1 in g_0) && n_1.next != null ==> (n_1.next in g_0))
 }
 
-function IS_ZOPG(g_0: Set[Ref]): Bool 
-
-
 function apply_TCFraming(g0_1: Set[Ref], g1_1: Set[Ref]): Bool
   requires (forall n_1: Ref :: { n_1.next } (n_1 in g0_1) ==> acc(n_1.next, 1 / 2))
   requires (forall n_1: Ref :: { n_1.next } (n_1 in g1_1) ==> acc(n_1.next, 1 / 2))
-  ensures g0_1 union g1_1 == g1_1 union g0_1
-  ensures (forall u_1: Ref, v_1: Ref :: { exists_path($$(g0_1), u_1, v_1) } { exists_path($$(g0_1 union g1_1), u_1, v_1) } (u_1 in g0_1) && ((v_1 in g0_1) && exists_path($$(g0_1), u_1, v_1)) ==> exists_path($$(g0_1 union g1_1), u_1, v_1))
-  ensures (forall u_1: Ref, v_1: Ref :: { exists_path($$(g1_1), u_1, v_1) } { exists_path($$(g1_1 union g0_1), u_1, v_1) } (u_1 in g1_1) && ((v_1 in g1_1) && exists_path($$(g1_1), u_1, v_1)) ==> exists_path($$(g1_1 union g0_1), u_1, v_1))
-  ensures (forall u_1: Ref, v_1: Ref :: { exists_path($$(g0_1), u_1, v_1) } { exists_path($$(g0_1 union g1_1), u_1, v_1) } (u_1 in g0_1) && ((v_1 in g0_1) && !exists_path($$(g0_1 union g1_1), u_1, v_1)) ==> !exists_path($$(g0_1), u_1, v_1))
-  ensures (forall u_1: Ref, v_1: Ref :: { exists_path($$(g1_1), u_1, v_1) } { exists_path($$(g1_1 union g0_1), u_1, v_1) } (u_1 in g1_1) && ((v_1 in g1_1) && !exists_path($$(g1_1 union g0_1), u_1, v_1)) ==> !exists_path($$(g1_1), u_1, v_1))
-  ensures (forall u_1: Ref, v_1: Ref :: { exists_path($$(g0_1), u_1, v_1) } { exists_path($$(g0_1 union g1_1), u_1, v_1) } (u_1 in g0_1) && ((v_1 in g0_1) && (!exists_path($$(g0_1), u_1, v_1) && ((CLOSED(g0_1) || CLOSED(g1_1)) && DISJOINT(g0_1, g1_1)))) ==> !exists_path($$(g0_1 union g1_1), u_1, v_1))
-  ensures (forall u_1: Ref, v_1: Ref :: { exists_path($$(g1_1), u_1, v_1) } { exists_path($$(g0_1 union g1_1), u_1, v_1) } (u_1 in g1_1) && ((v_1 in g1_1) && (!exists_path($$(g1_1), u_1, v_1) && ((CLOSED(g0_1) || CLOSED(g1_1)) && DISJOINT(g0_1, g1_1)))) ==> !exists_path($$(g1_1 union g0_1), u_1, v_1))
-  ensures CLOSED(g0_1) && DISJOINT(g0_1, g1_1) ==> (forall u_1: Ref, v_1: Ref :: { exists_path($$(g0_1 union g1_1), u_1, v_1) } (u_1 in g0_1) && (v_1 in g1_1) ==> !exists_path($$(g0_1 union g1_1), u_1, v_1))
-  ensures CLOSED(g1_1) && DISJOINT(g0_1, g1_1) ==> (forall u_1: Ref, v_1: Ref :: { exists_path($$(g0_1 union g1_1), v_1, u_1) } (u_1 in g0_1) && (v_1 in g1_1) ==> !exists_path($$(g0_1 union g1_1), v_1, u_1))
-  ensures IS_ZOPG(g0_1 union g1_1) ==> IS_ZOPG(g0_1) 
+  ensures (g0_1 union g1_1) == (g1_1 union g0_1)
+  ensures (forall u_1: Ref, v_1: Ref :: { exists_path($$(g0_1), u_1, v_1) } { exists_path($$((g0_1 union g1_1)), u_1, v_1) } (u_1 in g0_1) && ((v_1 in g0_1) && exists_path($$(g0_1), u_1, v_1)) ==> exists_path($$((g0_1 union g1_1)), u_1, v_1))
+  ensures (forall u_1: Ref, v_1: Ref :: { exists_path($$(g1_1), u_1, v_1) } { exists_path($$((g1_1 union g0_1)), u_1, v_1) } (u_1 in g1_1) && ((v_1 in g1_1) && exists_path($$(g1_1), u_1, v_1)) ==> exists_path($$((g1_1 union g0_1)), u_1, v_1))
+  ensures (forall u_1: Ref, v_1: Ref :: { exists_path($$(g0_1), u_1, v_1) } { exists_path($$((g0_1 union g1_1)), u_1, v_1) } (u_1 in g0_1) && ((v_1 in g0_1) && !exists_path($$((g0_1 union g1_1)), u_1, v_1)) ==> !exists_path($$(g0_1), u_1, v_1))
+  ensures (forall u_1: Ref, v_1: Ref :: { exists_path($$(g1_1), u_1, v_1) } { exists_path($$((g1_1 union g0_1)), u_1, v_1) } (u_1 in g1_1) && ((v_1 in g1_1) && !exists_path($$((g1_1 union g0_1)), u_1, v_1)) ==> !exists_path($$(g1_1), u_1, v_1))
+  ensures (forall u_1: Ref, v_1: Ref :: { exists_path($$(g0_1), u_1, v_1) } { exists_path($$((g0_1 union g1_1)), u_1, v_1) } (u_1 in g0_1) && ((v_1 in g0_1) && (!exists_path($$(g0_1), u_1, v_1) && ((CLOSED(g0_1) || CLOSED(g1_1)) && DISJOINT(g0_1, g1_1)))) ==> !exists_path($$((g0_1 union g1_1)), u_1, v_1))
+  ensures (forall u_1: Ref, v_1: Ref :: { exists_path($$(g1_1), u_1, v_1) } { exists_path($$((g0_1 union g1_1)), u_1, v_1) } (u_1 in g1_1) && ((v_1 in g1_1) && (!exists_path($$(g1_1), u_1, v_1) && ((CLOSED(g0_1) || CLOSED(g1_1)) && DISJOINT(g0_1, g1_1)))) ==> !exists_path($$((g1_1 union g0_1)), u_1, v_1))
+  ensures CLOSED(g0_1) && DISJOINT(g0_1, g1_1) ==> (forall u_1: Ref, v_1: Ref :: { exists_path($$((g0_1 union g1_1)), u_1, v_1) } (u_1 in g0_1) && (v_1 in g1_1) ==> !exists_path($$((g0_1 union g1_1)), u_1, v_1))
+  ensures CLOSED(g1_1) && DISJOINT(g0_1, g1_1) ==> (forall u_1: Ref, v_1: Ref :: { exists_path($$((g0_1 union g1_1)), v_1, u_1) } (u_1 in g0_1) && (v_1 in g1_1) ==> !exists_path($$((g0_1 union g1_1)), v_1, u_1))
+  ensures IS_ZOPG((g0_1 union g1_1)) ==> IS_ZOPG(g0_1) 
+
+
+function IS_ZOPG(g_0: Set[Ref]): Bool 
 
 
 function apply_TCFraming2(g0: Set[Ref], g1: Set[Ref]): Bool
   requires (forall n: Ref :: { n.next } (n in g0) ==> acc(n.next, write))
   requires (forall n: Ref :: { n.next } (n in g1) ==> acc(n.next, write))
-  requires g1 intersection g0 == Set[Ref]()
-  ensures g0 union g1 == g1 union g0
-  ensures (forall u: Ref, v: Ref :: { exists_path($$(g0), u, v) } { exists_path($$(g0 union g1), u, v) } (u in g0) && ((v in g0) && exists_path($$(g0), u, v)) ==> exists_path($$(g0 union g1), u, v))
-  ensures (forall u: Ref, v: Ref :: { exists_path($$(g1), u, v) } { exists_path($$(g1 union g0), u, v) } (u in g1) && ((v in g1) && exists_path($$(g1), u, v)) ==> exists_path($$(g1 union g0), u, v))
-  ensures (forall u: Ref, v: Ref :: { exists_path($$(g0), u, v) } { exists_path($$(g0 union g1), u, v) } (u in g0) && ((v in g0) && !exists_path($$(g0), u, v)) ==> !exists_path($$(g0 union g1), u, v))
-  ensures (forall u: Ref, v: Ref :: { exists_path($$(g1), u, v) } { exists_path($$(g0 union g1), u, v) } (u in g1) && ((v in g1) && !exists_path($$(g1), u, v)) ==> !exists_path($$(g1 union g0), u, v)) 
+  requires (g1 intersection g0) == Set[Ref]()
+  ensures (g0 union g1) == (g1 union g0)
+  ensures (forall u: Ref, v: Ref :: { exists_path($$(g0), u, v) } { exists_path($$((g0 union g1)), u, v) } (u in g0) && ((v in g0) && exists_path($$(g0), u, v)) ==> exists_path($$((g0 union g1)), u, v))
+  ensures (forall u: Ref, v: Ref :: { exists_path($$(g1), u, v) } { exists_path($$((g1 union g0)), u, v) } (u in g1) && ((v in g1) && exists_path($$(g1), u, v)) ==> exists_path($$((g1 union g0)), u, v))
+  ensures (forall u: Ref, v: Ref :: { exists_path($$(g0), u, v) } { exists_path($$((g0 union g1)), u, v) } (u in g0) && ((v in g0) && !exists_path($$(g0), u, v)) ==> !exists_path($$((g0 union g1)), u, v))
+  ensures (forall u: Ref, v: Ref :: { exists_path($$(g1), u, v) } { exists_path($$((g0 union g1)), u, v) } (u in g1) && ((v in g1) && !exists_path($$(g1), u, v)) ==> !exists_path($$((g1 union g0)), u, v)) 
 
 
 function apply_TCFraming3(g0_0: Set[Ref], g1_0: Set[Ref]): Bool
   requires (forall n_0: Ref :: { n_0.next } (n_0 in g0_0) ==> acc(n_0.next, 1 / 2))
   requires (forall n_0: Ref :: { n_0.next } (n_0 in g1_0) ==> acc(n_0.next, 1 / 2))
-  ensures g0_0 union g1_0 == g1_0 union g0_0
-  ensures (forall u_0: Ref, v_0: Ref :: { exists_path($$(g0_0), u_0, v_0) } { exists_path($$(g0_0 union g1_0), u_0, v_0) } (u_0 in g0_0) && ((v_0 in g0_0) && exists_path($$(g0_0), u_0, v_0)) ==> exists_path($$(g0_0 union g1_0), u_0, v_0))
-  ensures (forall u_0: Ref, v_0: Ref :: { exists_path($$(g1_0), u_0, v_0) } { exists_path($$(g1_0 union g0_0), u_0, v_0) } (u_0 in g1_0) && ((v_0 in g1_0) && exists_path($$(g1_0), u_0, v_0)) ==> exists_path($$(g1_0 union g0_0), u_0, v_0))
-  ensures (forall u_0: Ref, v_0: Ref :: { exists_path($$(g0_0), u_0, v_0) } { exists_path($$(g0_0 union g1_0), u_0, v_0) } (u_0 in g0_0) && ((v_0 in g0_0) && !exists_path($$(g0_0 union g1_0), u_0, v_0)) ==> !exists_path($$(g0_0), u_0, v_0))
-  ensures (forall u_0: Ref, v_0: Ref :: { exists_path($$(g1_0), u_0, v_0) } { exists_path($$(g1_0 union g0_0), u_0, v_0) } (u_0 in g1_0) && ((v_0 in g1_0) && !exists_path($$(g1_0 union g0_0), u_0, v_0)) ==> !exists_path($$(g1_0), u_0, v_0))
-  ensures (forall u_0: Ref, v_0: Ref :: { exists_path($$(g0_0), u_0, v_0) } { exists_path($$(g0_0 union g1_0), u_0, v_0) } (u_0 in g0_0) && ((v_0 in g0_0) && (!exists_path($$(g0_0), u_0, v_0) && ((CLOSED(g0_0) || CLOSED(g1_0)) && DISJOINT(g0_0, g1_0)))) ==> !exists_path($$(g0_0 union g1_0), u_0, v_0))
-  ensures (forall u_0: Ref, v_0: Ref :: { exists_path($$(g1_0), u_0, v_0) } { exists_path($$(g0_0 union g1_0), u_0, v_0) } (u_0 in g1_0) && ((v_0 in g1_0) && (!exists_path($$(g1_0), u_0, v_0) && ((CLOSED(g0_0) || CLOSED(g1_0)) && DISJOINT(g0_0, g1_0)))) ==> !exists_path($$(g1_0 union g0_0), u_0, v_0))
-  ensures CLOSED(g0_0) && DISJOINT(g0_0, g1_0) ==> (forall u_0: Ref, v_0: Ref :: { exists_path($$(g0_0 union g1_0), u_0, v_0) } (u_0 in g0_0) && (v_0 in g1_0) ==> !exists_path($$(g0_0 union g1_0), u_0, v_0))
-  ensures CLOSED(g1_0) && DISJOINT(g0_0, g1_0) ==> (forall u_0: Ref, v_0: Ref :: { exists_path($$(g0_0 union g1_0), v_0, u_0) } (u_0 in g0_0) && (v_0 in g1_0) ==> !exists_path($$(g0_0 union g1_0), v_0, u_0)) 
+  ensures (g0_0 union g1_0) == (g1_0 union g0_0)
+  ensures (forall u_0: Ref, v_0: Ref :: { exists_path($$(g0_0), u_0, v_0) } { exists_path($$((g0_0 union g1_0)), u_0, v_0) } (u_0 in g0_0) && ((v_0 in g0_0) && exists_path($$(g0_0), u_0, v_0)) ==> exists_path($$((g0_0 union g1_0)), u_0, v_0))
+  ensures (forall u_0: Ref, v_0: Ref :: { exists_path($$(g1_0), u_0, v_0) } { exists_path($$((g1_0 union g0_0)), u_0, v_0) } (u_0 in g1_0) && ((v_0 in g1_0) && exists_path($$(g1_0), u_0, v_0)) ==> exists_path($$((g1_0 union g0_0)), u_0, v_0))
+  ensures (forall u_0: Ref, v_0: Ref :: { exists_path($$(g0_0), u_0, v_0) } { exists_path($$((g0_0 union g1_0)), u_0, v_0) } (u_0 in g0_0) && ((v_0 in g0_0) && !exists_path($$((g0_0 union g1_0)), u_0, v_0)) ==> !exists_path($$(g0_0), u_0, v_0))
+  ensures (forall u_0: Ref, v_0: Ref :: { exists_path($$(g1_0), u_0, v_0) } { exists_path($$((g1_0 union g0_0)), u_0, v_0) } (u_0 in g1_0) && ((v_0 in g1_0) && !exists_path($$((g1_0 union g0_0)), u_0, v_0)) ==> !exists_path($$(g1_0), u_0, v_0))
+  ensures (forall u_0: Ref, v_0: Ref :: { exists_path($$(g0_0), u_0, v_0) } { exists_path($$((g0_0 union g1_0)), u_0, v_0) } (u_0 in g0_0) && ((v_0 in g0_0) && (!exists_path($$(g0_0), u_0, v_0) && ((CLOSED(g0_0) || CLOSED(g1_0)) && DISJOINT(g0_0, g1_0)))) ==> !exists_path($$((g0_0 union g1_0)), u_0, v_0))
+  ensures (forall u_0: Ref, v_0: Ref :: { exists_path($$(g1_0), u_0, v_0) } { exists_path($$((g0_0 union g1_0)), u_0, v_0) } (u_0 in g1_0) && ((v_0 in g1_0) && (!exists_path($$(g1_0), u_0, v_0) && ((CLOSED(g0_0) || CLOSED(g1_0)) && DISJOINT(g0_0, g1_0)))) ==> !exists_path($$((g1_0 union g0_0)), u_0, v_0))
+  ensures CLOSED(g0_0) && DISJOINT(g0_0, g1_0) ==> (forall u_0: Ref, v_0: Ref :: { exists_path($$((g0_0 union g1_0)), u_0, v_0) } (u_0 in g0_0) && (v_0 in g1_0) ==> !exists_path($$((g0_0 union g1_0)), u_0, v_0))
+  ensures CLOSED(g1_0) && DISJOINT(g0_0, g1_0) ==> (forall u_0: Ref, v_0: Ref :: { exists_path($$((g0_0 union g1_0)), v_0, u_0) } (u_0 in g0_0) && (v_0 in g1_0) ==> !exists_path($$((g0_0 union g1_0)), v_0, u_0)) 
 
 
 method unlink_DAG_next(g_0: Set[Ref], x_0: Ref)
@@ -182,26 +193,26 @@ method unlink_DAG_next(g_0: Set[Ref], x_0: Ref)
   ensures x_0.next == null
   ensures old(x_0.next) == null ==> $$(g_0) == old($$(g_0))
   ensures old(x_0.next) != null ==> (forall v1_0: Ref, v2_0: Ref :: { edge($$(g_0), v1_0, v2_0) } edge($$(g_0), v1_0, v2_0) == (edge(old($$(g_0)), v1_0, v2_0) && !(v1_0 == x_0 && v2_0 == old(x_0.next))))
-  ensures old(x_0.next) != null ==> (forall v1_0: Ref, v2_0: Ref :: { exists_path($$(g_0), v1_0, v2_0) } !exists_path(old($$(g_0)), v1_0, v2_0) ==> !exists_path($$(g_0), v1_0, v2_0))
-  ensures old(x_0.next) != null ==> (forall v1_0: Ref, v2_0: Ref :: { exists_path($$(g_0), v1_0, v2_0) } exists_path($$(g_0), v1_0, v2_0) == (v1_0 == v2_0 || ((exists n_1: Ref :: exists_path(old($$(g_0)), v1_0, n_1) && (exists_path(old($$(g_0)), n_1, v2_0) && (!exists_path(old($$(g_0)), n_1, x_0) && !exists_path(old($$(g_0)), x_0, n_1) || !exists_path(old($$(g_0)), n_1, old(x_0.next)) && !exists_path(old($$(g_0)), old(x_0.next), n_1)))) || ((exists n_1: Ref :: n_1 != x_0 && (n_1 != old(x_0.next) && (exists_path(old($$(g_0)), x_0, n_1) && exists_path(old($$(g_0)), n_1, old(x_0.next))))) || (exists u_1: Ref, v_1: Ref :: (u_1 != x_0 || v_1 != old(x_0.next)) && (edge(old($$(g_0)), u_1, v_1) && (exists_path(old($$(g_0)), v1_0, u_1) && (exists_path(old($$(g_0)), u_1, x_0) && (exists_path(old($$(g_0)), old(x_0.next), v_1) && exists_path(old($$(g_0)), v_1, v2_0))))))))))
+  ensures old(x_0.next) != null ==> (forall v1_0: Ref, v2_0: Ref :: { exists_path($$(g_0), v1_0, v2_0) } !(exists_path(old($$(g_0)), v1_0, x_0) && exists_path(old($$(g_0)), old(x_0.next), v2_0)) ==> exists_path(old($$(g_0)), v1_0, v2_0) == exists_path($$(g_0), v1_0, v2_0))
+  ensures old(x_0.next) != null ==> (forall v1_0: Ref, v2_0: Ref :: { exists_path($$(g_0), v1_0, v2_0) } (exists_path(old($$(g_0)), v1_0, x_0) && exists_path(old($$(g_0)), old(x_0.next), v2_0) ==> exists_path($$(g_0), v1_0, v2_0)) == (v1_0 == v2_0 || ((exists n_1: Ref :: exists_path(old($$(g_0)), v1_0, n_1) && (exists_path(old($$(g_0)), n_1, v2_0) && (!exists_path(old($$(g_0)), n_1, x_0) && !exists_path(old($$(g_0)), x_0, n_1) || !exists_path(old($$(g_0)), n_1, old(x_0.next)) && !exists_path(old($$(g_0)), old(x_0.next), n_1)))) || ((exists n_1: Ref :: n_1 != x_0 && (n_1 != old(x_0.next) && (exists_path(old($$(g_0)), x_0, n_1) && exists_path(old($$(g_0)), n_1, old(x_0.next))))) || (exists u_1: Ref, v_1: Ref :: (u_1 != x_0 || v_1 != old(x_0.next)) && (edge(old($$(g_0)), u_1, v_1) && (exists_path(old($$(g_0)), v1_0, u_1) && (exists_path(old($$(g_0)), u_1, x_0) && (exists_path(old($$(g_0)), old(x_0.next), v_1) && exists_path(old($$(g_0)), v_1, v2_0))))))))))
 
 
 method unjoin(g0: Set[Ref], g1: Set[Ref], x0: Ref, x1: Ref)
-  requires (forall n_1: Ref :: { n_1.next } (n_1 in g0 union g1) ==> acc(n_1.next, write))
+  requires (forall n_1: Ref :: { n_1.next } (n_1 in (g0 union g1)) ==> acc(n_1.next, write))
   requires NoNullInGraph(g0) && acyclic_graph($$(g0))
   requires NoNullInGraph(g1) && acyclic_graph($$(g1))
-  requires x0 != null ==> (x0 in g0 union g1)
-  requires x1 != null ==> (x1 in g0 union g1)
+  requires x0 != null ==> (x0 in (g0 union g1))
+  requires x1 != null ==> (x1 in (g0 union g1))
   requires DISJOINT(g0, g1)
-  requires CLOSED(g0 union g1)
+  requires CLOSED((g0 union g1))
   requires (x0 in g0) && (x1 in g1)
   requires (forall n: Ref :: { exists_path($$(g0), n, x0) } (n in g0) ==> exists_path($$(g0), n, x0))
   requires (forall n: Ref :: { exists_path($$(g1), x1, n),(n in g1) } (n in g1) ==> exists_path($$(g1), x1, n))
-  requires (forall n: Ref, m: Ref :: { (n in g0),(m in g1) } (n in g0) && (m in g1) ==> edge($$(g0 union g1), n, m) == (n == x0 && m == x1))
-  requires (forall n: Ref, m: Ref :: { (n in g1),(m in g0) } (n in g1) && (m in g0) ==> !edge($$(g0 union g1), n, m))
-  requires acyclic_graph($$(g0 union g1)) && (func_graph($$(g0 union g1)) && unshared_graph($$(g0 union g1)))
+  requires (forall n: Ref, m: Ref :: { (n in g0),(m in g1) } (n in g0) && (m in g1) ==> edge($$((g0 union g1)), n, m) == (n == x0 && m == x1))
+  requires (forall n: Ref, m: Ref :: { (n in g1),(m in g0) } (n in g1) && (m in g0) ==> !edge($$((g0 union g1)), n, m))
+  requires acyclic_graph($$((g0 union g1))) && (func_graph($$((g0 union g1))) && unshared_graph($$((g0 union g1))))
   requires x0.next == x1
-  ensures (forall n_1: Ref :: { n_1.next } (n_1 in g0 union g1) ==> acc(n_1.next, write))
+  ensures (forall n_1: Ref :: { n_1.next } (n_1 in (g0 union g1)) ==> acc(n_1.next, write))
   ensures NoNullInGraph(g0)
   ensures acyclic_graph($$(g0))
   ensures NoNullInGraph(g1)
@@ -214,7 +225,7 @@ method unjoin(g0: Set[Ref], g1: Set[Ref], x0: Ref, x1: Ref)
   var UNIVERSE: Set[Ref]
   var unionGraph: Set[Ref]
   var unionGraph_init: Int
-  UNIVERSE := g0 union g1
+  UNIVERSE := (g0 union g1)
   unionGraph_init := 0
   
   // Apply TC Framing for input graphs g0 and g1 
@@ -223,26 +234,13 @@ method unjoin(g0: Set[Ref], g1: Set[Ref], x0: Ref, x1: Ref)
   // Initialize the unique variable of unionGraph.
   unionGraph_init := 0
   
-  // Apply TC Framing for unionGraph with all possible Graphs.
-  
   // assign unique value 1 to the assignment of unionGraph.
   unionGraph_init := 1
-  unionGraph := g0 union g1
+  unionGraph := (g0 union g1)
   
   // added assertion for typechecking.
-  assert CLOSED(g0) && IS_ZOPG(g0) && (CLOSED(g1) && IS_ZOPG(g1)) || (CLOSED(g0) && CLOSED(g1) || (CLOSED(g0) && (CLOSED(g1) && IS_ZOPG(g1)) || (CLOSED(g0) && IS_ZOPG(g0) && CLOSED(g1) || (CLOSED(g0) && (CLOSED(g0 union g1) && acyclic_graph($$(g0 union g1))) || (IS_ZOPG(g1) && (CLOSED(g0 union g1) && acyclic_graph($$(g0 union g1))) || (CLOSED(g0) && (IS_ZOPG(g1) && (CLOSED(g0 union g1) && acyclic_graph($$(g0 union g1)))) || (IS_ZOPG(g0) && (CLOSED(g1) && IS_ZOPG(g1) && (CLOSED(g0 union g1) && acyclic_graph($$(g0 union g1)))) || (IS_ZOPG(g1) && (CLOSED(g0 union g1) && acyclic_graph($$(g0 union g1))) || (IS_ZOPG(g0) && (IS_ZOPG(g1) && (CLOSED(g0 union g1) && acyclic_graph($$(g0 union g1)))) || (IS_ZOPG(g0) && (IS_ZOPG(g1) && (CLOSED(g0 union g1) && acyclic_graph($$(g0 union g1)))) || (CLOSED(g0) && (CLOSED(g0 union g1) && acyclic_graph($$(g0 union g1))) || (IS_ZOPG(g0) && (CLOSED(g0 union g1) && acyclic_graph($$(g0 union g1))) || (IS_ZOPG(g1) && (CLOSED(g0 union g1) && acyclic_graph($$(g0 union g1))) || (IS_ZOPG(g0) && (CLOSED(g1) && (CLOSED(g0 union g1) && acyclic_graph($$(g0 union g1)))) || (IS_ZOPG(g0) && (CLOSED(g0 union g1) && acyclic_graph($$(g0 union g1))) || (CLOSED(g0) && (IS_ZOPG(g1) && (CLOSED(g0 union g1) && acyclic_graph($$(g0 union g1)))) || (CLOSED(g1) && IS_ZOPG(g1) && (CLOSED(g0 union g1) && acyclic_graph($$(g0 union g1))) || (CLOSED(g1) && (CLOSED(g0 union g1) && acyclic_graph($$(g0 union g1))) || (CLOSED(g1) && (CLOSED(g0 union g1) && acyclic_graph($$(g0 union g1))) || (CLOSED(g0) && (IS_ZOPG(g1) && (CLOSED(g0 union g1) && acyclic_graph($$(g0 union g1)))) || (IS_ZOPG(g0) && (CLOSED(g1) && IS_ZOPG(g1) && (CLOSED(g0 union g1) && acyclic_graph($$(g0 union g1)))) || (IS_ZOPG(g1) && (CLOSED(g0 union g1) && acyclic_graph($$(g0 union g1))) || (CLOSED(g0) && (CLOSED(g0 union g1) && acyclic_graph($$(g0 union g1))) || (IS_ZOPG(g0) && (CLOSED(g0 union g1) && acyclic_graph($$(g0 union g1))) || (CLOSED(g0) && IS_ZOPG(g0) && (CLOSED(g0 union g1) && acyclic_graph($$(g0 union g1))) || (CLOSED(g0) && IS_ZOPG(g0) && (IS_ZOPG(g1) && (CLOSED(g0 union g1) && acyclic_graph($$(g0 union g1)))) || (IS_ZOPG(g0) && (IS_ZOPG(g1) && (CLOSED(g0 union g1) && acyclic_graph($$(g0 union g1)))) || (IS_ZOPG(g0) && (CLOSED(g1) && IS_ZOPG(g1) && (CLOSED(g0 union g1) && acyclic_graph($$(g0 union g1)))) || (CLOSED(g1) && IS_ZOPG(g1) && (CLOSED(g0 union g1) && acyclic_graph($$(g0 union g1))) || (CLOSED(g0) && IS_ZOPG(g0) && (IS_ZOPG(g1) && (CLOSED(g0 union g1) && acyclic_graph($$(g0 union g1)))) || (IS_ZOPG(g0) && (IS_ZOPG(g1) && (CLOSED(g0 union g1) && acyclic_graph($$(g0 union g1)))) || (IS_ZOPG(g0) && (CLOSED(g0 union g1) && acyclic_graph($$(g0 union g1))) || (CLOSED(g0) && IS_ZOPG(g0) && (IS_ZOPG(g1) && (CLOSED(g0 union g1) && acyclic_graph($$(g0 union g1)))) || (CLOSED(g0) && IS_ZOPG(g0) && (CLOSED(g0 union g1) && acyclic_graph($$(g0 union g1))) || (CLOSED(g1) && IS_ZOPG(g1) && (CLOSED(g0 union g1) && acyclic_graph($$(g0 union g1))) || (IS_ZOPG(g0) && (CLOSED(g1) && (CLOSED(g0 union g1) && acyclic_graph($$(g0 union g1)))) || (CLOSED(g1) && (CLOSED(g0 union g1) && acyclic_graph($$(g0 union g1))) || (CLOSED(g0) && IS_ZOPG(g0) && (CLOSED(g0 union g1) && acyclic_graph($$(g0 union g1))) || (IS_ZOPG(g0) && (CLOSED(g1) && (CLOSED(g0 union g1) && acyclic_graph($$(g0 union g1)))) || (CLOSED(g0) && (IS_ZOPG(g1) && CLOSED(g0 union g1)) || (CLOSED(g0) && CLOSED(g0 union g1) || (CLOSED(g1) && IS_ZOPG(g1) && CLOSED(g0 union g1) || (CLOSED(g0) && IS_ZOPG(g0) && CLOSED(g0 union g1) || (IS_ZOPG(g0) && (CLOSED(g1) && IS_ZOPG(g1) && CLOSED(g0 union g1)) || (CLOSED(g0) && IS_ZOPG(g0) && (IS_ZOPG(g1) && CLOSED(g0 union g1)) || (CLOSED(g1) && CLOSED(g0 union g1) || (IS_ZOPG(g0) && (CLOSED(g1) && CLOSED(g0 union g1)) || (CLOSED(g0) && (CLOSED(g1) && acyclic_graph($$(g0 union g1))) || (CLOSED(g0) && IS_ZOPG(g0) && (CLOSED(g1) && IS_ZOPG(g1) && acyclic_graph($$(g0 union g1))) || (CLOSED(g0) && (CLOSED(g1) && IS_ZOPG(g1) && acyclic_graph($$(g0 union g1))) || (CLOSED(g0) && IS_ZOPG(g0) && (CLOSED(g1) && acyclic_graph($$(g0 union g1))) || (CLOSED(g0) && IS_ZOPG(g0) && (CLOSED(g1) && acyclic_graph($$(g0 union g1))) || (CLOSED(g0) && IS_ZOPG(g0) && (CLOSED(g1) && IS_ZOPG(g1) && acyclic_graph($$(g0 union g1))) || (CLOSED(g0) && (CLOSED(g1) && acyclic_graph($$(g0 union g1))) || (CLOSED(g0) && (CLOSED(g1) && IS_ZOPG(g1) && acyclic_graph($$(g0 union g1))) || (CLOSED(g0) && (CLOSED(g1) && acyclic_graph($$(g0 union g1))) || (CLOSED(g0) && (CLOSED(g1) && IS_ZOPG(g1) && acyclic_graph($$(g0 union g1))) || (CLOSED(g0) && IS_ZOPG(g0) && (CLOSED(g1) && IS_ZOPG(g1) && acyclic_graph($$(g0 union g1))) || CLOSED(g0) && IS_ZOPG(g0) && (CLOSED(g1) && acyclic_graph($$(g0 union g1)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
-  UNIVERSE := UNIVERSE union unionGraph
-  
-  // Apply TC Framing for g0 and unionGraph
-  inhale apply_TCFraming(g0, unionGraph)
-  
-  // Apply TC Framing for g1 and unionGraph
-  inhale apply_TCFraming(g1, unionGraph)
-  if (unionGraph_init != 0) {
-    
-    // Apply TC Framing for unionGraph and unionGraph setminus unionGraph
-    inhale apply_TCFraming(unionGraph, unionGraph)
-  }
+  assert CLOSED(g0) && IS_ZOPG(g0) && (CLOSED(g1) && IS_ZOPG(g1)) || (CLOSED(g0) && CLOSED(g1) || (CLOSED(g0) && (CLOSED(g1) && IS_ZOPG(g1)) || (CLOSED(g0) && IS_ZOPG(g0) && CLOSED(g1) || (CLOSED(g0) && (CLOSED((g0 union g1)) && acyclic_graph($$((g0 union g1)))) || (IS_ZOPG(g1) && (CLOSED((g0 union g1)) && acyclic_graph($$((g0 union g1)))) || (CLOSED(g0) && (IS_ZOPG(g1) && (CLOSED((g0 union g1)) && acyclic_graph($$((g0 union g1))))) || (IS_ZOPG(g0) && (CLOSED(g1) && IS_ZOPG(g1) && (CLOSED((g0 union g1)) && acyclic_graph($$((g0 union g1))))) || (IS_ZOPG(g1) && (CLOSED((g0 union g1)) && acyclic_graph($$((g0 union g1)))) || (IS_ZOPG(g0) && (IS_ZOPG(g1) && (CLOSED((g0 union g1)) && acyclic_graph($$((g0 union g1))))) || (IS_ZOPG(g0) && (IS_ZOPG(g1) && (CLOSED((g0 union g1)) && acyclic_graph($$((g0 union g1))))) || (CLOSED(g0) && (CLOSED((g0 union g1)) && acyclic_graph($$((g0 union g1)))) || (IS_ZOPG(g0) && (CLOSED((g0 union g1)) && acyclic_graph($$((g0 union g1)))) || (IS_ZOPG(g1) && (CLOSED((g0 union g1)) && acyclic_graph($$((g0 union g1)))) || (IS_ZOPG(g0) && (CLOSED(g1) && (CLOSED((g0 union g1)) && acyclic_graph($$((g0 union g1))))) || (IS_ZOPG(g0) && (CLOSED((g0 union g1)) && acyclic_graph($$((g0 union g1)))) || (CLOSED(g0) && (IS_ZOPG(g1) && (CLOSED((g0 union g1)) && acyclic_graph($$((g0 union g1))))) || (CLOSED(g1) && IS_ZOPG(g1) && (CLOSED((g0 union g1)) && acyclic_graph($$((g0 union g1)))) || (CLOSED(g1) && (CLOSED((g0 union g1)) && acyclic_graph($$((g0 union g1)))) || (CLOSED(g1) && (CLOSED((g0 union g1)) && acyclic_graph($$((g0 union g1)))) || (CLOSED(g0) && (IS_ZOPG(g1) && (CLOSED((g0 union g1)) && acyclic_graph($$((g0 union g1))))) || (IS_ZOPG(g0) && (CLOSED(g1) && IS_ZOPG(g1) && (CLOSED((g0 union g1)) && acyclic_graph($$((g0 union g1))))) || (IS_ZOPG(g1) && (CLOSED((g0 union g1)) && acyclic_graph($$((g0 union g1)))) || (CLOSED(g0) && (CLOSED((g0 union g1)) && acyclic_graph($$((g0 union g1)))) || (IS_ZOPG(g0) && (CLOSED((g0 union g1)) && acyclic_graph($$((g0 union g1)))) || (CLOSED(g0) && IS_ZOPG(g0) && (CLOSED((g0 union g1)) && acyclic_graph($$((g0 union g1)))) || (CLOSED(g0) && IS_ZOPG(g0) && (IS_ZOPG(g1) && (CLOSED((g0 union g1)) && acyclic_graph($$((g0 union g1))))) || (IS_ZOPG(g0) && (IS_ZOPG(g1) && (CLOSED((g0 union g1)) && acyclic_graph($$((g0 union g1))))) || (IS_ZOPG(g0) && (CLOSED(g1) && IS_ZOPG(g1) && (CLOSED((g0 union g1)) && acyclic_graph($$((g0 union g1))))) || (CLOSED(g1) && IS_ZOPG(g1) && (CLOSED((g0 union g1)) && acyclic_graph($$((g0 union g1)))) || (CLOSED(g0) && IS_ZOPG(g0) && (IS_ZOPG(g1) && (CLOSED((g0 union g1)) && acyclic_graph($$((g0 union g1))))) || (IS_ZOPG(g0) && (IS_ZOPG(g1) && (CLOSED((g0 union g1)) && acyclic_graph($$((g0 union g1))))) || (IS_ZOPG(g0) && (CLOSED((g0 union g1)) && acyclic_graph($$((g0 union g1)))) || (CLOSED(g0) && IS_ZOPG(g0) && (IS_ZOPG(g1) && (CLOSED((g0 union g1)) && acyclic_graph($$((g0 union g1))))) || (CLOSED(g0) && IS_ZOPG(g0) && (CLOSED((g0 union g1)) && acyclic_graph($$((g0 union g1)))) || (CLOSED(g1) && IS_ZOPG(g1) && (CLOSED((g0 union g1)) && acyclic_graph($$((g0 union g1)))) || (IS_ZOPG(g0) && (CLOSED(g1) && (CLOSED((g0 union g1)) && acyclic_graph($$((g0 union g1))))) || (CLOSED(g1) && (CLOSED((g0 union g1)) && acyclic_graph($$((g0 union g1)))) || (CLOSED(g0) && IS_ZOPG(g0) && (CLOSED((g0 union g1)) && acyclic_graph($$((g0 union g1)))) || (IS_ZOPG(g0) && (CLOSED(g1) && (CLOSED((g0 union g1)) && acyclic_graph($$((g0 union g1))))) || (CLOSED(g0) && (IS_ZOPG(g1) && CLOSED((g0 union g1))) || (CLOSED(g0) && CLOSED((g0 union g1)) || (CLOSED(g1) && IS_ZOPG(g1) && CLOSED((g0 union g1)) || (CLOSED(g0) && IS_ZOPG(g0) && CLOSED((g0 union g1)) || (IS_ZOPG(g0) && (CLOSED(g1) && IS_ZOPG(g1) && CLOSED((g0 union g1))) || (CLOSED(g0) && IS_ZOPG(g0) && (IS_ZOPG(g1) && CLOSED((g0 union g1))) || (CLOSED(g1) && CLOSED((g0 union g1)) || (IS_ZOPG(g0) && (CLOSED(g1) && CLOSED((g0 union g1))) || (CLOSED(g0) && (CLOSED(g1) && acyclic_graph($$((g0 union g1)))) || (CLOSED(g0) && IS_ZOPG(g0) && (CLOSED(g1) && IS_ZOPG(g1) && acyclic_graph($$((g0 union g1)))) || (CLOSED(g0) && (CLOSED(g1) && IS_ZOPG(g1) && acyclic_graph($$((g0 union g1)))) || (CLOSED(g0) && IS_ZOPG(g0) && (CLOSED(g1) && acyclic_graph($$((g0 union g1)))) || (CLOSED(g0) && IS_ZOPG(g0) && (CLOSED(g1) && acyclic_graph($$((g0 union g1)))) || (CLOSED(g0) && IS_ZOPG(g0) && (CLOSED(g1) && IS_ZOPG(g1) && acyclic_graph($$((g0 union g1)))) || (CLOSED(g0) && (CLOSED(g1) && acyclic_graph($$((g0 union g1)))) || (CLOSED(g0) && (CLOSED(g1) && IS_ZOPG(g1) && acyclic_graph($$((g0 union g1)))) || (CLOSED(g0) && (CLOSED(g1) && acyclic_graph($$((g0 union g1)))) || (CLOSED(g0) && (CLOSED(g1) && IS_ZOPG(g1) && acyclic_graph($$((g0 union g1)))) || (CLOSED(g0) && IS_ZOPG(g0) && (CLOSED(g1) && IS_ZOPG(g1) && acyclic_graph($$((g0 union g1)))) || CLOSED(g0) && IS_ZOPG(g0) && (CLOSED(g1) && acyclic_graph($$((g0 union g1))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+  UNIVERSE := (UNIVERSE union unionGraph)
   
   // Changed from generic update to DAG Update.
   unlink_DAG_next(unionGraph, x0)
